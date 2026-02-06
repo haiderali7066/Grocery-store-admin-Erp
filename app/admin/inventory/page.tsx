@@ -100,15 +100,20 @@ export default function InventoryPage() {
 
   const handleAddStock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.productId || !formData.quantity || !formData.buyingRate || !formData.supplierId) {
-      alert('Please fill all fields');
+    if (
+      !formData.productId ||
+      !formData.quantity ||
+      !formData.buyingRate ||
+      !formData.supplierId
+    ) {
+      alert("Please fill all fields");
       return;
     }
 
     try {
-      const response = await fetch('/api/admin/purchases', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/admin/purchases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           products: [
             {
@@ -121,17 +126,27 @@ export default function InventoryPage() {
         }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        alert('Stock added successfully');
+        alert("Stock added successfully");
         setIsAddDialogOpen(false);
-        setFormData({ productId: '', quantity: '', buyingRate: '', supplierId: '' });
+        setFormData({
+          productId: "",
+          quantity: "",
+          buyingRate: "",
+          supplierId: "",
+        });
         fetchInventory();
       } else {
-        alert('Failed to add stock');
+        console.error("Server error:", data);
+        alert(
+          `Failed to add stock: ${data.error || data.message || "Unknown error"}`,
+        );
       }
     } catch (error) {
-      console.error('Failed to add stock:', error);
-      alert('Error adding stock');
+      console.error("Failed to add stock:", error);
+      alert("Error adding stock. Check console for details.");
     }
   };
 

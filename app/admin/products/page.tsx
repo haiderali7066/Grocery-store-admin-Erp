@@ -1,118 +1,210 @@
-'use client';
+"use client";
 
-import React from "react"
+import React from "react";
 
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Plus, Edit, Trash2, Search, Zap, File as Fire } from 'lucide-react';
+} from "@/components/ui/dialog";
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Search,
+  Zap,
+  File as Fire,
+  Upload,
+  X,
+} from "lucide-react";
+import Image from "next/image";
 
 interface Product {
   _id: string;
   name: string;
   basePrice: number;
   discount: number;
-  discountType: 'percentage' | 'fixed';
+  discountType: "percentage" | "fixed";
   stock: number;
   category: string;
   isActive: boolean;
   isFlashSale: boolean;
   isHot: boolean;
   isFeatured: boolean;
+  mainImage?: string;
+}
+
+interface Category {
+  _id: string;
+  name: string;
 }
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
-    basePrice: '',
-    discount: '',
-    discountType: 'percentage' as const,
-    category: '',
-    weight: '',
-    weightUnit: 'kg',
+    name: "",
+    basePrice: "",
+    discount: "",
+    discountType: "percentage" as const,
+    category: "",
+    weight: "",
+    weightUnit: "kg",
     isFlashSale: false,
     isHot: false,
     isFeatured: false,
+    image: null as File | null,
   });
 
   useEffect(() => {
     fetchProducts();
+    fetchCategories();
   }, []);
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch('/api/products');
+      const response = await fetch("/api/products");
       if (response.ok) {
         const data = await response.json();
         setProducts(data.products);
       }
     } catch (error) {
-      console.error('Failed to fetch products:', error);
+      console.error("Failed to fetch products:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch("/api/categories");
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data.categories || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch categories:", error);
+    }
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith("image/")) {
+        alert("Please select an image file");
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        alert("Image size should be less than 5MB");
+        return;
+      }
+
+      setFormData({ ...formData, image: file });
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setFormData({ ...formData, image: null });
+    setImagePreview(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsUploading(true);
+
     try {
-      const response = await fetch('/api/admin/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+      // Create FormData for file upload
+      const submitData = new FormData();
+      submitData.append("name", formData.name);
+      submitData.append("basePrice", formData.basePrice);
+      submitData.append("discount", formData.discount);
+      submitData.append("discountType", formData.discountType);
+      submitData.append("category", formData.category);
+      submitData.append("weight", formData.weight);
+      submitData.append("weightUnit", formData.weightUnit);
+      submitData.append("isFlashSale", formData.isFlashSale.toString());
+      submitData.append("isHot", formData.isHot.toString());
+      submitData.append("isFeatured", formData.isFeatured.toString());
+
+      if (formData.image) {
+        submitData.append("image", formData.image);
+      }
+
+      const response = await fetch("/api/admin/products", {
+        method: "POST",
+        body: submitData, // Don't set Content-Type header, browser will set it with boundary
       });
 
       if (response.ok) {
         setIsDialogOpen(false);
         setFormData({
-          name: '',
-          basePrice: '',
-          discount: '',
-          discountType: 'percentage',
-          category: '',
-          weight: '',
-          weightUnit: 'kg',
+          name: "",
+          basePrice: "",
+          discount: "",
+          discountType: "percentage",
+          category: "",
+          weight: "",
+          weightUnit: "kg",
           isFlashSale: false,
           isHot: false,
           isFeatured: false,
+          image: null,
         });
+        setImagePreview(null);
         fetchProducts();
+      } else {
+        const errorData = await response.json();
+        alert(
+          `Failed to create product: ${errorData.error || "Unknown error"}`,
+        );
       }
     } catch (error) {
-      console.error('Failed to create product:', error);
+      console.error("Failed to create product:", error);
+      alert("Failed to create product. Please try again.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
   const handleDelete = async (productId: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
+    if (confirm("Are you sure you want to delete this product?")) {
       try {
         const response = await fetch(`/api/admin/products/${productId}`, {
-          method: 'DELETE',
+          method: "DELETE",
         });
 
         if (response.ok) {
           fetchProducts();
         }
       } catch (error) {
-        console.error('Failed to delete product:', error);
+        console.error("Failed to delete product:", error);
       }
     }
   };
 
   const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase())
+    product.name.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   return (
@@ -130,7 +222,7 @@ export default function ProductsPage() {
               Add Product
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Product</DialogTitle>
             </DialogHeader>
@@ -148,12 +240,87 @@ export default function ProductsPage() {
                 />
               </div>
 
+              {/* Image Upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Product Image
+                </label>
+                {!imagePreview ? (
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-green-500 transition-colors">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="hidden"
+                      id="image-upload"
+                    />
+                    <label
+                      htmlFor="image-upload"
+                      className="cursor-pointer flex flex-col items-center"
+                    >
+                      <Upload className="h-12 w-12 text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-600">
+                        Click to upload product image
+                      </span>
+                      <span className="text-xs text-gray-500 mt-1">
+                        PNG, JPG up to 5MB
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="relative border-2 border-gray-300 rounded-lg p-2">
+                    <div className="relative w-full h-48">
+                      <Image
+                        src={imagePreview}
+                        alt="Preview"
+                        fill
+                        className="object-contain"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Base Price
+                  Category
+                </label>
+                <select
+                  value={formData.category}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  required
+                >
+                  <option value="">Select a category</option>
+                  {categories.map((cat) => (
+                    <option key={cat._id} value={cat._id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+                {categories.length === 0 && (
+                  <p className="text-sm text-orange-600 mt-1">
+                    No categories found. Please create categories first.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Base Price (Rs)
                 </label>
                 <Input
                   type="number"
+                  step="0.01"
                   value={formData.basePrice}
                   onChange={(e) =>
                     setFormData({ ...formData, basePrice: e.target.value })
@@ -169,6 +336,7 @@ export default function ProductsPage() {
                   </label>
                   <Input
                     type="number"
+                    step="0.01"
                     value={formData.discount}
                     onChange={(e) =>
                       setFormData({ ...formData, discount: e.target.value })
@@ -183,7 +351,10 @@ export default function ProductsPage() {
                   <select
                     value={formData.discountType}
                     onChange={(e) =>
-                      setFormData({ ...formData, discountType: e.target.value as any })
+                      setFormData({
+                        ...formData,
+                        discountType: e.target.value as any,
+                      })
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   >
@@ -193,26 +364,14 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
-                </label>
-                <Input
-                  value={formData.category}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Weight
+                    Weight/Quantity
                   </label>
                   <Input
                     type="number"
+                    step="0.01"
                     value={formData.weight}
                     onChange={(e) =>
                       setFormData({ ...formData, weight: e.target.value })
@@ -231,27 +390,36 @@ export default function ProductsPage() {
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   >
-                    <option>kg</option>
-                    <option>g</option>
-                    <option>liter</option>
-                    <option>ml</option>
+                    <option value="kg">kg</option>
+                    <option value="g">g</option>
+                    <option value="liter">liter</option>
+                    <option value="ml">ml</option>
+                    <option value="piece">piece</option>
                   </select>
                 </div>
               </div>
 
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-800">
-                  Stock will be added during inventory purchases in the Inventory section.
+                  💡 Stock will be added during inventory purchases in the
+                  Inventory section.
                 </p>
               </div>
 
               <div className="space-y-3 border-t pt-4">
+                <p className="text-sm font-medium text-gray-700">
+                  Product Tags
+                </p>
+
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.isFlashSale}
                     onChange={(e) =>
-                      setFormData({ ...formData, isFlashSale: e.target.checked })
+                      setFormData({
+                        ...formData,
+                        isFlashSale: e.target.checked,
+                      })
                     }
                     className="rounded"
                   />
@@ -285,8 +453,12 @@ export default function ProductsPage() {
                 </label>
               </div>
 
-              <Button type="submit" className="w-full bg-green-700">
-                Create Product
+              <Button
+                type="submit"
+                className="w-full bg-green-700 hover:bg-green-800"
+                disabled={categories.length === 0 || isUploading}
+              >
+                {isUploading ? "Creating..." : "Create Product"}
               </Button>
             </form>
           </DialogContent>
@@ -312,6 +484,9 @@ export default function ProductsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Image
+                </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">
                   Name
                 </th>
@@ -341,6 +516,22 @@ export default function ProductsPage() {
                   key={product._id}
                   className="border-b border-gray-100 hover:bg-gray-50"
                 >
+                  <td className="py-3 px-4">
+                    {product.mainImage ? (
+                      <div className="relative w-12 h-12">
+                        <Image
+                          src={product.mainImage}
+                          alt={product.name}
+                          fill
+                          className="object-cover rounded"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
+                        <span className="text-gray-400 text-xs">No img</span>
+                      </div>
+                    )}
+                  </td>
                   <td className="py-3 px-4 font-medium text-gray-900">
                     {product.name}
                   </td>
@@ -348,7 +539,8 @@ export default function ProductsPage() {
                   <td className="py-3 px-4 text-sm">
                     {product.discount ? (
                       <span className="text-orange-600 font-medium">
-                        {product.discount} {product.discountType === 'percentage' ? '%' : 'Rs'}
+                        {product.discount}{" "}
+                        {product.discountType === "percentage" ? "%" : "Rs"}
                       </span>
                     ) : (
                       <span className="text-gray-400">-</span>
@@ -380,11 +572,11 @@ export default function ProductsPage() {
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${
                         product.isActive
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-800"
                       }`}
                     >
-                      {product.isActive ? 'Active' : 'Inactive'}
+                      {product.isActive ? "Active" : "Inactive"}
                     </span>
                   </td>
                   <td className="py-3 px-4 flex gap-2">

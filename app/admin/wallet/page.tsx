@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   TrendingUp,
   TrendingDown,
   Wallet,
   ArrowUpRight,
   ArrowDownLeft,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface WalletBalance {
   totalBalance?: number;
@@ -21,7 +21,7 @@ interface WalletBalance {
 
 interface Transaction {
   _id: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: "income" | "expense" | "transfer";
   category: string;
   amount?: number;
   source: string;
@@ -32,13 +32,18 @@ interface Transaction {
 export default function WalletPage() {
   const [wallet, setWallet] = useState<WalletBalance | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<
+    Transaction[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense' | 'transfer'>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterType, setFilterType] = useState<
+    "all" | "income" | "expense" | "transfer"
+  >("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [selectedTransaction, setSelectedTransaction] =
+    useState<Transaction | null>(null);
   const [showDetail, setShowDetail] = useState(false);
 
   useEffect(() => {
@@ -51,14 +56,14 @@ export default function WalletPage() {
 
   const fetchWallet = async () => {
     try {
-      const res = await fetch('/api/admin/wallet');
+      const res = await fetch("/api/admin/wallet");
       if (res.ok) {
         const data = await res.json();
         setWallet(data.wallet || {});
         setTransactions(data.transactions || []);
       }
     } catch (error) {
-      console.error('Wallet fetch error:', error);
+      console.error("Wallet fetch error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -67,7 +72,7 @@ export default function WalletPage() {
   const applyFilters = () => {
     let filtered = transactions;
 
-    if (filterType !== 'all') {
+    if (filterType !== "all") {
       filtered = filtered.filter((t) => t.type === filterType);
     }
 
@@ -76,16 +81,20 @@ export default function WalletPage() {
         (t) =>
           t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
           t.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          t.source.toLowerCase().includes(searchTerm.toLowerCase())
+          t.source.toLowerCase().includes(searchTerm.toLowerCase()),
       );
     }
 
     if (dateFrom) {
-      filtered = filtered.filter((t) => new Date(t.createdAt) >= new Date(dateFrom));
+      filtered = filtered.filter(
+        (t) => new Date(t.createdAt) >= new Date(dateFrom),
+      );
     }
 
     if (dateTo) {
-      filtered = filtered.filter((t) => new Date(t.createdAt) <= new Date(dateTo));
+      filtered = filtered.filter(
+        (t) => new Date(t.createdAt) <= new Date(dateTo),
+      );
     }
 
     setFilteredTransactions(filtered);
@@ -112,7 +121,9 @@ export default function WalletPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Wallet & Finance</h1>
-          <p className="text-gray-600">Track income, expenses, and overall balance</p>
+          <p className="text-gray-600">
+            Track income, expenses, and overall balance
+          </p>
         </div>
       </div>
 
@@ -121,7 +132,9 @@ export default function WalletPage() {
         <Card className="p-6 border-0 shadow-md bg-gradient-to-br from-blue-50 to-blue-100">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-sm text-blue-600 font-medium">Current Balance</p>
+              <p className="text-sm text-blue-600 font-medium">
+                Current Balance
+              </p>
               <p className="text-3xl font-bold text-blue-900 mt-2">
                 Rs. {(walletData.totalBalance ?? 0).toFixed(0)}
               </p>
@@ -215,12 +228,24 @@ export default function WalletPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Date</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Type</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Category</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Source</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Description</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Amount</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Date
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Type
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Category
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Source
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Description
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Amount
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -238,14 +263,14 @@ export default function WalletPage() {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2">
-                      {tx.type === 'income' ? (
+                      {tx.type === "income" ? (
                         <>
                           <ArrowDownLeft className="h-4 w-4 text-green-600" />
                           <span className="text-xs font-medium text-green-600 bg-green-100 px-2 py-1 rounded">
                             Income
                           </span>
                         </>
-                      ) : tx.type === 'expense' ? (
+                      ) : tx.type === "expense" ? (
                         <>
                           <ArrowUpRight className="h-4 w-4 text-red-600" />
                           <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-1 rounded">
@@ -262,16 +287,21 @@ export default function WalletPage() {
                       )}
                     </div>
                   </td>
-                  <td className="py-3 px-4 text-sm capitalize">{tx.category}</td>
+                  <td className="py-3 px-4 text-sm capitalize">
+                    {tx.category}
+                  </td>
                   <td className="py-3 px-4 text-sm capitalize">{tx.source}</td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{tx.description}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">
+                    {tx.description}
+                  </td>
                   <td className="py-3 px-4 text-sm font-semibold">
                     <span
                       className={
-                        tx.type === 'income' ? 'text-green-600' : 'text-red-600'
+                        tx.type === "income" ? "text-green-600" : "text-red-600"
                       }
                     >
-                      {tx.type === 'income' ? '+' : '-'}Rs. {(Math.abs(tx.amount ?? 0)).toFixed(0)}
+                      {tx.type === "income" ? "+" : "-"}Rs.{" "}
+                      {Math.abs(tx.amount ?? 0).toFixed(0)}
                     </span>
                   </td>
                 </tr>
@@ -279,7 +309,9 @@ export default function WalletPage() {
             </tbody>
           </table>
         ) : (
-          <p className="text-center text-gray-500 py-8">No transactions found</p>
+          <p className="text-center text-gray-500 py-8">
+            No transactions found
+          </p>
         )}
       </Card>
 
@@ -294,11 +326,11 @@ export default function WalletPage() {
                 <p className="text-sm text-gray-600">Type</p>
                 <p
                   className={`text-lg font-semibold capitalize mt-1 ${
-                    selectedTransaction.type === 'income'
-                      ? 'text-green-600'
-                      : selectedTransaction.type === 'expense'
-                      ? 'text-red-600'
-                      : 'text-orange-600'
+                    selectedTransaction.type === "income"
+                      ? "text-green-600"
+                      : selectedTransaction.type === "expense"
+                        ? "text-red-600"
+                        : "text-orange-600"
                   }`}
                 >
                   {selectedTransaction.type}
@@ -308,22 +340,28 @@ export default function WalletPage() {
               <div className="p-4 rounded-lg bg-gray-50">
                 <p className="text-sm text-gray-600">Amount</p>
                 <p className="text-3xl font-bold text-gray-900 mt-1">
-                  Rs. {(Math.abs(selectedTransaction.amount ?? 0)).toFixed(0)}
+                  Rs. {Math.abs(selectedTransaction.amount ?? 0).toFixed(0)}
                 </p>
               </div>
 
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Category:</span>
-                  <span className="font-medium capitalize">{selectedTransaction.category}</span>
+                  <span className="font-medium capitalize">
+                    {selectedTransaction.category}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Source:</span>
-                  <span className="font-medium capitalize">{selectedTransaction.source}</span>
+                  <span className="font-medium capitalize">
+                    {selectedTransaction.source}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Description:</span>
-                  <span className="font-medium">{selectedTransaction.description}</span>
+                  <span className="font-medium">
+                    {selectedTransaction.description}
+                  </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t">
                   <span className="text-gray-600">Date:</span>

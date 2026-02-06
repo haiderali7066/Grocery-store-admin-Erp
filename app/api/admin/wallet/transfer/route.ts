@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connect } from '@/lib/db';
+import { connectDB } from '@/lib/db';
 import { Wallet, Transaction } from '@/lib/models';
 
 export async function POST(req: NextRequest) {
   try {
-    await connect();
+    await connectDB();
     const body = await req.json();
 
     const { amount, fromMethod, toMethod } = body;

@@ -2,6 +2,8 @@ import { connectDB } from '@/lib/db';
 import { Product, Category } from '@/lib/models/index';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, getTokenFromCookie } from '@/lib/auth';
+import { writeFile, mkdir } from 'fs/promises';
+import path from 'path';
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,20 +19,55 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
     }
 
-    const {
-      name,
-      basePrice,
-      category,
-      weight,
-      weightUnit,
-      stock,
-    } = await req.json();
+    // Parse FormData
+    const formData = await req.formData();
+    const name = formData.get('name') as string;
+    const basePrice = formData.get('basePrice') as string;
+    const category = formData.get('category') as string;
+    const weight = formData.get('weight') as string;
+    const weightUnit = formData.get('weightUnit') as string;
+    const discount = formData.get('discount') as string;
+    const discountType = formData.get('discountType') as string;
+    const isFlashSale = formData.get('isFlashSale') === 'true';
+    const isHot = formData.get('isHot') === 'true';
+    const isFeatured = formData.get('isFeatured') === 'true';
+    const image = formData.get('image') as File | null;
 
-    // Get or create category
-    let categoryDoc = await Category.findOne({ name: category });
+    // Validate that the category exists
+    const categoryDoc = await Category.findById(category);
     if (!categoryDoc) {
-      categoryDoc = new Category({ name: category });
-      await categoryDoc.save();
+      return NextResponse.json(
+        { error: 'Invalid category selected' },
+        { status: 400 }
+      );
+    }
+
+    let imagePath = '';
+
+    // Handle image upload
+    if (image) {
+      const bytes = await image.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+
+      // Create unique filename
+      const timestamp = Date.now();
+      const originalName = image.name.replace(/\s+/g, '-');
+      const filename = `${timestamp}-${originalName}`;
+      
+      // Create uploads directory if it doesn't exist
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'products');
+      try {
+        await mkdir(uploadDir, { recursive: true });
+      } catch (error) {
+        // Directory might already exist
+      }
+
+      // Save file
+      const filepath = path.join(uploadDir, filename);
+      await writeFile(filepath, buffer);
+      
+      // Store relative path for database
+      imagePath = `/uploads/products/${filename}`;
     }
 
     const sku = `${name.substring(0, 3).toUpperCase()}-${Date.now()}`;
@@ -38,13 +75,20 @@ export async function POST(req: NextRequest) {
     const product = new Product({
       name,
       sku,
-      retailPrice: basePrice,
+      retailPrice: parseFloat(basePrice),
+      discount: discount ? parseFloat(discount) : 0,
+      discountType: discountType || 'percentage',
       category: categoryDoc._id,
       unitType: weightUnit,
-      unitSize: weight,
-      stock,
+      unitSize: parseFloat(weight),
+      mainImage: imagePath,
+      stock: 0,
       status: 'active',
       onlineVisible: true,
+      posVisible: true,
+      isFeatured: isFeatured || false,
+      isHot: isHot || false,
+      isNewArrival: isFlashSale || false,
     });
 
     await product.save();
@@ -59,7 +103,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Product creation error:', error);
     return NextResponse.json(
-      { message: 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }

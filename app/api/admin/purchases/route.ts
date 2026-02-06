@@ -1,140 +1,153 @@
-import { connectDB } from '@/lib/db';
-import { Purchase, Supplier, Product } from '@/lib/models/index';
-import { addStockFIFO } from '@/lib/inventory';
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromCookie } from '@/lib/auth';
+import { connectDB } from "@/lib/db";
+import {
+  Purchase,
+  Product,
+  InventoryBatch,
+  Supplier,
+} from "@/lib/models/index";
+import { NextRequest, NextResponse } from "next/server";
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    const token = getTokenFromCookie(req.headers.get('cookie') || '');
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
     if (!token) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== 'admin') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
-    const {
-      supplier,
-      purchaseDate,
-      invoiceNumber,
-      products,
-    } = await req.json();
+    const body = await req.json();
+    const { supplier, products } = body;
 
-    if (!products || products.length === 0) {
+    if (!supplier || !products || products.length === 0) {
       return NextResponse.json(
-        { message: 'At least one product is required' },
-        { status: 400 }
+        { error: "Supplier and products are required" },
+        { status: 400 },
       );
     }
 
-    // Validate all products have buying rate
-    for (const product of products) {
-      if (!product.buyingRate) {
+    // Validate supplier exists
+    const supplierDoc = await Supplier.findById(supplier);
+    if (!supplierDoc) {
+      return NextResponse.json(
+        { error: "Supplier not found" },
+        { status: 404 },
+      );
+    }
+
+    // Calculate total amount
+    let totalAmount = 0;
+    const purchaseProducts = [];
+
+    for (const item of products) {
+      const { product, quantity, buyingRate } = item;
+
+      if (!product || !quantity || !buyingRate) {
         return NextResponse.json(
           {
-            message: 'Buying rate is mandatory for all products (FIFO requirement)',
+            error:
+              "Product, quantity, and buying rate are required for all items",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
-    }
 
-    // Create purchase
-    let totalAmount = 0;
-    const processedProducts = [];
+      // Validate product exists
+      const productDoc = await Product.findById(product);
+      if (!productDoc) {
+        return NextResponse.json(
+          { error: `Product not found: ${product}` },
+          { status: 404 },
+        );
+      }
 
-    for (const product of products) {
-      const totalCost = product.quantity * product.buyingRate;
-      totalAmount += totalCost;
+      const itemTotal = quantity * buyingRate;
+      totalAmount += itemTotal;
 
-      processedProducts.push({
-        product: product.product,
-        quantity: product.quantity,
-        unit: product.unit || 'kg',
-        buyingRate: product.buyingRate,
-        totalCost,
-        expiry: product.expiry,
+      purchaseProducts.push({
+        product,
+        quantity: parseInt(quantity),
+        buyingRate: parseFloat(buyingRate),
+        batchNumber: Date.now().toString(),
       });
+
+      // Update product stock
+      productDoc.stock += parseInt(quantity);
+      await productDoc.save();
+
+      // Create inventory batch for FIFO tracking
+      const batch = new InventoryBatch({
+        product,
+        quantity: parseInt(quantity),
+        buyingRate: parseFloat(buyingRate),
+        status: "active",
+      });
+      await batch.save();
     }
 
+    // Create purchase record - FIXED purchaseDate
     const purchase = new Purchase({
       supplier,
-      purchaseDate: new Date(purchaseDate),
-      invoiceNumber,
-      products: processedProducts,
+      products: purchaseProducts,
       totalAmount,
-      status: 'completed',
+      purchaseDate: new Date(), // ✅ Use new Date() without parameter
+      paymentMethod: "cash",
+      paymentStatus: "completed",
+      status: "completed",
     });
 
     await purchase.save();
 
-    // Add to inventory using FIFO
-    for (const product of products) {
-      await addStockFIFO(
-        product.product,
-        product.quantity,
-        product.buyingRate,
-        purchase._id.toString(),
-        product.expiry ? new Date(product.expiry) : undefined
-      );
-    }
-
-    // Update supplier balance
-    if (supplier) {
-      await Supplier.findByIdAndUpdate(supplier, {
-        $inc: { balance: totalAmount },
-      });
-    }
-
     return NextResponse.json(
       {
-        message: 'Purchase created successfully',
+        message: "Purchase created successfully",
         purchase,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
-    console.error('Purchase creation error:', error);
+    console.error("Purchase creation error:", error);
     return NextResponse.json(
-      { message: 'Internal server error' },
-      { status: 500 }
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 },
     );
   }
 }
 
+// GET all purchases
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
 
-    const token = getTokenFromCookie(req.headers.get('cookie') || '');
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
     if (!token) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== 'admin') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
     const purchases = await Purchase.find()
-      .populate('supplier')
-      .populate('products.product')
+      .populate("supplier", "name")
+      .populate("products.product", "name sku")
       .sort({ createdAt: -1 });
 
-    return NextResponse.json(
-      { purchases },
-      { status: 200 }
-    );
+    return NextResponse.json({ purchases }, { status: 200 });
   } catch (error) {
-    console.error('Purchases fetch error:', error);
+    console.error("Purchases fetch error:", error);
     return NextResponse.json(
-      { message: 'Internal server error' },
-      { status: 500 }
+      { error: "Failed to fetch purchases" },
+      { status: 500 },
     );
   }
 }
