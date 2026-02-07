@@ -1,4 +1,4 @@
-import { v2 as cloudinary, UploadApiResponse } from "cloudinary";
+import { v2 as cloudinary } from "cloudinary";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -8,8 +8,8 @@ cloudinary.config({
 
 export async function uploadToCloudinary(
   file: File,
-  folder: string = "products"
-): Promise<UploadApiResponse> {
+  folder: string = "products",
+) {
   try {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
@@ -17,7 +17,7 @@ export async function uploadToCloudinary(
     return new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
-          folder: folder, // e.g., 'products'
+          folder: `grocery-store/${folder}`,
           resource_type: "auto",
           transformation: [
             { width: 800, height: 800, crop: "limit" },
@@ -27,19 +27,18 @@ export async function uploadToCloudinary(
         },
         (error, result) => {
           if (error) {
-            console.error("Cloudinary upload error:", error);
             reject(error);
           } else {
-            resolve(result as UploadApiResponse);
+            resolve(result);
           }
-        }
+        },
       );
 
       uploadStream.end(buffer);
     });
-  } catch (error: any) {
-    console.error("Failed to upload to Cloudinary:", error);
-    throw new Error(error.message || "Failed to upload image to Cloudinary");
+  } catch (error) {
+    console.error("Cloudinary upload error:", error);
+    throw new Error("Failed to upload image to Cloudinary");
   }
 }
 
