@@ -25,19 +25,21 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 
+// Fixed interface to match API response
 interface Product {
   _id: string;
   name: string;
-  basePrice: number;
+  retailPrice: number;  // Changed from basePrice
   discount: number;
   discountType: "percentage" | "fixed";
   stock: number;
   category: string;
-  isActive: boolean;
-  isFlashSale: boolean;
+  status: string;  // Changed from isActive
+  isNewArrival: boolean;  // Changed from isFlashSale
   isHot: boolean;
   isFeatured: boolean;
   mainImage?: string;
+  sku?: string;
 }
 
 interface Category {
@@ -77,7 +79,8 @@ export default function ProductsPage() {
       const response = await fetch("/api/products");
       if (response.ok) {
         const data = await response.json();
-        setProducts(data.products);
+        console.log('Fetched products:', data.products); // Debug log
+        setProducts(data.products || []);
       }
     } catch (error) {
       console.error("Failed to fetch products:", error);
@@ -101,13 +104,11 @@ export default function ProductsPage() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file type
       if (!file.type.startsWith("image/")) {
         alert("Please select an image file");
         return;
       }
 
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert("Image size should be less than 5MB");
         return;
@@ -115,7 +116,6 @@ export default function ProductsPage() {
 
       setFormData({ ...formData, image: file });
 
-      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -134,7 +134,6 @@ export default function ProductsPage() {
     setIsUploading(true);
 
     try {
-      // Create FormData for file upload
       const submitData = new FormData();
       submitData.append("name", formData.name);
       submitData.append("basePrice", formData.basePrice);
@@ -153,7 +152,7 @@ export default function ProductsPage() {
 
       const response = await fetch("/api/admin/products", {
         method: "POST",
-        body: submitData, // Don't set Content-Type header, browser will set it with boundary
+        body: submitData,
       });
 
       if (response.ok) {
@@ -173,11 +172,10 @@ export default function ProductsPage() {
         });
         setImagePreview(null);
         fetchProducts();
+        alert('Product created successfully!');
       } else {
         const errorData = await response.json();
-        alert(
-          `Failed to create product: ${errorData.error || "Unknown error"}`,
-        );
+        alert(`Failed to create product: ${errorData.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to create product:", error);
@@ -188,18 +186,28 @@ export default function ProductsPage() {
   };
 
   const handleDelete = async (productId: string) => {
-    if (confirm("Are you sure you want to delete this product?")) {
-      try {
-        const response = await fetch(`/api/admin/products/${productId}`, {
-          method: "DELETE",
-        });
+    if (!confirm("Are you sure you want to delete this product?")) {
+      return;
+    }
 
-        if (response.ok) {
-          fetchProducts();
-        }
-      } catch (error) {
-        console.error("Failed to delete product:", error);
+    try {
+      console.log('Deleting product:', productId); // Debug log
+      const response = await fetch(`/api/admin/products/${productId}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+      console.log('Delete response:', data); // Debug log
+
+      if (response.ok) {
+        alert('Product deleted successfully!');
+        fetchProducts();
+      } else {
+        alert(`Failed to delete: ${data.error || 'Unknown error'}`);
       }
+    } catch (error) {
+      console.error("Failed to delete product:", error);
+      alert('Error deleting product. Check console for details.');
     }
   };
 
@@ -524,6 +532,7 @@ export default function ProductsPage() {
                           alt={product.name}
                           fill
                           className="object-cover rounded"
+                          unoptimized
                         />
                       </div>
                     ) : (
@@ -535,7 +544,7 @@ export default function ProductsPage() {
                   <td className="py-3 px-4 font-medium text-gray-900">
                     {product.name}
                   </td>
-                  <td className="py-3 px-4 text-sm">Rs. {product.basePrice}</td>
+                  <td className="py-3 px-4 text-sm">Rs. {product.retailPrice}</td>
                   <td className="py-3 px-4 text-sm">
                     {product.discount ? (
                       <span className="text-orange-600 font-medium">
@@ -549,7 +558,7 @@ export default function ProductsPage() {
                   <td className="py-3 px-4 text-sm">{product.stock}</td>
                   <td className="py-3 px-4">
                     <div className="flex gap-1 flex-wrap">
-                      {product.isFlashSale && (
+                      {product.isNewArrival && (
                         <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium">
                           <Zap className="h-3 w-3" />
                           Flash
@@ -571,25 +580,31 @@ export default function ProductsPage() {
                   <td className="py-3 px-4">
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        product.isActive
+                        product.status === 'active'
                           ? "bg-green-100 text-green-800"
                           : "bg-gray-100 text-gray-800"
                       }`}
                     >
-                      {product.isActive ? "Active" : "Inactive"}
+                      {product.status === 'active' ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="py-3 px-4 flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDelete(product._id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-red-600" />
-                    </Button>
+                  <td className="py-3 px-4">
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => alert('Edit feature coming soon!')}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(product._id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-600" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import React from "react"
+import React from "react";
 
-import Image from 'next/image';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { ShoppingCart, Heart } from 'lucide-react';
-import { useState } from 'react';
+import Image from "next/image";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ShoppingCart, Heart } from "lucide-react";
+import { useState } from "react";
 
 interface Product {
   _id: string;
@@ -20,6 +20,7 @@ interface Product {
   isHot: boolean;
   isFlashSale: boolean;
   isFeatured: boolean;
+  isNewArrival?: boolean; // Add this
   unitType: string;
   unitSize: number;
   stock: number;
@@ -36,12 +37,12 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
   const [showSuccess, setShowSuccess] = useState(false);
 
   const discountedPrice =
-    product.discountType === 'percentage'
+    product.discountType === "percentage"
       ? product.retailPrice * (1 - product.discount / 100)
       : product.retailPrice - product.discount;
 
   const savings =
-    product.discountType === 'percentage'
+    product.discountType === "percentage"
       ? `${product.discount}% OFF`
       : `Rs. ${product.discount} OFF`;
 
@@ -49,10 +50,10 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
     e.preventDefault();
     e.stopPropagation();
     if (!onAddToCart) {
-      console.log('[v0] onAddToCart is not defined');
+      console.log("[v0] onAddToCart is not defined");
       return;
     }
-    console.log('[v0] Adding product to cart:', product._id);
+    console.log("[v0] Adding product to cart:", product._id);
     setIsAdding(true);
     onAddToCart(product._id);
     setShowSuccess(true);
@@ -62,17 +63,21 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
     }, 600);
   };
 
+  // Use mainImage first, fallback to images array
+  const imageUrl = product.mainImage || product.images?.[0];
+
   return (
     <Link href={`/products/${product._id}`}>
       <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-secondary group cursor-pointer">
         {/* Image Container */}
         <div className="relative h-56 overflow-hidden bg-secondary">
-          {product.images && product.images[0] ? (
+          {imageUrl ? (
             <Image
-              src={product.images[0] || "/placeholder.svg"}
+              src={imageUrl}
               alt={product.name}
               fill
               className="object-cover group-hover:scale-110 transition-transform duration-300"
+              unoptimized // Add this if you're having issues with Cloudinary
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-secondary text-muted-foreground text-sm">
@@ -87,7 +92,7 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
                 Hot
               </div>
             )}
-            {product.isFlashSale && (
+            {(product.isFlashSale || product.isNewArrival) && (
               <div className="bg-accent text-accent-foreground text-xs font-bold px-3 py-1 rounded-full">
                 Flash Sale
               </div>
@@ -109,7 +114,7 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
           >
             <Heart
               className={`h-5 w-5 transition-colors ${
-                isFavorite ? 'fill-red-500 text-red-500' : 'text-foreground'
+                isFavorite ? "fill-red-500 text-red-500" : "text-foreground"
               }`}
             />
           </button>
@@ -117,7 +122,9 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
           {/* Stock Status */}
           {product.stock === 0 && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-sm">
-              <span className="text-white font-bold text-base">Out of Stock</span>
+              <span className="text-white font-bold text-base">
+                Out of Stock
+              </span>
             </div>
           )}
         </div>
@@ -136,7 +143,9 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
 
           {/* Price */}
           <div className="flex items-baseline gap-2 mb-4">
-            <span className="text-xl font-bold text-foreground">Rs. {discountedPrice.toFixed(0)}</span>
+            <span className="text-xl font-bold text-foreground">
+              Rs. {discountedPrice.toFixed(0)}
+            </span>
             {product.discount > 0 && (
               <span className="text-sm text-muted-foreground line-through">
                 Rs. {product.retailPrice.toFixed(0)}
@@ -149,14 +158,14 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
             onClick={handleAddToCart}
             disabled={product.stock === 0 || isAdding}
             className={`w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2.5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-              showSuccess ? 'scale-95 bg-green-600' : 'scale-100'
+              showSuccess ? "scale-95 bg-green-600" : "scale-100"
             }`}
             style={{
-              animation: showSuccess ? 'pulse-scale 0.6s ease-out' : 'none',
+              animation: showSuccess ? "pulse-scale 0.6s ease-out" : "none",
             }}
           >
             <ShoppingCart className="h-4 w-4" />
-            {isAdding ? 'Adding...' : showSuccess ? 'Added!' : 'Add to Cart'}
+            {isAdding ? "Adding..." : showSuccess ? "Added!" : "Add to Cart"}
           </button>
           <style jsx>{`
             @keyframes pulse-scale {
