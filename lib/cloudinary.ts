@@ -37,7 +37,6 @@ export async function uploadToCloudinary(
       uploadStream.end(buffer);
     });
   } catch (error) {
-    console.error("Cloudinary upload error:", error);
     throw new Error("Failed to upload image to Cloudinary");
   }
 }
