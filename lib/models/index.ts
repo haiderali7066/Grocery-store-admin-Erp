@@ -28,15 +28,47 @@ export const UserSchema = new Schema(
 // Category Schema
 export const CategorySchema = new Schema(
   {
-    name: { type: String, required: true, unique: true },
-    description: String,
-    image: String,
-    parentCategory: { type: Schema.Types.ObjectId, ref: 'Category' },
-    sortOrder: { type: Number, default: 0 },
-    isVisible: { type: Boolean, default: true },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    slug: {
+      type: String,
+      unique: true,
+      sparse: true, // allows old nulls but prevents duplicates when set
+      lowercase: true,
+      trim: true,
+    },
+
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
+
+    isVisible: {
+      type: Boolean,
+      default: true,
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+// Auto-generate slug
+CategorySchema.pre("validate", function (next) {
+  if (this.name && (!this.slug || this.isModified("name"))) {
+    this.slug = this.name
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^\w\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-");
+  }
+  next();
+});
+
+
 
 // Product Schema
 export const ProductSchema = new Schema(

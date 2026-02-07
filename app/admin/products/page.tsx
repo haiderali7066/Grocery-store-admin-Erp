@@ -29,13 +29,13 @@ import Image from "next/image";
 interface Product {
   _id: string;
   name: string;
-  retailPrice: number;  // Changed from basePrice
+  retailPrice: number; // Changed from basePrice
   discount: number;
   discountType: "percentage" | "fixed";
   stock: number;
   category: string;
-  status: string;  // Changed from isActive
-  isNewArrival: boolean;  // Changed from isFlashSale
+  status: string; // Changed from isActive
+  isNewArrival: boolean; // Changed from isFlashSale
   isHot: boolean;
   isFeatured: boolean;
   mainImage?: string;
@@ -79,7 +79,7 @@ export default function ProductsPage() {
       const response = await fetch("/api/products");
       if (response.ok) {
         const data = await response.json();
-        console.log('Fetched products:', data.products); // Debug log
+        console.log("Fetched products:", data.products); // Debug log
         setProducts(data.products || []);
       }
     } catch (error) {
@@ -172,10 +172,12 @@ export default function ProductsPage() {
         });
         setImagePreview(null);
         fetchProducts();
-        alert('Product created successfully!');
+        alert("Product created successfully!");
       } else {
         const errorData = await response.json();
-        alert(`Failed to create product: ${errorData.error || "Unknown error"}`);
+        alert(
+          `Failed to create product: ${errorData.error || "Unknown error"}`,
+        );
       }
     } catch (error) {
       console.error("Failed to create product:", error);
@@ -191,23 +193,23 @@ export default function ProductsPage() {
     }
 
     try {
-      console.log('Deleting product:', productId); // Debug log
+      console.log("Deleting product:", productId); // Debug log
       const response = await fetch(`/api/admin/products/${productId}`, {
         method: "DELETE",
       });
 
       const data = await response.json();
-      console.log('Delete response:', data); // Debug log
+      console.log("Delete response:", data); // Debug log
 
       if (response.ok) {
-        alert('Product deleted successfully!');
+        alert("Product deleted successfully!");
         fetchProducts();
       } else {
-        alert(`Failed to delete: ${data.error || 'Unknown error'}`);
+        alert(`Failed to delete: ${data.error || "Unknown error"}`);
       }
     } catch (error) {
       console.error("Failed to delete product:", error);
-      alert('Error deleting product. Check console for details.');
+      alert("Error deleting product. Check console for details.");
     }
   };
 
@@ -544,7 +546,9 @@ export default function ProductsPage() {
                   <td className="py-3 px-4 font-medium text-gray-900">
                     {product.name}
                   </td>
-                  <td className="py-3 px-4 text-sm">Rs. {product.retailPrice}</td>
+                  <td className="py-3 px-4 text-sm">
+                    Rs. {product.retailPrice}
+                  </td>
                   <td className="py-3 px-4 text-sm">
                     {product.discount ? (
                       <span className="text-orange-600 font-medium">
@@ -580,20 +584,20 @@ export default function ProductsPage() {
                   <td className="py-3 px-4">
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        product.status === 'active'
+                        product.status === "active"
                           ? "bg-green-100 text-green-800"
                           : "bg-gray-100 text-gray-800"
                       }`}
                     >
-                      {product.status === 'active' ? "Active" : "Inactive"}
+                      {product.status === "active" ? "Active" : "Inactive"}
                     </span>
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
-                        onClick={() => alert('Edit feature coming soon!')}
+                        onClick={() => alert("Edit feature coming soon!")}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
