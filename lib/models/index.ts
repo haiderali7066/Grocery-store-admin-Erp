@@ -196,6 +196,7 @@ export const InventoryBatchSchema = new Schema(
 );
 
 // Order Schema
+// Order Schema
 export const OrderSchema = new Schema(
   {
     orderNumber: { type: String, required: true, unique: true },
@@ -225,7 +226,7 @@ export const OrderSchema = new Schema(
     total: { type: Number, required: true },
     paymentMethod: { type: String, enum: ['bank', 'easypaisa', 'jazzcash', 'walkin'], required: true },
     paymentStatus: { type: String, enum: ['pending', 'verified', 'failed'], default: 'pending' },
-    paymentScreenshot: String,
+    paymentScreenshot: { type: String, default: '' }, // <-- Cloudinary URL goes here
     invoiceNumber: String,
     orderStatus: {
       type: String,

@@ -3,20 +3,28 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Eye, Check, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Check, X } from "lucide-react";
 
 interface Order {
   _id: string;
   orderNumber: string;
-  total?: number; // optional now
+  total?: number;
   paymentStatus?: string;
   orderStatus?: string;
   createdAt?: string;
+  screenshot?: string;
+  trackingCode?: string;
+  courierName?: string;
+  user?: { name: string; email: string; phone: string };
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [trackingInputs, setTrackingInputs] = useState<{
+    [key: string]: { code: string; courier: string };
+  }>({});
 
   useEffect(() => {
     fetchOrders();
@@ -24,43 +32,70 @@ export default function OrdersPage() {
 
   const fetchOrders = async () => {
     try {
-      const response = await fetch("/api/admin/orders");
-      if (response.ok) {
-        const data = await response.json();
-        setOrders(data.orders || []); // fallback to empty array
-      }
-    } catch (error) {
-      console.error("Failed to fetch orders:", error);
+      const res = await fetch("/api/admin/orders");
+      if (!res.ok) throw new Error("Failed to fetch orders");
+      const data = await res.json();
+      setOrders(data.orders || []);
+    } catch (err) {
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const updatePaymentStatus = async (orderId: string, status: string) => {
+  const handleApprove = async (orderId: string) => {
+    const code = trackingInputs[orderId]?.code || `TRK-${Date.now()}`;
+    const courier = trackingInputs[orderId]?.courier || "Local Courier";
+
     try {
-      const response = await fetch(`/api/admin/orders/${orderId}`, {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentStatus: status }),
+        body: JSON.stringify({
+          paymentStatus: "verified",
+          trackingCode: code,
+          courierName: courier,
+        }),
       });
-
-      if (response.ok) {
-        fetchOrders();
-      }
-    } catch (error) {
-      console.error("Failed to update order:", error);
+      if (!res.ok) throw new Error("Failed to approve order");
+      fetchOrders();
+    } catch (err) {
+      console.error(err);
     }
+  };
+
+  const handleReject = async (orderId: string) => {
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentStatus: "failed" }),
+      });
+      if (!res.ok) throw new Error("Failed to reject order");
+      fetchOrders();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleTrackingChange = (
+    orderId: string,
+    field: "code" | "courier",
+    value: string,
+  ) => {
+    setTrackingInputs((prev) => ({
+      ...prev,
+      [orderId]: { ...prev[orderId], [field]: value },
+    }));
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Orders</h1>
         <p className="text-gray-600">Manage customer orders and payments</p>
       </div>
 
-      {/* Orders Table */}
       <Card className="p-6 border-0 shadow-md overflow-x-auto">
         {isLoading ? (
           <p>Loading orders...</p>
@@ -68,24 +103,15 @@ export default function OrdersPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Order ID
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Amount
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Payment
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Status
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Date
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Actions
-                </th>
+                <th>Order ID</th>
+                <th>Buyer</th>
+                <th>Amount</th>
+                <th>Payment</th>
+                <th>Screenshot</th>
+                <th>Status</th>
+                <th>Tracking</th>
+                <th>Date</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -94,13 +120,14 @@ export default function OrdersPage() {
                   key={order._id}
                   className="border-b border-gray-100 hover:bg-gray-50"
                 >
-                  <td className="py-3 px-4 font-medium text-gray-900">
-                    {order.orderNumber || "N/A"}
+                  <td className="py-2 px-3">{order.orderNumber}</td>
+                  <td className="py-2 px-3">
+                    {order.user?.name} ({order.user?.phone})
                   </td>
-                  <td className="py-3 px-4 text-sm font-semibold">
-                    Rs. {order.total?.toLocaleString() ?? "0"}
+                  <td className="py-2 px-3">
+                    Rs. {order.total?.toLocaleString()}
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="py-2 px-3">
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${
                         order.paymentStatus === "verified"
@@ -110,40 +137,70 @@ export default function OrdersPage() {
                             : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {order.paymentStatus || "unknown"}
+                      {order.paymentStatus}
                     </span>
                   </td>
-                  <td className="py-3 px-4">
-                    <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
-                      {order.orderStatus || "N/A"}
-                    </span>
+                  <td className="py-2 px-3">
+                    {order.screenshot ? (
+                      <img
+                        src={order.screenshot}
+                        alt="Payment"
+                        className="h-16 w-16 object-cover rounded border"
+                      />
+                    ) : (
+                      <span>No screenshot</span>
+                    )}
                   </td>
-                  <td className="py-3 px-4 text-sm">
+                  <td className="py-2 px-3">{order.orderStatus}</td>
+                  <td className="py-2 px-3">
+                    {order.trackingCode && <p>Code: {order.trackingCode}</p>}
+                    {order.courierName && <p>Courier: {order.courierName}</p>}
+                    {order.paymentStatus === "pending" && (
+                      <div className="flex flex-col gap-1 mt-1">
+                        <Input
+                          placeholder="Tracking Code"
+                          value={trackingInputs[order._id]?.code || ""}
+                          onChange={(e) =>
+                            handleTrackingChange(
+                              order._id,
+                              "code",
+                              e.target.value,
+                            )
+                          }
+                          className="text-sm"
+                        />
+                        <Input
+                          placeholder="Courier Name"
+                          value={trackingInputs[order._id]?.courier || ""}
+                          onChange={(e) =>
+                            handleTrackingChange(
+                              order._id,
+                              "courier",
+                              e.target.value,
+                            )
+                          }
+                          className="text-sm"
+                        />
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-2 px-3 text-sm">
                     {order.createdAt
                       ? new Date(order.createdAt).toLocaleDateString()
                       : "N/A"}
                   </td>
-                  <td className="py-3 px-4 flex gap-2">
-                    <Button variant="outline" size="sm">
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                  <td className="py-2 px-3 flex gap-2">
                     {order.paymentStatus === "pending" && (
                       <>
                         <Button
-                          variant="outline"
                           size="sm"
-                          onClick={() =>
-                            updatePaymentStatus(order._id, "verified")
-                          }
+                          onClick={() => handleApprove(order._id)}
                         >
                           <Check className="h-4 w-4 text-green-600" />
                         </Button>
                         <Button
-                          variant="outline"
                           size="sm"
-                          onClick={() =>
-                            updatePaymentStatus(order._id, "failed")
-                          }
+                          onClick={() => handleReject(order._id)}
                         >
                           <X className="h-4 w-4 text-red-600" />
                         </Button>

@@ -1,14 +1,14 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
-import { Navbar } from '@/components/store/Navbar';
-import { Footer } from '@/components/store/Footer';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Download, ArrowLeft, RefreshCw } from 'lucide-react';
-import Link from 'next/link';
-import {AuthProvider} from '@/components/auth/AuthProvider'; // Import AuthProvider
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import { Navbar } from "@/components/store/Navbar";
+import { Footer } from "@/components/store/Footer";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Download, ArrowLeft, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 
 interface OrderDetail {
   _id: string;
@@ -35,7 +35,7 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showRefundModal, setShowRefundModal] = useState(false);
-  const [refundReason, setRefundReason] = useState('');
+  const [refundReason, setRefundReason] = useState("");
   const [refundLoading, setRefundLoading] = useState(false);
 
   useEffect(() => {
@@ -47,50 +47,43 @@ export default function OrderDetailPage() {
           setOrder(data.order);
         }
       } catch (error) {
-        console.error('Failed to fetch order:', error);
+        console.error("Failed to fetch order:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    if (orderId) {
-      fetchOrder();
-    }
+    if (orderId) fetchOrder();
   }, [orderId]);
 
-  const downloadInvoice = () => {
-    window.print();
-  };
+  const downloadInvoice = () => window.print();
 
   const submitRefundRequest = async () => {
-    if (!refundReason.trim()) {
-      alert('Please provide a reason for refund');
-      return;
-    }
-
+    if (!refundReason.trim())
+      return alert("Please provide a reason for refund");
     setRefundLoading(true);
+
     try {
-      const res = await fetch('/api/orders/refund', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order?._id,
-          reason: refundReason,
-        }),
+      const res = await fetch("/api/orders/refund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order?._id, reason: refundReason }),
       });
 
       if (!res.ok) {
         const error = await res.json();
-        alert(error.error || 'Failed to submit refund request');
+        alert(error.error || "Failed to submit refund request");
         return;
       }
 
-      alert('Refund request submitted successfully! We will review and respond within 24 hours.');
+      alert(
+        "Refund request submitted successfully! We will review and respond within 24 hours.",
+      );
       setShowRefundModal(false);
-      setRefundReason('');
+      setRefundReason("");
     } catch (error) {
-      console.error('[Refund] Error:', error);
-      alert('Failed to submit refund request');
+      console.error("[Refund] Error:", error);
+      alert("Failed to submit refund request");
     } finally {
       setRefundLoading(false);
     }
@@ -141,6 +134,13 @@ export default function OrderDetailPage() {
             </Button>
           </div>
 
+          {/* ✅ Order Placed Banner */}
+          <div className="mb-4">
+            <Card className="bg-green-100 border-green-200 p-4 text-center text-green-800 font-semibold">
+              Your order has been placed successfully!
+            </Card>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Order Details */}
             <div className="lg:col-span-2 space-y-6">
@@ -158,18 +158,18 @@ export default function OrderDetailPage() {
                   <div className="text-right">
                     <span
                       className={`inline-block px-3 py-1 rounded-full text-sm font-semibold ${
-                        order.paymentStatus === 'verified'
-                          ? 'bg-green-100 text-green-800'
-                          : order.paymentStatus === 'pending'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
+                        order.paymentStatus === "verified"
+                          ? "bg-green-100 text-green-800"
+                          : order.paymentStatus === "pending"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {order.paymentStatus === 'verified'
-                        ? 'Payment Verified'
-                        : order.paymentStatus === 'pending'
-                          ? 'Awaiting Payment'
-                          : 'Payment Failed'}
+                      {order.paymentStatus === "verified"
+                        ? "Payment Verified"
+                        : order.paymentStatus === "pending"
+                          ? "Awaiting Payment"
+                          : "Payment Failed"}
                     </span>
                   </div>
                 </div>
@@ -188,14 +188,16 @@ export default function OrderDetailPage() {
                     >
                       <div>
                         <p className="font-medium text-gray-900">
-                          {item.product?.name || 'Product'}
+                          {item.product?.name || "Product"}
                         </p>
                         <p className="text-sm text-gray-600">
                           Qty: {item.quantity}
                         </p>
                       </div>
                       <p className="font-semibold text-gray-900">
-                        Rs. {item.subtotal?.toFixed(0) || (item.price * item.quantity).toFixed(0)}
+                        Rs.{" "}
+                        {item.subtotal?.toFixed(0) ||
+                          (item.price * item.quantity).toFixed(0)}
                       </p>
                     </div>
                   ))}
@@ -242,7 +244,7 @@ export default function OrderDetailPage() {
                 </h2>
                 <div className="text-gray-700 space-y-1">
                   <p>
-                    {order.shippingAddress?.street},{' '}
+                    {order.shippingAddress?.street},{" "}
                     {order.shippingAddress?.city}
                   </p>
                   <p>{order.shippingAddress?.province}</p>
@@ -289,7 +291,7 @@ export default function OrderDetailPage() {
                     <Download className="h-4 w-4 mr-2" />
                     Download Invoice
                   </Button>
-                  {!order.isPOS && order.orderStatus !== 'cancelled' && (
+                  {!order.isPOS && order.orderStatus !== "cancelled" && (
                     <Button
                       onClick={() => setShowRefundModal(true)}
                       variant="outline"
@@ -313,7 +315,8 @@ export default function OrderDetailPage() {
               <div className="p-6">
                 <h2 className="text-2xl font-bold mb-4">Request Refund</h2>
                 <p className="text-gray-600 mb-4">
-                  Please tell us why you'd like to request a refund. Our team will review your request within 24 hours.
+                  Please tell us why you'd like to request a refund. Our team
+                  will review your request within 24 hours.
                 </p>
 
                 <textarea
@@ -337,7 +340,7 @@ export default function OrderDetailPage() {
                     disabled={refundLoading || !refundReason.trim()}
                     className="flex-1 bg-red-600 hover:bg-red-700 text-white"
                   >
-                    {refundLoading ? 'Submitting...' : 'Submit Request'}
+                    {refundLoading ? "Submitting..." : "Submit Request"}
                   </Button>
                 </div>
               </div>
