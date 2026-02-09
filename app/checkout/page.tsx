@@ -55,21 +55,19 @@ export default function CheckoutPage() {
       formDataCloud.append("file", screenshotFile);
       formDataCloud.append(
         "upload_preset",
-        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET! // ✅ use env
+        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!, // ✅ use env
       );
 
       const cloudRes = await fetch(
         `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
-        { method: "POST", body: formDataCloud }
+        { method: "POST", body: formDataCloud },
       );
 
       const cloudData = await cloudRes.json();
       console.log("Cloudinary response:", cloudData);
 
       if (!cloudData.secure_url) {
-        throw new Error(
-          cloudData.error?.message || "Cloudinary upload failed"
-        );
+        throw new Error(cloudData.error?.message || "Cloudinary upload failed");
       }
 
       const screenshotUrl = cloudData.secure_url;

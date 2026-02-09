@@ -70,7 +70,7 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
     <Link href={`/products/${product._id}`}>
       <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-secondary group cursor-pointer">
         {/* Image Container */}
-        <div className="relative h-56 overflow-hidden bg-secondary">
+        <div className="relative h-85 overflow-hidden bg-secondary">
           {imageUrl ? (
             <Image
               src={imageUrl}
