@@ -26,6 +26,7 @@ export const UserSchema = new Schema(
 );
 
 // Category Schema
+
 export const CategorySchema = new Schema(
   {
     name: {
@@ -56,7 +57,7 @@ export const CategorySchema = new Schema(
 );
 
 // Auto-generate slug
-CategorySchema.pre("validate", function (next) {
+CategorySchema.pre("validate", function () {
   if (this.name && (!this.slug || this.isModified("name"))) {
     this.slug = this.name
       .toLowerCase()
@@ -65,7 +66,6 @@ CategorySchema.pre("validate", function (next) {
       .replace(/\s+/g, "-")
       .replace(/-+/g, "-");
   }
-  next();
 });
 
 

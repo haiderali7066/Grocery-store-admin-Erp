@@ -383,6 +383,11 @@ export default function POSPage() {
                   disabled={product.stock === 0}
                   className="w-full text-left disabled:opacity-50"
                 >
+                  <img
+                    src={product.image || "/placeholder.png"}
+                    alt={product.name}
+                    className="w-full h-24 object-cover rounded mb-2"
+                  />
                   <p className="font-semibold text-sm">{product.name}</p>
                   <p className="text-xs text-gray-600">
                     {product.unitSize} {product.unitType}

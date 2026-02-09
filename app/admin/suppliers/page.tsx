@@ -1,12 +1,11 @@
-'use client';
+"use client";
 
-import React from "react"
-
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
-import { Plus, Edit, Trash2, Phone, Mail } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Plus, Edit, Trash2, Phone, Mail } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Supplier {
   _id: string;
@@ -20,8 +19,10 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [formData, setFormData] = useState({ name: '', phone: '', email: '' });
+  const [formData, setFormData] = useState({ name: "", phone: "", email: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const router = useRouter();
 
   useEffect(() => {
     fetchSuppliers();
@@ -29,13 +30,13 @@ export default function SuppliersPage() {
 
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch('/api/suppliers');
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch("/api/admin/suppliers");
+      if (res.ok) {
+        const data = await res.json();
         setSuppliers(data.suppliers || []);
       }
     } catch (error) {
-      console.error('Failed to fetch suppliers:', error);
+      console.error("Failed to fetch suppliers:", error);
     } finally {
       setIsLoading(false);
     }
@@ -44,42 +45,40 @@ export default function SuppliersPage() {
   const handleCreateSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.phone) {
-      alert('Please fill in all fields');
+      alert("Please fill in all fields");
       return;
     }
-
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/admin/suppliers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/admin/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-
-      if (response.ok) {
-        setFormData({ name: '', phone: '', email: '' });
+      if (res.ok) {
+        setFormData({ name: "", phone: "", email: "" });
         setIsModalOpen(false);
         fetchSuppliers();
       } else {
-        alert('Failed to create supplier');
+        alert("Failed to create supplier");
       }
     } catch (error) {
-      console.error('Failed to create supplier:', error);
-      alert('Error creating supplier');
+      console.error(error);
+      alert("Error creating supplier");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (supplierId: string) => {
-    if (confirm('Are you sure?')) {
+  const handleDelete = async (id: string) => {
+    if (confirm("Are you sure you want to delete this supplier?")) {
       try {
-        await fetch(`/api/admin/suppliers/${supplierId}`, {
-          method: 'DELETE',
+        const res = await fetch(`/api/admin/suppliers/${id}`, {
+          method: "DELETE",
         });
-        fetchSuppliers();
+        if (res.ok) fetchSuppliers();
       } catch (error) {
-        console.error('Failed to delete supplier:', error);
+        console.error("Failed to delete supplier:", error);
       }
     }
   };
@@ -90,14 +89,15 @@ export default function SuppliersPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Suppliers</h1>
-          <p className="text-gray-600">Manage supplier information and ledgers</p>
+          <p className="text-gray-600">
+            Manage supplier information and ledgers
+          </p>
         </div>
-        <Button 
+        <Button
           onClick={() => setIsModalOpen(true)}
           className="bg-green-700 hover:bg-green-800 rounded-full"
         >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Supplier
+          <Plus className="h-4 w-4 mr-2" /> Add Supplier
         </Button>
       </div>
 
@@ -112,14 +112,12 @@ export default function SuppliersPage() {
             <div className="space-y-2 mb-4">
               {supplier.phone && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Phone className="h-4 w-4" />
-                  {supplier.phone}
+                  <Phone className="h-4 w-4" /> {supplier.phone}
                 </div>
               )}
               {supplier.email && (
                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Mail className="h-4 w-4" />
-                  {supplier.email}
+                  <Mail className="h-4 w-4" /> {supplier.email}
                 </div>
               )}
             </div>
@@ -132,9 +130,17 @@ export default function SuppliersPage() {
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="flex-1 bg-transparent">
+              {/* EDIT */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 bg-transparent"
+                onClick={() => router.push(`/admin/suppliers/${supplier._id}`)}
+              >
                 <Edit className="h-4 w-4" />
               </Button>
+
+              {/* DELETE */}
               <Button
                 variant="outline"
                 size="sm"
@@ -147,7 +153,9 @@ export default function SuppliersPage() {
         ))}
       </div>
 
-      {isLoading && <p className="text-center text-gray-500">Loading suppliers...</p>}
+      {isLoading && (
+        <p className="text-center text-gray-500">Loading suppliers...</p>
+      )}
       {!isLoading && suppliers.length === 0 && (
         <p className="text-center text-gray-500 py-12">No suppliers found</p>
       )}
@@ -163,7 +171,9 @@ export default function SuppliersPage() {
                 <Input
                   placeholder="Enter supplier name"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
                   className="mt-1"
                 />
               </div>
@@ -172,7 +182,9 @@ export default function SuppliersPage() {
                 <Input
                   placeholder="Enter phone number"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
                   className="mt-1"
                 />
               </div>
@@ -182,7 +194,9 @@ export default function SuppliersPage() {
                   placeholder="Enter email (optional)"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   className="mt-1"
                 />
               </div>
@@ -192,14 +206,14 @@ export default function SuppliersPage() {
                   disabled={isSubmitting}
                   className="flex-1 bg-green-700 hover:bg-green-800 rounded-full"
                 >
-                  {isSubmitting ? 'Creating...' : 'Create Supplier'}
+                  {isSubmitting ? "Creating..." : "Create Supplier"}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => {
                     setIsModalOpen(false);
-                    setFormData({ name: '', phone: '', email: '' });
+                    setFormData({ name: "", phone: "", email: "" });
                   }}
                   className="flex-1 rounded-full bg-transparent"
                 >

@@ -1,19 +1,17 @@
-'use client';
+"use client";
 
-import React from "react"
-
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
+import React, { useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+} from "@/components/ui/dialog";
+import { Plus, Edit, Trash2 } from "lucide-react";
 
 interface Category {
   _id: string;
@@ -25,58 +23,101 @@ interface Category {
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-  });
+
+  const [formData, setFormData] = useState({ name: "" });
+
+  // Add/Edit dialogs
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editCategory, setEditCategory] = useState<Category | null>(null);
 
   useEffect(() => {
     fetchCategories();
   }, []);
 
+  // Fetch all categories
   const fetchCategories = async () => {
     try {
-      const response = await fetch('/api/categories');
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch("/api/admin/categories");
+      if (res.ok) {
+        const data = await res.json();
         setCategories(data.categories || []);
       }
     } catch (error) {
-      console.error('Failed to fetch categories:', error);
+      console.error("Failed to fetch categories:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // CREATE category
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/admin/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/admin/categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-
-      if (response.ok) {
-        setIsDialogOpen(false);
-        setFormData({ name: '' });
+      if (res.ok) {
+        setIsAddDialogOpen(false);
+        setFormData({ name: "" });
         fetchCategories();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to create category");
       }
     } catch (error) {
-      console.error('Failed to create category:', error);
+      console.error("Failed to create category:", error);
     }
   };
 
-  const handleDelete = async (categoryId: string) => {
-    if (confirm('Are you sure?')) {
-      try {
-        await fetch(`/api/admin/categories/${categoryId}`, {
-          method: 'DELETE',
-        });
+  // EDIT category
+  const openEditDialog = (category: Category) => {
+    setEditCategory(category);
+    setFormData({ name: category.name });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editCategory) return;
+
+    try {
+      const res = await fetch(`/api/admin/categories/${editCategory._id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+      if (res.ok) {
+        setIsEditDialogOpen(false);
+        setEditCategory(null);
+        setFormData({ name: "" });
         fetchCategories();
-      } catch (error) {
-        console.error('Failed to delete category:', error);
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to update category");
       }
+    } catch (error) {
+      console.error("Failed to edit category:", error);
+    }
+  };
+
+  // DELETE category
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this category?")) return;
+    try {
+      const res = await fetch(`/api/admin/categories/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchCategories();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to delete category");
+      }
+    } catch (error) {
+      console.error("Failed to delete category:", error);
     }
   };
 
@@ -86,35 +127,49 @@ export default function CategoriesPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Categories</h1>
-          <p className="text-gray-600">Organize products by category</p>
+          <p className="text-gray-600">Manage your product categories</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+
+        {/* Add Category Dialog */}
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-green-700 hover:bg-green-800">
-              <Plus className="h-4 w-4 mr-2" />
-              Add Category
+              <Plus className="h-4 w-4 mr-2" /> Add Category
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Add New Category</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category Name
-                </label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  required
-                />
-              </div>
-
+            <form onSubmit={handleAddSubmit} className="space-y-4">
+              <Input
+                placeholder="Category Name"
+                value={formData.name}
+                onChange={(e) => setFormData({ name: e.target.value })}
+                required
+              />
               <Button type="submit" className="w-full bg-green-700">
                 Create Category
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Category Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Category</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <Input
+                placeholder="Category Name"
+                value={formData.name}
+                onChange={(e) => setFormData({ name: e.target.value })}
+                required
+              />
+              <Button type="submit" className="w-full bg-blue-700">
+                Save Changes
               </Button>
             </form>
           </DialogContent>
@@ -125,7 +180,9 @@ export default function CategoriesPage() {
       <Card className="p-6 border-0 shadow-md">
         {isLoading ? (
           <p>Loading categories...</p>
-        ) : categories.length > 0 ? (
+        ) : categories.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">No categories found</p>
+        ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
@@ -141,33 +198,37 @@ export default function CategoriesPage() {
               </tr>
             </thead>
             <tbody>
-              {categories.map((category) => (
+              {categories.map((cat) => (
                 <tr
-                  key={category._id}
+                  key={cat._id}
                   className="border-b border-gray-100 hover:bg-gray-50"
                 >
                   <td className="py-3 px-4 font-medium text-gray-900">
-                    {category.name}
+                    {cat.name}
                   </td>
                   <td className="py-3 px-4">
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        category.isVisible
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-800'
+                        cat.isVisible
+                          ? "bg-green-100 text-green-800"
+                          : "bg-gray-100 text-gray-800"
                       }`}
                     >
-                      {category.isVisible ? 'Visible' : 'Hidden'}
+                      {cat.isVisible ? "Visible" : "Hidden"}
                     </span>
                   </td>
                   <td className="py-3 px-4 flex gap-2">
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(cat)}
+                    >
                       <Edit className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDelete(category._id)}
+                      onClick={() => handleDelete(cat._id)}
                     >
                       <Trash2 className="h-4 w-4 text-red-600" />
                     </Button>
@@ -176,8 +237,6 @@ export default function CategoriesPage() {
               ))}
             </tbody>
           </table>
-        ) : (
-          <p className="text-center text-gray-500 py-8">No categories found</p>
         )}
       </Card>
     </div>

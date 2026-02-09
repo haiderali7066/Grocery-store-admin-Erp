@@ -1,50 +1,53 @@
+// app/api/admin/categories/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Category, Product } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
-// DELETE - Delete a category
+// DELETE category
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) {
+    if (!token)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
+    if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    }
 
-    const { id } = params;
+    // unwrap params promise
+    const { id } = await context.params;
+    if (!id)
+      return NextResponse.json(
+        { error: "Category ID is required" },
+        { status: 400 },
+      );
 
-    // Check if any products use this category
+    console.log("Deleting category ID:", id);
+
+    // Prevent deletion if products are using this category
     const productsUsingCategory = await Product.countDocuments({
       category: id,
     });
-
-    if (productsUsingCategory > 0) {
+    if (productsUsingCategory > 0)
       return NextResponse.json(
         {
-          error: `Cannot delete category. ${productsUsingCategory} products are using this category.`,
+          error: `Cannot delete. ${productsUsingCategory} products are using this category.`,
         },
         { status: 400 },
       );
-    }
 
     const category = await Category.findByIdAndDelete(id);
-
-    if (!category) {
+    if (!category)
       return NextResponse.json(
         { error: "Category not found" },
         { status: 404 },
       );
-    }
 
     return NextResponse.json(
       { message: "Category deleted successfully" },
@@ -59,27 +62,30 @@ export async function DELETE(
   }
 }
 
-// PUT - Update a category
+// PUT - Update category
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) {
+    if (!token)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
+    if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    }
 
-    const { id } = params;
-    const body = await req.json();
-    const { name, isVisible, sortOrder } = body;
+    const { id } = await context.params;
+    if (!id)
+      return NextResponse.json(
+        { error: "Category ID is required" },
+        { status: 400 },
+      );
+
+    const { name, isVisible, sortOrder } = await req.json();
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
@@ -91,18 +97,14 @@ export async function PUT(
       runValidators: true,
     });
 
-    if (!category) {
+    if (!category)
       return NextResponse.json(
         { error: "Category not found" },
         { status: 404 },
       );
-    }
 
     return NextResponse.json(
-      {
-        message: "Category updated successfully",
-        category,
-      },
+      { message: "Category updated successfully", category },
       { status: 200 },
     );
   } catch (error) {
