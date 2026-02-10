@@ -1,13 +1,11 @@
 "use client";
 
-import React from "react";
-
+import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
 import { ShoppingCart, Heart } from "lucide-react";
-import { useState } from "react";
+import { useCart } from "@/components/cart/CartProvider"; // Use CartProvider directly
 
 interface Product {
   _id: string;
@@ -20,7 +18,7 @@ interface Product {
   isHot: boolean;
   isFlashSale: boolean;
   isFeatured: boolean;
-  isNewArrival?: boolean; // Add this
+  isNewArrival?: boolean;
   unitType: string;
   unitSize: number;
   stock: number;
@@ -28,10 +26,11 @@ interface Product {
 
 interface ProductCardProps {
   product: Product;
-  onAddToCart?: (productId: string) => void;
 }
 
-export function ProductCard({ product, onAddToCart }: ProductCardProps) {
+export function ProductCard({ product }: ProductCardProps) {
+  const router = useRouter();
+  const { addItem } = useCart(); // Use CartProvider directly
   const [isFavorite, setIsFavorite] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -46,16 +45,25 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
       ? `${product.discount}% OFF`
       : `Rs. ${product.discount} OFF`;
 
-  const handleAddToCart = async (e: React.MouseEvent) => {
+  const imageUrl =
+    product.mainImage || product.images?.[0] || "/placeholder.svg";
+
+  const addToCart = () => {
+    addItem({
+      id: product._id,
+      name: product.name,
+      price: discountedPrice,
+      quantity: 1,
+      image: imageUrl,
+      weight: `${product.unitSize} ${product.unitType}`,
+    });
+  };
+
+  const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!onAddToCart) {
-      console.log("[v0] onAddToCart is not defined");
-      return;
-    }
-    console.log("[v0] Adding product to cart:", product._id);
     setIsAdding(true);
-    onAddToCart(product._id);
+    addToCart();
     setShowSuccess(true);
     setTimeout(() => {
       setIsAdding(false);
@@ -63,30 +71,28 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
     }, 600);
   };
 
-  // Use mainImage first, fallback to images array
-  const imageUrl = product.mainImage || product.images?.[0];
+  const handleBuyNow = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    addToCart(); // Add item directly to cart
+    router.push("/cart"); // Navigate to cart
+  };
 
   return (
-    <Link href={`/products/${product._id}`}>
-      <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-secondary group cursor-pointer">
-        {/* Image Container */}
+    <Link href={`/products/${product._id}`} className="group">
+      <div className="bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-secondary cursor-pointer">
+        {/* Image */}
         <div className="relative h-85 overflow-hidden bg-secondary">
-          {imageUrl ? (
-            <Image
-              src={imageUrl}
-              alt={product.name}
-              fill
-              className="object-cover group-hover:scale-110 transition-transform duration-300"
-              unoptimized // Add this if you're having issues with Cloudinary
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-secondary text-muted-foreground text-sm">
-              No Image
-            </div>
-          )}
+          <Image
+            src={imageUrl}
+            alt={product.name}
+            fill
+            className="object-cover group-hover:scale-110 transition-transform duration-300"
+            unoptimized
+          />
 
-          {/* Badges */}
-          <div className="absolute top-3 left-3 flex flex-col gap-2">
+          {/* Badges right */}
+          <div className="absolute top-3 right-3 flex flex-col gap-2 items-end">
             {product.isHot && (
               <div className="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
                 Hot
@@ -104,22 +110,19 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
             )}
           </div>
 
-          {/* Favorite Button */}
+          {/* Favorite */}
           <button
             onClick={(e) => {
               e.preventDefault();
               setIsFavorite(!isFavorite);
             }}
-            className="absolute top-3 right-3 bg-white/90 hover:bg-white rounded-full p-2.5 transition-all active:scale-95 shadow-md"
+            className="absolute top-3 left-3 bg-white/90 hover:bg-white rounded-full p-2.5 transition-all active:scale-95 shadow-md"
           >
             <Heart
-              className={`h-5 w-5 transition-colors ${
-                isFavorite ? "fill-red-500 text-red-500" : "text-foreground"
-              }`}
+              className={`h-5 w-5 transition-colors ${isFavorite ? "fill-red-500 text-red-500" : "text-foreground"}`}
             />
           </button>
 
-          {/* Stock Status */}
           {product.stock === 0 && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-sm">
               <span className="text-white font-bold text-base">
@@ -130,19 +133,15 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
         </div>
 
         {/* Content */}
-        <div className="p-5">
-          {/* Name */}
-          <h3 className="font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors mb-1">
+        <div className="p-5 flex flex-col gap-3">
+          <h3 className="font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors">
             {product.name}
           </h3>
-
-          {/* Weight */}
-          <p className="text-xs text-muted-foreground mb-3">
+          <p className="text-xs text-muted-foreground">
             {product.unitSize} {product.unitType}
           </p>
 
-          {/* Price */}
-          <div className="flex items-baseline gap-2 mb-4">
+          <div className="flex items-baseline gap-2 mb-2">
             <span className="text-xl font-bold text-foreground">
               Rs. {discountedPrice.toFixed(0)}
             </span>
@@ -153,36 +152,41 @@ export function ProductCard({ product, onAddToCart }: ProductCardProps) {
             )}
           </div>
 
-          {/* Add to Cart Button */}
-          <button
-            onClick={handleAddToCart}
-            disabled={product.stock === 0 || isAdding}
-            className={`w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2.5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 ${
-              showSuccess ? "scale-95 bg-green-600" : "scale-100"
-            }`}
-            style={{
-              animation: showSuccess ? "pulse-scale 0.6s ease-out" : "none",
-            }}
-          >
-            <ShoppingCart className="h-4 w-4" />
-            {isAdding ? "Adding..." : showSuccess ? "Added!" : "Add to Cart"}
-          </button>
-          <style jsx>{`
-            @keyframes pulse-scale {
-              0% {
-                transform: scale(1);
-                opacity: 1;
-              }
-              50% {
-                transform: scale(1.05);
-              }
-              100% {
-                transform: scale(0.95);
-                opacity: 0.9;
-              }
-            }
-          `}</style>
+          <div className="flex gap-2">
+            <button
+              onClick={handleAddToCart}
+              disabled={product.stock === 0 || isAdding}
+              className={`flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-2.5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed justify-center flex items-center gap-2 ${showSuccess ? "scale-95 bg-green-600" : "scale-100"}`}
+            >
+              <ShoppingCart className="h-4 w-4" />
+              {isAdding ? "Adding..." : showSuccess ? "Added!" : "Add"}
+            </button>
+
+            <button
+              onClick={handleBuyNow}
+              disabled={product.stock === 0}
+              className="flex-1 bg-green-700 hover:bg-green-800 text-white font-semibold py-2.5 rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Buy Now
+            </button>
+          </div>
         </div>
+
+        <style jsx>{`
+          @keyframes pulse-scale {
+            0% {
+              transform: scale(1);
+              opacity: 1;
+            }
+            50% {
+              transform: scale(1.05);
+            }
+            100% {
+              transform: scale(0.95);
+              opacity: 0.9;
+            }
+          }
+        `}</style>
       </div>
     </Link>
   );
