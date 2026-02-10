@@ -3,12 +3,14 @@ import { connectDB } from "@/lib/db";
 import { Category } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
+// GET all categories
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!token)
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const payload = verifyToken(token);
     if (!payload || payload.role !== "admin")
@@ -18,35 +20,56 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ categories }, { status: 200 });
   } catch (error) {
     console.error("Error fetching categories:", error);
-    return NextResponse.json({ error: "Failed to fetch categories" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch categories" },
+      { status: 500 }
+    );
   }
 }
 
+// CREATE category
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!token)
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const payload = verifyToken(token);
     if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
 
-    const { name } = await req.json();
-    if (!name) return NextResponse.json({ error: "Category name is required" }, { status: 400 });
+    const { name, icon } = await req.json();
+    if (!name)
+      return NextResponse.json(
+        { error: "Category name is required" },
+        { status: 400 }
+      );
 
     // Check if category exists
-    const existing = await Category.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
-    if (existing) return NextResponse.json({ error: "Category already exists" }, { status: 400 });
+    const existing = await Category.findOne({
+      name: { $regex: new RegExp(`^${name}$`, "i") },
+    });
+    if (existing)
+      return NextResponse.json(
+        { error: "Category already exists" },
+        { status: 400 }
+      );
 
-    // Create category – slug auto-generated in schema
-    const category = new Category({ name });
+    // Create category with optional icon
+    const category = new Category({ name, icon: icon || "" });
     await category.save();
 
-    return NextResponse.json({ message: "Category created", category }, { status: 201 });
+    return NextResponse.json(
+      { message: "Category created", category },
+      { status: 201 }
+    );
   } catch (error) {
     console.error("Error creating category:", error);
-    return NextResponse.json({ error: "Failed to create category" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create category" },
+      { status: 500 }
+    );
   }
 }
