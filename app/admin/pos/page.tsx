@@ -7,11 +7,21 @@ import { Card } from "@/components/ui/card";
 import {
   Printer,
   Trash2,
-  Plus,
   Search,
   DollarSign,
   CheckCircle,
+  ShoppingCart,
+  Package,
+  Minus,
+  Plus,
+  X,
+  Barcode,
+  User,
+  CreditCard,
+  AlertCircle,
+  TrendingUp,
 } from "lucide-react";
+import Image from "next/image";
 
 interface POSProduct {
   _id: string;
@@ -21,9 +31,10 @@ interface POSProduct {
   unitSize: number;
   unitType: string;
   stock: number;
-  mainImage?: string; // instead of image
+  mainImage?: string;
+  discount?: number;
+  discountType?: string;
 }
-
 
 interface CartItem {
   productId: string;
@@ -46,8 +57,9 @@ export default function POSPage() {
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastBill, setLastBill] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [barcodeBuffer, setBarcodeBuffer] = useState(""); // for scanner input
-  const [highlightedSku, setHighlightedSku] = useState<string | null>(null); // visual feedback
+  const [barcodeBuffer, setBarcodeBuffer] = useState("");
+  const [highlightedSku, setHighlightedSku] = useState<string | null>(null);
+  const [showQuickPay, setShowQuickPay] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -57,7 +69,6 @@ export default function POSPage() {
     try {
       const res = await fetch("/api/products");
       const data = await res.json();
-      // Map to include mainImage
       const mappedProducts = (data.products || []).map((p: any) => ({
         ...p,
         mainImage: p.mainImage || "/placeholder.png",
@@ -70,7 +81,6 @@ export default function POSPage() {
     }
   };
 
-
   // Barcode scanner handling
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -81,11 +91,10 @@ export default function POSPage() {
         if (product) {
           addToCart(product);
           setHighlightedSku(product.sku);
-          setTimeout(() => setHighlightedSku(null), 1000); // highlight for 1s
+          setTimeout(() => setHighlightedSku(null), 800);
         } else {
           alert(`Product with SKU ${barcodeBuffer} not found`);
         }
-
         setBarcodeBuffer("");
       } else {
         setBarcodeBuffer((prev) => prev + e.key);
@@ -211,6 +220,7 @@ export default function POSPage() {
     setAmountPaid("");
     setPaymentMethod("cash");
     setShowReceipt(false);
+    setShowQuickPay(false);
   };
 
   const printBill = () => {
@@ -290,68 +300,80 @@ export default function POSPage() {
     }
   };
 
+  const quickPayAmount = (amount: number) => {
+    setAmountPaid(amount.toString());
+  };
+
+  // Receipt Screen
   if (showReceipt && lastBill) {
     return (
-      <div className="max-w-2xl mx-auto space-y-6">
-        <Card className="p-8 border-0 shadow-lg">
-          <div className="text-center mb-6">
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full p-8 shadow-2xl border-0 bg-white">
+          <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <div className="bg-green-100 p-4 rounded-full">
-                <CheckCircle className="h-12 w-12 text-green-600" />
+              <div className="bg-gradient-to-br from-emerald-400 to-teal-500 p-4 rounded-full shadow-lg">
+                <CheckCircle className="h-16 w-16 text-white" />
               </div>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Bill Completed!
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+              Payment Successful!
             </h1>
-            <p className="text-gray-600 mt-2">Sale #{lastBill.saleNumber}</p>
+            <p className="text-gray-500 mt-2 text-lg">
+              Sale #{lastBill.saleNumber}
+            </p>
           </div>
 
-          <div className="border-t border-b py-4 space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600">Subtotal:</span>
-              <span className="font-semibold">
-                Rs {lastBill.subtotal.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Tax (17%):</span>
-              <span className="font-semibold">
-                Rs {lastBill.tax.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between text-xl font-bold">
-              <span>Total:</span>
-              <span className="text-green-600">
-                Rs {lastBill.total.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600">Amount Paid:</span>
-              <span className="font-semibold">
-                Rs {lastBill.amountPaid.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex justify-between text-lg">
-              <span className="text-gray-600">Change:</span>
-              <span className="font-bold text-blue-600">
-                Rs {lastBill.change.toFixed(2)}
-              </span>
+          <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-6 mb-6">
+            <div className="space-y-3">
+              <div className="flex justify-between text-gray-700">
+                <span className="flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Subtotal
+                </span>
+                <span className="font-semibold">
+                  Rs {lastBill.subtotal.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-gray-700">
+                <span>Tax (17%)</span>
+                <span className="font-semibold">
+                  Rs {lastBill.tax.toFixed(2)}
+                </span>
+              </div>
+              <div className="border-t-2 border-dashed border-gray-300 pt-3 flex justify-between text-2xl font-bold">
+                <span className="bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                  Total
+                </span>
+                <span className="text-emerald-600">
+                  Rs {lastBill.total.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-gray-600 pt-2">
+                <span>Amount Paid</span>
+                <span className="font-semibold">
+                  Rs {lastBill.amountPaid.toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-lg font-bold text-blue-600">
+                <span>Change Due</span>
+                <span>Rs {lastBill.change.toFixed(2)}</span>
+              </div>
             </div>
           </div>
 
-          <div className="flex gap-3 mt-6">
+          <div className="flex gap-3">
             <Button
               onClick={printBill}
-              className="flex-1 bg-green-600 hover:bg-green-700"
+              className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg h-12 text-lg"
             >
-              <Printer className="h-4 w-4 mr-2" />
+              <Printer className="h-5 w-5 mr-2" />
               Print Receipt
             </Button>
             <Button
               onClick={resetBill}
-              variant="outline"
-              className="flex-1 bg-transparent"
+              className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white shadow-lg h-12 text-lg"
             >
+              <Plus className="h-5 w-5 mr-2" />
               New Sale
             </Button>
           </div>
@@ -361,219 +383,341 @@ export default function POSPage() {
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Products Section */}
-      <div className="lg:col-span-2 space-y-4">
-        <div>
-          <h1 className="text-3xl font-bold">POS Billing</h1>
-          <p className="text-gray-600">Process sales and generate bills</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent flex items-center gap-3">
+                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-xl shadow-lg">
+                  <ShoppingCart className="h-8 w-8 text-white" />
+                </div>
+                Point of Sale
+              </h1>
+              <p className="text-gray-600 mt-1 ml-1">
+                Fast & efficient billing system
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="bg-white px-4 py-2 rounded-xl shadow-md border border-gray-200">
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Barcode className="h-5 w-5 text-blue-500" />
+                  <span className="text-sm font-medium">Scanner Ready</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Search products..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Products Section */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-4 top-4 h-5 w-5 text-gray-400" />
+              <Input
+                placeholder="Search products by name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-12 h-14 text-lg border-2 border-blue-200 focus:border-blue-500 rounded-xl shadow-sm"
+              />
+            </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto">
-          {loading ? (
-            <p className="text-gray-500 col-span-2">Loading products...</p>
-          ) : filteredProducts.length === 0 ? (
-            <p className="text-gray-500 col-span-2">No products found</p>
-          ) : (
-            filteredProducts.map((product) => (
-              <Card
-                key={product._id}
-                className={`p-3 cursor-pointer hover:shadow-lg transition border-0 ${
-                  highlightedSku === product.sku
-                    ? "border-2 border-blue-500"
-                    : ""
-                }`}
-              >
-                <button
-                  onClick={() => addToCart(product)}
-                  disabled={product.stock === 0}
-                  className="w-full text-left disabled:opacity-50"
-                >
-                  <img
-                    src={product.mainImage || "/placeholder.png"}
-                    alt={product.name}
-                    className="w-full h-24 object-cover rounded mb-2"
-                  />
-
-                  <p className="font-semibold text-sm">{product.name}</p>
-                  <p className="text-xs text-gray-600">
-                    {product.unitSize} {product.unitType}
-                  </p>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="font-bold text-green-600">
-                      Rs {product.retailPrice}
-                    </span>
-                    <span
-                      className={`text-xs px-2 py-1 rounded ${
-                        product.stock > 10
-                          ? "bg-green-100 text-green-800"
-                          : product.stock > 0
-                            ? "bg-orange-100 text-orange-800"
-                            : "bg-red-100 text-red-800"
-                      }`}
-                    >
-                      {product.stock} left
-                    </span>
-                  </div>
-                </button>
-              </Card>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Cart & Billing Section */}
-      <div className="space-y-4">
-        <Card className="p-6 border-0 shadow-lg">
-          <h2 className="text-xl font-bold mb-4">Current Bill</h2>
-          <div className="space-y-2 max-h-48 overflow-y-auto mb-4">
-            {cart.length === 0 ? (
-              <p className="text-gray-500 text-center py-4">Cart is empty</p>
-            ) : (
-              cart.map((item) => (
-                <div
-                  key={item.productId}
-                  className="bg-gray-50 p-3 rounded flex justify-between items-start"
-                >
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm">{item.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <button
-                        onClick={() =>
-                          updateQuantity(item.productId, item.quantity - 1)
-                        }
-                        className="px-2 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) =>
-                          updateQuantity(
-                            item.productId,
-                            parseInt(e.target.value) || 0,
-                          )
-                        }
-                        className="w-12 text-center border rounded text-sm"
+            {/* Products Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[calc(100vh-250px)] overflow-y-auto pr-2 pb-4">
+              {loading ? (
+                <div className="col-span-full flex items-center justify-center py-20">
+                  <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="col-span-full text-center py-20">
+                  <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500 text-lg">No products found</p>
+                </div>
+              ) : (
+                filteredProducts.map((product) => (
+                  <Card
+                    key={product._id}
+                    className={`group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-2xl hover:scale-105 border-2 ${
+                      highlightedSku === product.sku
+                        ? "border-blue-500 shadow-xl scale-105"
+                        : "border-transparent hover:border-blue-300"
+                    }`}
+                    onClick={() => product.stock > 0 && addToCart(product)}
+                  >
+                    <div className="relative h-32 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden">
+                      <Image
+                        src={product.mainImage || "/placeholder.png"}
+                        alt={product.name}
+                        fill
+                        className="object-cover group-hover:scale-110 transition-transform duration-300"
+                        unoptimized
                       />
-                      <button
-                        onClick={() =>
-                          updateQuantity(item.productId, item.quantity + 1)
-                        }
-                        className="px-2 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
-                      >
-                        +
-                      </button>
+                      {product.stock === 0 && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <span className="text-white font-bold text-sm bg-red-500 px-3 py-1 rounded-full">
+                            Out of Stock
+                          </span>
+                        </div>
+                      )}
                     </div>
+
+                    <div className="p-3">
+                      <p className="font-semibold text-sm line-clamp-2 text-gray-800 mb-1">
+                        {product.name}
+                      </p>
+                      <p className="text-xs text-gray-500 mb-2">
+                        {product.unitSize} {product.unitType} • SKU:{" "}
+                        {product.sku}
+                      </p>
+                      <div className="flex justify-between items-center">
+                        <span className="text-lg font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                          Rs {product.retailPrice}
+                        </span>
+                        <span
+                          className={`text-xs px-2 py-1 rounded-full font-medium ${
+                            product.stock > 10
+                              ? "bg-emerald-100 text-emerald-700"
+                              : product.stock > 0
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          {product.stock} left
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Cart & Checkout Section */}
+          <div className="space-y-4">
+            <Card className="bg-white shadow-2xl border-0 rounded-2xl overflow-hidden">
+              {/* Cart Header */}
+              <div className="bg-gradient-to-r from-blue-500 to-indigo-600 p-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5" />
+                  Current Order ({cart.length} items)
+                </h2>
+              </div>
+
+              <div className="p-4">
+                {/* Cart Items */}
+                <div className="space-y-2 max-h-60 overflow-y-auto mb-4 pr-2">
+                  {cart.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Package className="h-16 w-16 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-400 font-medium">Cart is empty</p>
+                      <p className="text-gray-300 text-sm mt-1">
+                        Scan or click products to add
+                      </p>
+                    </div>
+                  ) : (
+                    cart.map((item) => (
+                      <div
+                        key={item.productId}
+                        className="bg-gradient-to-br from-gray-50 to-blue-50 p-3 rounded-xl border border-blue-100"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <p className="font-semibold text-sm text-gray-800 flex-1">
+                            {item.name}
+                          </p>
+                          <button
+                            onClick={() => removeFromCart(item.productId)}
+                            className="text-red-500 hover:text-red-700 ml-2 hover:bg-red-50 rounded p-1"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                updateQuantity(
+                                  item.productId,
+                                  item.quantity - 1,
+                                )
+                              }
+                              className="bg-white border border-gray-300 p-1.5 rounded-lg hover:bg-gray-50 shadow-sm"
+                            >
+                              <Minus className="h-3 w-3 text-gray-600" />
+                            </button>
+                            <span className="w-12 text-center font-bold text-gray-800">
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() =>
+                                updateQuantity(
+                                  item.productId,
+                                  item.quantity + 1,
+                                )
+                              }
+                              className="bg-white border border-gray-300 p-1.5 rounded-lg hover:bg-gray-50 shadow-sm"
+                            >
+                              <Plus className="h-3 w-3 text-gray-600" />
+                            </button>
+                          </div>
+                          <span className="text-lg font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
+                            Rs {item.total.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Totals */}
+                <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-4 space-y-2 mb-4 border border-indigo-100">
+                  <div className="flex justify-between text-gray-700">
+                    <span>Subtotal:</span>
+                    <span className="font-semibold">
+                      Rs {subtotal.toFixed(2)}
+                    </span>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-green-600">
-                      Rs {item.total.toFixed(2)}
-                    </p>
-                    <button
-                      onClick={() => removeFromCart(item.productId)}
-                      className="text-red-600 hover:text-red-700 mt-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                  <div className="flex justify-between text-gray-700">
+                    <span>Tax (17%):</span>
+                    <span className="font-semibold">Rs {tax.toFixed(2)}</span>
+                  </div>
+                  <div className="border-t-2 border-indigo-200 pt-2 flex justify-between text-2xl font-bold">
+                    <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                      Total:
+                    </span>
+                    <span className="text-indigo-600">
+                      Rs {total.toFixed(2)}
+                    </span>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
 
-          <div className="border-t pt-4 space-y-2 mb-4">
-            <div className="flex justify-between text-sm">
-              <span>Subtotal:</span>
-              <span className="font-semibold">Rs {subtotal.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>Tax (17%):</span>
-              <span className="font-semibold">Rs {tax.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-lg font-bold border-t pt-2">
-              <span>Total:</span>
-              <span className="text-green-600">Rs {total.toFixed(2)}</span>
-            </div>
-          </div>
+                {/* Customer & Payment */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-2">
+                      <User className="h-4 w-4 text-blue-500" />
+                      Customer Name
+                    </label>
+                    <Input
+                      placeholder="Walk-in Customer"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      className="border-2 border-gray-200 focus:border-blue-400 rounded-lg h-11"
+                    />
+                  </div>
 
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium">Customer Name</label>
-              <Input
-                placeholder="Walk-in Customer"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="mt-1"
-              />
-            </div>
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-2">
+                      <CreditCard className="h-4 w-4 text-blue-500" />
+                      Payment Method
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {["cash", "card", "online"].map((method) => (
+                        <button
+                          key={method}
+                          onClick={() => setPaymentMethod(method as any)}
+                          className={`p-3 rounded-lg border-2 font-medium transition-all ${
+                            paymentMethod === method
+                              ? "bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-blue-600 shadow-lg"
+                              : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                          }`}
+                        >
+                          {method.charAt(0).toUpperCase() + method.slice(1)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            <div>
-              <label className="text-sm font-medium">Payment Method</label>
-              <select
-                value={paymentMethod}
-                onChange={(e) =>
-                  setPaymentMethod(e.target.value as "cash" | "card" | "online")
-                }
-                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm"
-              >
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="online">Online</option>
-              </select>
-            </div>
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-2">
+                      <DollarSign className="h-4 w-4 text-blue-500" />
+                      Amount Paid (Rs)
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={amountPaid}
+                      onChange={(e) => setAmountPaid(e.target.value)}
+                      className="border-2 border-gray-200 focus:border-blue-400 rounded-lg h-11 text-lg font-semibold"
+                    />
+                    <div className="grid grid-cols-4 gap-2 mt-2">
+                      {[500, 1000, 2000, 5000].map((amount) => (
+                        <button
+                          key={amount}
+                          onClick={() => quickPayAmount(amount)}
+                          className="bg-gradient-to-br from-gray-100 to-gray-200 hover:from-blue-500 hover:to-indigo-600 hover:text-white px-3 py-2 rounded-lg text-sm font-semibold transition-all border border-gray-300 hover:border-blue-500"
+                        >
+                          {amount}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            <div>
-              <label className="text-sm font-medium">Amount Paid (Rs)</label>
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={amountPaid}
-                onChange={(e) => setAmountPaid(e.target.value)}
-                className="mt-1"
-              />
-            </div>
+                  {amountPaid && parseFloat(amountPaid) >= total && (
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-4 rounded-xl border-2 border-emerald-200">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-emerald-700">
+                          Change Due:
+                        </span>
+                        <span className="text-2xl font-bold text-emerald-600">
+                          Rs {change.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-            {amountPaid && parseFloat(amountPaid) >= total && (
-              <div className="bg-blue-50 p-3 rounded">
-                <p className="text-sm text-gray-600">Change Due</p>
-                <p className="text-lg font-bold text-green-600">
-                  Rs {change.toFixed(2)}
-                </p>
+                {/* Action Buttons */}
+                <div className="flex gap-2 mt-4">
+                  <Button
+                    onClick={processBill}
+                    disabled={
+                      isProcessing ||
+                      cart.length === 0 ||
+                      !amountPaid ||
+                      parseFloat(amountPaid) < total
+                    }
+                    className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg h-14 text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed rounded-xl"
+                  >
+                    {isProcessing ? (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                        Processing...
+                      </div>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-5 w-5 mr-2" />
+                        Complete Sale
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={resetBill}
+                    variant="outline"
+                    className="px-6 h-14 border-2 border-gray-300 hover:bg-gray-50 rounded-xl"
+                  >
+                    <Trash2 className="h-5 w-5 text-gray-600" />
+                  </Button>
+                </div>
               </div>
-            )}
-          </div>
+            </Card>
 
-          <div className="flex gap-2 mt-4">
-            <Button
-              onClick={processBill}
-              disabled={isProcessing || cart.length === 0}
-              className="flex-1 bg-green-600 hover:bg-green-700"
-            >
-              <DollarSign className="h-4 w-4 mr-2" />{" "}
-              {isProcessing ? "Processing..." : "Complete Bill"}
-            </Button>
-            <Button
-              onClick={resetBill}
-              variant="outline"
-              className="flex-1 bg-transparent"
-            >
-              Clear
-            </Button>
+            {/* Quick Stats */}
+            <Card className="bg-gradient-to-br from-purple-500 to-pink-600 text-white p-4 shadow-lg border-0 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm opacity-90">Total Items</p>
+                  <p className="text-3xl font-bold">
+                    {cart.reduce((sum, item) => sum + item.quantity, 0)}
+                  </p>
+                </div>
+                <TrendingUp className="h-12 w-12 opacity-80" />
+              </div>
+            </Card>
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );
