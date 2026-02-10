@@ -8,10 +8,17 @@ import { Check, X, Printer, Eye } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface OrderItem {
-  product: { name: string };
+  product: { name: string } | null;
   quantity: number;
   price: number;
   subtotal: number;
+}
+
+interface User {
+  name?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
 }
 
 interface Order {
@@ -28,14 +35,16 @@ interface Order {
   trackingNumber?: string;
   trackingProvider?: string;
   items: OrderItem[];
-  user?: { name: string; email: string; phone: string };
+  user?: User;
 }
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
-  const [trackingInputs, setTrackingInputs] = useState<any>({});
+  const [trackingInputs, setTrackingInputs] = useState<
+    Record<string, { code: string; courier: string }>
+  >({});
   const [updatedOrderId, setUpdatedOrderId] = useState<string | null>(null);
 
   const [storeInfo, setStoreInfo] = useState({
@@ -55,7 +64,8 @@ export default function OrdersPage() {
       const data = await res.json();
       setOrders(data.orders || []);
 
-      const initialTracking: any = {};
+      const initialTracking: Record<string, { code: string; courier: string }> =
+        {};
       data.orders?.forEach((o: Order) => {
         initialTracking[o._id] = {
           code: o.trackingNumber || "",
@@ -97,6 +107,7 @@ export default function OrdersPage() {
     });
   };
 
+
   const handleReject = (orderId: string) => {
     updateOrder(orderId, { paymentStatus: "failed", orderStatus: "cancelled" });
   };
@@ -110,15 +121,20 @@ export default function OrdersPage() {
     field: string,
     value: string,
   ) => {
-    setTrackingInputs((prev: any) => ({
+    setTrackingInputs((prev) => ({
       ...prev,
       [orderId]: { ...prev[orderId], [field]: value },
     }));
   };
 
-  const handleTrackingSave = (orderId: string) => {
-    updateOrder(orderId, trackingInputs[orderId]);
-  };
+ const handleTrackingSave = (orderId: string) => {
+   const { code, courier } = trackingInputs[orderId] || {};
+   updateOrder(orderId, {
+     trackingNumber: code || "",
+     trackingProvider: courier || "",
+   });
+ };
+
 
   const handlePrint = (order: Order) => {
     const itemsRows = order.items
@@ -126,29 +142,60 @@ export default function OrdersPage() {
         (item) => `<tr>
           <td>${item.product?.name || "Deleted Product"}</td>
           <td>${item.quantity}</td>
-          <td>Rs. ${item.price ?? 0}</td>
-          <td>Rs. ${item.subtotal ?? 0}</td>
+          <td>Rs. ${(item.price ?? 0).toLocaleString()}</td>
+          <td>Rs. ${(item.subtotal ?? 0).toLocaleString()}</td>
         </tr>`,
       )
       .join("");
 
+    const user = order.user || {};
+
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document.write(`<html><body>
-      <h2>${storeInfo.name}</h2>
-      <p>${storeInfo.address}</p>
-      <p>${storeInfo.phone}</p>
-      <hr/>
-      <h3>Order ${order.orderNumber}</h3>
-      <table border="1" width="100%" cellpadding="6">${itemsRows}</table>
-      <p>Total: Rs. ${(order.total ?? 0).toLocaleString()}</p>
-    </body></html>`);
+    w.document.write(`
+      <html>
+        <body>
+          <h2>${storeInfo.name}</h2>
+          <p>${storeInfo.address}</p>
+          <p>Phone: ${storeInfo.phone}</p>
+          <p>Email: ${storeInfo.email}</p>
+          <hr/>
+          <h3>Order #${order.orderNumber}</h3>
+          <p>Order Date: ${new Date(order.createdAt).toLocaleDateString()}</p>
+
+          <h4>Customer Details:</h4>
+          <p>Name: ${user.name || "-"}</p>
+          <p>Email: ${user.email || "-"}</p>
+          <p>Phone: ${user.phone || "-"}</p>
+          <p>Address: ${user.address || "-"}</p>
+
+          <h4>Order Items:</h4>
+          <table border="1" width="100%" cellpadding="6">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Price</th>
+                <th>Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsRows}
+            </tbody>
+          </table>
+
+          <p>Subtotal: Rs. ${(order.subtotal ?? 0).toLocaleString()}</p>
+          <p>GST: Rs. ${(order.gstAmount ?? 0).toLocaleString()}</p>
+          <p><strong>Total: Rs. ${(order.total ?? 0).toLocaleString()}</strong></p>
+        </body>
+      </html>
+    `);
     w.document.close();
     w.print();
   };
 
   const badge = (status: string) => {
-    const styles: any = {
+    const styles: Record<string, string> = {
       pending: "bg-yellow-100 text-yellow-700 border-yellow-300",
       verified: "bg-emerald-100 text-emerald-700 border-emerald-300",
       failed: "bg-rose-100 text-rose-700 border-rose-300",
@@ -257,13 +304,18 @@ export default function OrdersPage() {
                             <h3 className="font-semibold text-slate-700 mb-2">
                               Customer Info
                             </h3>
-                            <p className="text-sm">{order.user?.name}</p>
+                            <p className="text-sm">{order.user?.name || "-"}</p>
                             <p className="text-xs text-slate-500">
-                              {order.user?.email}
+                              {order.user?.email || "-"}
                             </p>
                             <p className="text-xs text-slate-500">
-                              {order.user?.phone}
+                              {order.user?.phone || "-"}
                             </p>
+                            {order.user?.address && (
+                              <p className="text-xs text-slate-500">
+                                {order.user.address}
+                              </p>
+                            )}
                           </section>
 
                           <section>

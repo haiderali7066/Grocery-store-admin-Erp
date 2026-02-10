@@ -11,6 +11,29 @@ function generateOrderNumber() {
   return `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 }
 
+export async function GET(req: NextRequest) {
+  try {
+    await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    if (!token)
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+
+    const payload = verifyToken(token);
+    if (!payload)
+      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
+
+    // Fetch orders for the user (or all if admin)
+    const query = payload.role === "admin" ? {} : { user: payload.userId };
+    const orders = await Order.find(query).sort({ createdAt: -1 }).lean();
+
+    return NextResponse.json({ orders }, { status: 200 });
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ message: "Server error" }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -58,7 +81,7 @@ export async function POST(req: NextRequest) {
       paymentMethod,
       paymentStatus: "pending",
       orderStatus: "pending",
-      paymentScreenshot: screenshot, // ✅ FIXED
+      paymentScreenshot: screenshot,
     });
 
     await order.save();
