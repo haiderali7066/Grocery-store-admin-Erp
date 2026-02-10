@@ -232,7 +232,7 @@ export const InventoryBatchSchema = new Schema(
 );
 
 // =========================
-// POS Sale Schema (NEW - ADD THIS)
+// POS Sale Schema
 // =========================
 export const POSSaleSchema = new Schema(
   {
@@ -356,7 +356,7 @@ export const PaymentSchema = new Schema(
 );
 
 // =========================
-// Refund Schema
+// Refund Schema (renamed from RefundRequest)
 // =========================
 export const RefundSchema = new Schema(
   {
@@ -370,6 +370,36 @@ export const RefundSchema = new Schema(
     },
     approvedBy: { type: Schema.Types.ObjectId, ref: "User" },
     approvedAt: Date,
+  },
+  { timestamps: true },
+);
+
+// =========================
+// HeroBanner Schema (NEW - ADD THIS)
+// =========================
+export const HeroBannerSchema = new Schema(
+  {
+    title: String,
+    subtitle: String,
+    image: String,
+    link: String,
+    isActive: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+
+// =========================
+// FBRConfig Schema (NEW - ADD THIS)
+// =========================
+export const FBRConfigSchema = new Schema(
+  {
+    posId: { type: String, required: true },
+    ntn: String,
+    strn: String,
+    apiKey: String,
+    isActive: { type: Boolean, default: false },
+    lastSync: Date,
   },
   { timestamps: true },
 );
@@ -434,7 +464,7 @@ export const TransactionSchema = new Schema(
         "POSSale",
         "Purchase",
         "Investment",
-        "RefundRequest",
+        "Refund",
         "Expense",
       ],
     },
@@ -503,6 +533,10 @@ export const Payment =
   mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
 export const Refund =
   mongoose.models.Refund || mongoose.model("Refund", RefundSchema);
+export const HeroBanner =
+  mongoose.models.HeroBanner || mongoose.model("HeroBanner", HeroBannerSchema);
+export const FBRConfig =
+  mongoose.models.FBRConfig || mongoose.model("FBRConfig", FBRConfigSchema);
 export const Expense =
   mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
 export const Wallet =
@@ -512,3 +546,6 @@ export const Transaction =
   mongoose.model("Transaction", TransactionSchema);
 export const Investment =
   mongoose.models.Investment || mongoose.model("Investment", InvestmentSchema);
+
+// Alias for backward compatibility
+export const RefundRequest = Refund;
