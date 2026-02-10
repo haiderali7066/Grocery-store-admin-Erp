@@ -32,7 +32,11 @@ export async function POST(req: NextRequest) {
     const isFeatured = formData.get("isFeatured") === "true";
     const image = formData.get("image") as File | null;
 
-    // Validate that the category exists
+    // New fields
+    const description = formData.get("description") as string | null;
+    const skuInput = formData.get("sku") as string | null;
+
+    // Validate category
     const categoryDoc = await Category.findById(category);
     if (!categoryDoc) {
       return NextResponse.json(
@@ -41,15 +45,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Handle image upload
     let imageUrl = "";
-    let imagePublicId = "";
-
-    // Handle image upload to Cloudinary
     if (image) {
       try {
         const uploadResult: any = await uploadToCloudinary(image, "products");
         imageUrl = uploadResult.secure_url;
-        imagePublicId = uploadResult.public_id;
       } catch (error) {
         console.error("Image upload error:", error);
         return NextResponse.json(
@@ -59,11 +60,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const sku = `${name.substring(0, 3).toUpperCase()}-${Date.now()}`;
+    // Use provided SKU or generate one
+    const sku =
+      skuInput?.trim() || `${name.substring(0, 3).toUpperCase()}-${Date.now()}`;
 
     const product = new Product({
       name,
       sku,
+      description,
       retailPrice: parseFloat(basePrice),
       discount: discount ? parseFloat(discount) : 0,
       discountType: discountType || "percentage",
@@ -83,10 +87,7 @@ export async function POST(req: NextRequest) {
     await product.save();
 
     return NextResponse.json(
-      {
-        message: "Product created successfully",
-        product,
-      },
+      { message: "Product created successfully", product },
       { status: 201 },
     );
   } catch (error) {

@@ -6,11 +6,12 @@ import { deleteFromCloudinary } from "@/lib/cloudinary";
 
 export async function DELETE(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }, // ← Changed this line
+  context: { params: Promise<{ id: string }> }, // dynamic route param
 ) {
   try {
     await connectDB();
 
+    // Auth
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
     if (!token) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -21,18 +22,16 @@ export async function DELETE(
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = await context.params; // ← Changed this line - now awaiting params
-
+    // Await the route param
+    const { id } = await context.params;
     console.log("Attempting to delete product with ID:", id);
 
-    // Find product first to get image info
+    // Find product to check if it exists and get image info
     const product = await Product.findById(id);
-
     if (!product) {
       console.log("Product not found in database");
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
-
     console.log("Product found:", product.name);
 
     // Delete image from Cloudinary if exists
@@ -52,11 +51,11 @@ export async function DELETE(
         }
       } catch (error) {
         console.error("Error deleting image from Cloudinary:", error);
-        // Continue with product deletion even if image deletion fails
+        // Continue deletion even if image deletion fails
       }
     }
 
-    // Delete product from database
+    // Delete product from DB
     await Product.findByIdAndDelete(id);
     console.log("Product deleted successfully");
 

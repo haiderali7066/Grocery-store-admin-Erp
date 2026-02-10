@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -29,17 +30,18 @@ import Image from "next/image";
 interface Product {
   _id: string;
   name: string;
-  retailPrice: number; // Changed from basePrice
+  retailPrice: number;
   discount: number;
   discountType: "percentage" | "fixed";
   stock: number;
   category: string;
-  status: string; // Changed from isActive
-  isNewArrival: boolean; // Changed from isFlashSale
+  status: string;
+  isNewArrival: boolean;
   isHot: boolean;
   isFeatured: boolean;
   mainImage?: string;
   sku?: string;
+  description?: string;
 }
 
 interface Category {
@@ -57,6 +59,8 @@ export default function ProductsPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
+    sku: "",
+    description: "",
     basePrice: "",
     discount: "",
     discountType: "percentage" as const,
@@ -79,7 +83,7 @@ export default function ProductsPage() {
       const response = await fetch("/api/products");
       if (response.ok) {
         const data = await response.json();
-        console.log("Fetched products:", data.products); // Debug log
+        console.log("Fetched products:", data.products);
         setProducts(data.products || []);
       }
     } catch (error) {
@@ -136,6 +140,8 @@ export default function ProductsPage() {
     try {
       const submitData = new FormData();
       submitData.append("name", formData.name);
+      submitData.append("sku", formData.sku);
+      submitData.append("description", formData.description);
       submitData.append("basePrice", formData.basePrice);
       submitData.append("discount", formData.discount);
       submitData.append("discountType", formData.discountType);
@@ -159,6 +165,8 @@ export default function ProductsPage() {
         setIsDialogOpen(false);
         setFormData({
           name: "",
+          sku: "",
+          description: "",
           basePrice: "",
           discount: "",
           discountType: "percentage",
@@ -193,13 +201,13 @@ export default function ProductsPage() {
     }
 
     try {
-      console.log("Deleting product:", productId); // Debug log
+      console.log("Deleting product:", productId);
       const response = await fetch(`/api/admin/products/${productId}`, {
         method: "DELETE",
       });
 
       const data = await response.json();
-      console.log("Delete response:", data); // Debug log
+      console.log("Delete response:", data);
 
       if (response.ok) {
         alert("Product deleted successfully!");
@@ -239,7 +247,7 @@ export default function ProductsPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Name
+                  Product Name *
                 </label>
                 <Input
                   value={formData.name}
@@ -247,6 +255,37 @@ export default function ProductsPage() {
                     setFormData({ ...formData, name: e.target.value })
                   }
                   required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  SKU (Stock Keeping Unit)
+                </label>
+                <Input
+                  value={formData.sku}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sku: e.target.value })
+                  }
+                  placeholder="Leave empty to auto-generate"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Optional: Will auto-generate if left blank
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  placeholder="Enter product description..."
+                  rows={3}
+                  className="resize-none"
                 />
               </div>
 
@@ -300,7 +339,7 @@ export default function ProductsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category
+                  Category *
                 </label>
                 <select
                   value={formData.category}
@@ -326,7 +365,7 @@ export default function ProductsPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Base Price (Rs)
+                  Base Price (Rs) *
                 </label>
                 <Input
                   type="number"
@@ -377,7 +416,7 @@ export default function ProductsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Weight/Quantity
+                    Weight/Quantity *
                   </label>
                   <Input
                     type="number"
@@ -391,7 +430,7 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Unit
+                    Unit *
                   </label>
                   <select
                     value={formData.weightUnit}
@@ -498,6 +537,9 @@ export default function ProductsPage() {
                   Image
                 </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  SKU
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
                   Name
                 </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">
@@ -542,6 +584,9 @@ export default function ProductsPage() {
                         <span className="text-gray-400 text-xs">No img</span>
                       </div>
                     )}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-gray-600">
+                    {product.sku || 'N/A'}
                   </td>
                   <td className="py-3 px-4 font-medium text-gray-900">
                     {product.name}

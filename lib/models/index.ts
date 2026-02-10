@@ -1,13 +1,32 @@
 import mongoose, { Schema } from 'mongoose';
 
-// User Schema
+// User Schema// User Schema
 export const UserSchema = new Schema(
   {
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true, lowercase: true },
-    password: { type: String, required: true },
+
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+    },
+
+    password: {
+      type: String,
+      required: true,
+      select: false, // security best practice
+    },
+
     phone: String,
-    role: { type: String, enum: ['user', 'admin', 'staff'], default: 'user' },
+
+    role: {
+      type: String,
+      enum: ['user', 'staff', 'manager', 'accountant', 'admin'],
+      default: 'user',
+      index: true,
+    },
+
     addresses: [
       {
         label: String,
@@ -19,12 +38,16 @@ export const UserSchema = new Schema(
         isDefault: Boolean,
       },
     ],
+
     profileImage: String,
-    isActive: { type: Boolean, default: true },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );
-
 
 
 // Category Schema
