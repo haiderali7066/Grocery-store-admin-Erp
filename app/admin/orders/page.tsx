@@ -17,9 +17,9 @@ interface OrderItem {
 interface Order {
   _id: string;
   orderNumber: string;
-  total: number;
-  subtotal: number;
-  gstAmount: number;
+  total?: number;
+  subtotal?: number;
+  gstAmount?: number;
   paymentStatus: "pending" | "verified" | "failed";
   orderStatus: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
   paymentMethod: string;
@@ -35,12 +35,9 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
-  const [trackingInputs, setTrackingInputs] = useState<{
-    [key: string]: { code?: string; courier?: string };
-  }>({});
+  const [trackingInputs, setTrackingInputs] = useState<any>({});
   const [updatedOrderId, setUpdatedOrderId] = useState<string | null>(null);
 
-  // Editable store info
   const [storeInfo, setStoreInfo] = useState({
     name: "Khas pure foods",
     address: "123 Store Street, Lahore, Pakistan",
@@ -60,12 +57,10 @@ export default function OrdersPage() {
 
       const initialTracking: any = {};
       data.orders?.forEach((o: Order) => {
-        if (o.trackingNumber || o.trackingProvider) {
-          initialTracking[o._id] = {
-            code: o.trackingNumber || "",
-            courier: o.trackingProvider || "",
-          };
-        }
+        initialTracking[o._id] = {
+          code: o.trackingNumber || "",
+          courier: o.trackingProvider || "",
+        };
       });
       setTrackingInputs(initialTracking);
     } catch (err) {
@@ -87,7 +82,6 @@ export default function OrdersPage() {
       fetchOrders();
       setTimeout(() => setUpdatedOrderId(null), 1500);
     } catch (err: any) {
-      console.error(err);
       alert("Update failed: " + err.message);
     }
   };
@@ -113,106 +107,60 @@ export default function OrdersPage() {
 
   const handleTrackingChange = (
     orderId: string,
-    field: "code" | "courier",
+    field: string,
     value: string,
   ) => {
-    setTrackingInputs((prev) => ({
+    setTrackingInputs((prev: any) => ({
       ...prev,
       [orderId]: { ...prev[orderId], [field]: value },
     }));
   };
 
   const handleTrackingSave = (orderId: string) => {
-    const code = trackingInputs[orderId]?.code || "";
-    const courier = trackingInputs[orderId]?.courier || "";
-    updateOrder(orderId, {
-      trackingNumber: code,
-      trackingProvider: courier,
-    });
+    updateOrder(orderId, trackingInputs[orderId]);
   };
 
   const handlePrint = (order: Order) => {
     const itemsRows = order.items
       .map(
-        (item) =>
-          `<tr>
-            <td>${item.product.name}</td>
-            <td>${item.quantity}</td>
-            <td>Rs. ${item.price.toFixed(0)}</td>
-            <td>Rs. ${item.subtotal.toFixed(0)}</td>
-          </tr>`,
+        (item) => `<tr>
+          <td>${item.product?.name || "Deleted Product"}</td>
+          <td>${item.quantity}</td>
+          <td>Rs. ${item.price ?? 0}</td>
+          <td>Rs. ${item.subtotal ?? 0}</td>
+        </tr>`,
       )
       .join("");
 
-    const printContent = `
-      <html>
-      <head>
-        <title>Order ${order.orderNumber}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; }
-          h2, h3 { margin: 5px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-          th, td { border: 1px solid #333; padding: 8px; text-align: left; }
-          hr { margin: 10px 0; }
-        </style>
-      </head>
-      <body>
-        <h2>${storeInfo.name}</h2>
-        <p>${storeInfo.address}</p>
-        <p>Phone: ${storeInfo.phone} | Email: ${storeInfo.email}</p>
-        <hr />
-        <h3>Order #: ${order.orderNumber}</h3>
-        <p>Date: ${new Date(order.createdAt).toLocaleDateString()}</p>
-        <p>Payment Method: ${order.paymentMethod}</p>
-        <p>Customer: ${order.user?.name}</p>
-        <p>Email: ${order.user?.email} | Phone: ${order.user?.phone}</p>
-        <p>Tracking: ${order.trackingNumber || "-"} via ${order.trackingProvider || "-"}</p>
-        <p>Status: ${order.orderStatus} | Payment: ${order.paymentStatus}</p>
-        <hr />
-        <table>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>Qty</th>
-              <th>Price</th>
-              <th>Subtotal</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsRows}
-          </tbody>
-        </table>
-        <hr />
-        <p>Subtotal: Rs. ${order.subtotal.toLocaleString()}</p>
-        <p>GST: Rs. ${order.gstAmount.toLocaleString()}</p>
-        <p><strong>Total: Rs. ${order.total.toLocaleString()}</strong></p>
-      </body>
-      </html>
-    `;
     const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(printContent);
-      w.document.close();
-      w.focus();
-      w.print();
-    }
+    if (!w) return;
+    w.document.write(`<html><body>
+      <h2>${storeInfo.name}</h2>
+      <p>${storeInfo.address}</p>
+      <p>${storeInfo.phone}</p>
+      <hr/>
+      <h3>Order ${order.orderNumber}</h3>
+      <table border="1" width="100%" cellpadding="6">${itemsRows}</table>
+      <p>Total: Rs. ${(order.total ?? 0).toLocaleString()}</p>
+    </body></html>`);
+    w.document.close();
+    w.print();
   };
 
   const badge = (status: string) => {
     const styles: any = {
-      pending: "bg-yellow-100 text-yellow-800",
-      verified: "bg-green-100 text-green-800",
-      failed: "bg-red-100 text-red-800",
-      processing: "bg-blue-100 text-blue-800",
-      shipped: "bg-purple-100 text-purple-800",
-      delivered: "bg-green-200 text-green-900",
-      cancelled: "bg-red-200 text-red-900",
+      pending: "bg-yellow-100 text-yellow-700 border-yellow-300",
+      verified: "bg-emerald-100 text-emerald-700 border-emerald-300",
+      failed: "bg-rose-100 text-rose-700 border-rose-300",
+      processing: "bg-blue-100 text-blue-700 border-blue-300",
+      shipped: "bg-purple-100 text-purple-700 border-purple-300",
+      delivered: "bg-green-200 text-green-900 border-green-400",
+      cancelled: "bg-red-200 text-red-900 border-red-400",
     };
+
     return (
       <span
-        className={`px-2 py-1 rounded text-xs font-semibold ${
-          styles[status] || "bg-gray-100"
-        }`}
+        className={`px-3 py-1 rounded-full text-xs font-semibold border ${styles[status]}`}
       >
         {status}
       </span>
@@ -220,56 +168,64 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Editable Store Info */}
-      <Card className="p-4 shadow bg-gray-50">
-        <h2 className="text-xl font-bold mb-2">Store Info (Editable)</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {["name", "address", "phone", "email"].map((key) => (
+    <div className="space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+      {/* Store Info */}
+      <Card className="p-6 shadow-lg border bg-white">
+        <h2 className="text-2xl font-bold mb-4 text-slate-700">Store Info</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          {Object.keys(storeInfo).map((key) => (
             <Input
               key={key}
-              placeholder={key}
               value={storeInfo[key as keyof typeof storeInfo]}
               onChange={(e) =>
                 setStoreInfo({ ...storeInfo, [key]: e.target.value })
               }
+              placeholder={key}
+              className="bg-slate-50"
             />
           ))}
         </div>
       </Card>
 
-      <h1 className="text-3xl font-bold">Orders Management</h1>
-      <Card className="p-6 shadow">
+      <h1 className="text-3xl font-bold text-slate-800">Orders Management</h1>
+
+      <Card className="p-6 shadow-xl border bg-white">
         {isLoading ? (
-          <p>Loading orders...</p>
+          <p className="text-slate-500">Loading orders...</p>
         ) : orders.length === 0 ? (
-          <p>No orders found</p>
+          <p className="text-slate-500">No orders found</p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {orders.map((order) => (
               <AnimatePresence key={order._id}>
                 <motion.div
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
                 >
                   <Card
-                    className={`p-4 border ${
-                      updatedOrderId === order._id ? "border-blue-500" : ""
+                    className={`p-5 border transition-all ${
+                      updatedOrderId === order._id
+                        ? "border-blue-500 ring-2 ring-blue-200"
+                        : "border-slate-200"
                     }`}
                   >
-                    <div className="flex justify-between items-center">
+                    {/* Order Header */}
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div>
-                        <p className="font-bold">{order.orderNumber}</p>
-                        <p className="text-sm text-gray-500">
-                          Rs. {order.total?.toLocaleString() || "0"} •{" "}
+                        <p className="font-bold text-lg text-slate-800">
+                          #{order.orderNumber}
+                        </p>
+                        <p className="text-sm text-slate-500">
+                          Rs. {(order.total ?? 0).toLocaleString()} •{" "}
                           {new Date(order.createdAt).toLocaleDateString()}
                         </p>
                       </div>
-                      <div className="flex items-center gap-3">
+
+                      <div className="flex flex-wrap items-center gap-2">
                         {badge(order.paymentStatus)}
                         {badge(order.orderStatus)}
+
                         <Button
                           size="sm"
                           variant="outline"
@@ -281,9 +237,10 @@ export default function OrdersPage() {
                         >
                           <Eye className="w-4 h-4 mr-1" /> Manage
                         </Button>
+
                         <Button
                           size="sm"
-                          className="bg-gray-200 hover:bg-gray-300"
+                          className="bg-slate-800 hover:bg-slate-900 text-white"
                           onClick={() => handlePrint(order)}
                         >
                           <Printer className="w-4 h-4 mr-1" /> Print
@@ -291,132 +248,139 @@ export default function OrdersPage() {
                       </div>
                     </div>
 
+                    {/* Expanded Panel */}
                     {openOrderId === order._id && (
-                      <div className="mt-6 border-t pt-6 grid md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                          <div>
-                            <h3 className="font-semibold mb-1">
+                      <div className="mt-6 border-t pt-6 grid lg:grid-cols-2 gap-8">
+                        {/* LEFT SIDE */}
+                        <div className="space-y-6">
+                          <section>
+                            <h3 className="font-semibold text-slate-700 mb-2">
                               Customer Info
                             </h3>
-                            <p>{order.user?.name}</p>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-sm">{order.user?.name}</p>
+                            <p className="text-xs text-slate-500">
                               {order.user?.email}
                             </p>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-xs text-slate-500">
                               {order.user?.phone}
                             </p>
-                          </div>
+                          </section>
 
-                          <div>
-                            <h3 className="font-semibold mb-1">
-                              Payment Method
+                          <section>
+                            <h3 className="font-semibold text-slate-700 mb-2">
+                              Order Items
                             </h3>
-                            <p className="capitalize">{order.paymentMethod}</p>
-                          </div>
-
-                          <div>
-                            <h3 className="font-semibold mb-1">Order Items</h3>
-                            <table className="w-full border">
-                              <thead>
-                                <tr>
-                                  <th className="border p-1">Item</th>
-                                  <th className="border p-1">Qty</th>
-                                  <th className="border p-1">Price</th>
-                                  <th className="border p-1">Subtotal</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {order.items.map((item, idx) => (
-                                  <tr key={idx}>
-                                    <td className="border p-1">
-                                      {item.product.name}
-                                    </td>
-                                    <td className="border p-1">
-                                      {item.quantity}
-                                    </td>
-                                    <td className="border p-1">
-                                      Rs. {item.price}
-                                    </td>
-                                    <td className="border p-1">
-                                      Rs. {item.subtotal}
-                                    </td>
+                            <div className="overflow-x-auto rounded-lg border">
+                              <table className="w-full text-sm">
+                                <thead className="bg-slate-100 text-slate-600">
+                                  <tr>
+                                    <th className="p-2 text-left">Item</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                    <th>Subtotal</th>
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                            <div className="mt-2">
-                              <p>Subtotal: Rs. {order.subtotal}</p>
-                              <p>GST: Rs. {order.gstAmount}</p>
+                                </thead>
+                                <tbody>
+                                  {order.items.map((item, idx) => (
+                                    <tr key={idx} className="border-t">
+                                      <td className="p-2">
+                                        {item.product?.name ||
+                                          "Deleted Product"}
+                                      </td>
+                                      <td className="text-center">
+                                        {item.quantity}
+                                      </td>
+                                      <td className="text-center">
+                                        Rs. {(item.price ?? 0).toLocaleString()}
+                                      </td>
+                                      <td className="text-center">
+                                        Rs.{" "}
+                                        {(item.subtotal ?? 0).toLocaleString()}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="mt-2 space-y-1 text-sm">
+                              <p>
+                                Subtotal: Rs.{" "}
+                                {(order.subtotal ?? 0).toLocaleString()}
+                              </p>
+                              <p>
+                                GST: Rs.{" "}
+                                {(order.gstAmount ?? 0).toLocaleString()}
+                              </p>
                               <p className="font-bold">
-                                Total: Rs. {order.total}
+                                Total: Rs. {(order.total ?? 0).toLocaleString()}
                               </p>
                             </div>
-                          </div>
+                          </section>
 
-                          <div>
-                            <h3 className="font-semibold mb-1">
+                          <section>
+                            <h3 className="font-semibold text-slate-700 mb-2">
                               Tracking Info
                             </h3>
-                            <Input
-                              placeholder="Tracking Number"
-                              value={trackingInputs[order._id]?.code || ""}
-                              onChange={(e) =>
-                                handleTrackingChange(
-                                  order._id,
-                                  "code",
-                                  e.target.value,
-                                )
-                              }
-                              className="mb-2"
-                            />
-                            <Input
-                              placeholder="Courier Name"
-                              value={trackingInputs[order._id]?.courier || ""}
-                              onChange={(e) =>
-                                handleTrackingChange(
-                                  order._id,
-                                  "courier",
-                                  e.target.value,
-                                )
-                              }
-                            />
+                            <div className="flex gap-2">
+                              <Input
+                                placeholder="Tracking Number"
+                                value={trackingInputs[order._id]?.code || ""}
+                                onChange={(e) =>
+                                  handleTrackingChange(
+                                    order._id,
+                                    "code",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                              <Input
+                                placeholder="Courier"
+                                value={trackingInputs[order._id]?.courier || ""}
+                                onChange={(e) =>
+                                  handleTrackingChange(
+                                    order._id,
+                                    "courier",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                            </div>
                             <Button
                               size="sm"
-                              className="mt-2 bg-blue-600 hover:bg-blue-700"
+                              className="mt-2 bg-blue-600 hover:bg-blue-700 text-white"
                               onClick={() => handleTrackingSave(order._id)}
                             >
                               Save Tracking
                             </Button>
-                          </div>
+                          </section>
 
                           {order.paymentStatus === "pending" && (
-                            <div className="flex gap-2 mt-2">
+                            <div className="flex gap-3">
                               <Button
-                                className="bg-green-600 hover:bg-green-700"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
                                 onClick={() => handleApprove(order._id)}
                               >
                                 <Check className="w-4 h-4 mr-1" /> Approve
-                                Payment
                               </Button>
                               <Button
                                 variant="destructive"
                                 onClick={() => handleReject(order._id)}
                               >
-                                <X className="w-4 h-4 mr-1" /> Reject Payment
+                                <X className="w-4 h-4 mr-1" /> Reject
                               </Button>
                             </div>
                           )}
 
-                          <div className="mt-4">
-                            <label className="block mb-1 font-semibold">
-                              Update Order Status
+                          <div>
+                            <label className="block mb-1 font-semibold text-sm">
+                              Update Status
                             </label>
                             <select
                               value={order.orderStatus}
                               onChange={(e) =>
                                 handleStatusUpdate(order._id, e.target.value)
                               }
-                              className="border p-1 rounded"
+                              className="border rounded px-2 py-1 text-sm"
                             >
                               {[
                                 "pending",
@@ -424,40 +388,25 @@ export default function OrdersPage() {
                                 "shipped",
                                 "delivered",
                                 "cancelled",
-                              ].map((status) => (
-                                <option key={status} value={status}>
-                                  {status}
-                                </option>
+                              ].map((s) => (
+                                <option key={s}>{s}</option>
                               ))}
                             </select>
                           </div>
                         </div>
 
+                        {/* RIGHT SIDE */}
                         <div>
-                          <h3 className="font-semibold mb-2">Payment Proof</h3>
+                          <h3 className="font-semibold text-slate-700 mb-2">
+                            Payment Proof
+                          </h3>
                           {order.paymentScreenshot ? (
-                            <div className="flex flex-col gap-2">
-                              <a
-                                href={order.paymentScreenshot}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                <img
-                                  src={order.paymentScreenshot}
-                                  className="rounded-lg border max-h-80 object-contain hover:scale-105 transition-transform cursor-pointer"
-                                  alt="Payment Screenshot"
-                                />
-                              </a>
-                              <a
-                                href={order.paymentScreenshot}
-                                download={`payment_${order.orderNumber}`}
-                                className="text-blue-600 hover:underline text-sm"
-                              >
-                                Download
-                              </a>
-                            </div>
+                            <img
+                              src={order.paymentScreenshot}
+                              className="rounded-lg border max-h-96 object-contain hover:scale-105 transition"
+                            />
                           ) : (
-                            <p className="text-gray-500">
+                            <p className="text-slate-500 text-sm">
                               No screenshot uploaded
                             </p>
                           )}
