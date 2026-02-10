@@ -16,6 +16,7 @@ import { Plus, Edit, Trash2 } from "lucide-react";
 interface Category {
   _id: string;
   name: string;
+  icon?: string; // icon optional
   isVisible: boolean;
   sortOrder: number;
 }
@@ -24,9 +25,9 @@ export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [formData, setFormData] = useState({ name: "" });
+  const [formData, setFormData] = useState({ name: "", icon: "" });
 
-  // Add/Edit dialogs
+  // Dialog states
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editCategory, setEditCategory] = useState<Category | null>(null);
@@ -35,7 +36,6 @@ export default function CategoriesPage() {
     fetchCategories();
   }, []);
 
-  // Fetch all categories
   const fetchCategories = async () => {
     try {
       const res = await fetch("/api/admin/categories");
@@ -61,7 +61,7 @@ export default function CategoriesPage() {
       });
       if (res.ok) {
         setIsAddDialogOpen(false);
-        setFormData({ name: "" });
+        setFormData({ name: "", icon: "" });
         fetchCategories();
       } else {
         const data = await res.json();
@@ -75,7 +75,7 @@ export default function CategoriesPage() {
   // EDIT category
   const openEditDialog = (category: Category) => {
     setEditCategory(category);
-    setFormData({ name: category.name });
+    setFormData({ name: category.name, icon: category.icon || "" });
     setIsEditDialogOpen(true);
   };
 
@@ -92,7 +92,7 @@ export default function CategoriesPage() {
       if (res.ok) {
         setIsEditDialogOpen(false);
         setEditCategory(null);
-        setFormData({ name: "" });
+        setFormData({ name: "", icon: "" });
         fetchCategories();
       } else {
         const data = await res.json();
@@ -110,9 +110,8 @@ export default function CategoriesPage() {
       const res = await fetch(`/api/admin/categories/${id}`, {
         method: "DELETE",
       });
-      if (res.ok) {
-        fetchCategories();
-      } else {
+      if (res.ok) fetchCategories();
+      else {
         const data = await res.json();
         alert(data.error || "Failed to delete category");
       }
@@ -123,14 +122,13 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Categories</h1>
           <p className="text-gray-600">Manage your product categories</p>
         </div>
 
-        {/* Add Category Dialog */}
+        {/* Add Dialog */}
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-green-700 hover:bg-green-800">
@@ -145,8 +143,17 @@ export default function CategoriesPage() {
               <Input
                 placeholder="Category Name"
                 value={formData.name}
-                onChange={(e) => setFormData({ name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 required
+              />
+              <Input
+                placeholder="Icon (Emoji or Unicode)"
+                value={formData.icon}
+                onChange={(e) =>
+                  setFormData({ ...formData, icon: e.target.value })
+                }
               />
               <Button type="submit" className="w-full bg-green-700">
                 Create Category
@@ -155,7 +162,7 @@ export default function CategoriesPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Category Dialog */}
+        {/* Edit Dialog */}
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
           <DialogContent>
             <DialogHeader>
@@ -165,8 +172,17 @@ export default function CategoriesPage() {
               <Input
                 placeholder="Category Name"
                 value={formData.name}
-                onChange={(e) => setFormData({ name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 required
+              />
+              <Input
+                placeholder="Icon (Emoji or Unicode)"
+                value={formData.icon}
+                onChange={(e) =>
+                  setFormData({ ...formData, icon: e.target.value })
+                }
               />
               <Button type="submit" className="w-full bg-blue-700">
                 Save Changes
@@ -187,6 +203,9 @@ export default function CategoriesPage() {
             <thead>
               <tr className="border-b border-gray-200">
                 <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Icon
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
                   Name
                 </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600">
@@ -203,6 +222,7 @@ export default function CategoriesPage() {
                   key={cat._id}
                   className="border-b border-gray-100 hover:bg-gray-50"
                 >
+                  <td className="py-3 px-4 text-xl">{cat.icon || "📦"}</td>
                   <td className="py-3 px-4 font-medium text-gray-900">
                     {cat.name}
                   </td>

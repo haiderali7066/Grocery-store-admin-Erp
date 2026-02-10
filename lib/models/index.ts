@@ -25,8 +25,9 @@ export const UserSchema = new Schema(
   { timestamps: true }
 );
 
-// Category Schema
 
+
+// Category Schema
 export const CategorySchema = new Schema(
   {
     name: {
@@ -43,6 +44,12 @@ export const CategorySchema = new Schema(
       trim: true,
     },
 
+    icon: {
+      type: String,
+      default: "📦", // default icon if not provided
+      trim: true,
+    },
+
     sortOrder: {
       type: Number,
       default: 0,
@@ -53,7 +60,7 @@ export const CategorySchema = new Schema(
       default: true,
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 // Auto-generate slug
