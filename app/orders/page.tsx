@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { Navbar } from '@/components/store/Navbar';
-import { Footer } from '@/components/store/Footer';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Eye } from 'lucide-react';
-import Link from 'next/link';
-import { AuthProvider } from '@/components/auth/AuthProvider';
+import { useEffect, useState } from "react";
+import { Navbar } from "@/components/store/Navbar";
+import { Footer } from "@/components/store/Footer";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Eye } from "lucide-react";
+import Link from "next/link";
+import { AuthProvider } from "@/components/auth/AuthProvider";
 
 interface Order {
   _id: string;
@@ -25,15 +25,15 @@ export default function OrdersPage() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const response = await fetch('/api/orders');
+        const response = await fetch("/api/orders");
         if (response.ok) {
           const data = await response.json();
           setOrders(data.orders || []);
         } else {
-          console.error('Failed to fetch orders:', response.statusText);
+          console.error("Failed to fetch orders:", response.statusText);
         }
       } catch (error) {
-        console.error('Failed to fetch orders:', error);
+        console.error("Failed to fetch orders:", error);
       } finally {
         setIsLoading(false);
       }
@@ -55,11 +55,11 @@ export default function OrdersPage() {
             <div className="space-y-4">
               {orders.map((order) => {
                 const total = order.total ?? 0;
-                const paymentStatus = order.paymentStatus ?? 'pending';
-                const orderStatus = order.orderStatus ?? 'pending';
+                const paymentStatus = order.paymentStatus ?? "pending";
+                const orderStatus = order.orderStatus ?? "pending";
                 const createdAt = order.createdAt
                   ? new Date(order.createdAt).toLocaleDateString()
-                  : 'N/A';
+                  : "N/A";
 
                 return (
                   <Card
@@ -69,33 +69,35 @@ export default function OrdersPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <h3 className="text-lg font-bold text-gray-900">
-                          {order.orderNumber ?? 'N/A'}
+                          {order.orderNumber ?? "N/A"}
                         </h3>
 
                         <div className="flex gap-6 mt-2">
                           <p className="text-sm text-gray-600">
-                            <span className="font-semibold">Amount:</span> Rs. {total.toLocaleString()}
+                            <span className="font-semibold">Amount:</span> Rs.{" "}
+                            {total.toLocaleString()}
                           </p>
                           <p className="text-sm text-gray-600">
-                            <span className="font-semibold">Date:</span> {createdAt}
+                            <span className="font-semibold">Date:</span>{" "}
+                            {createdAt}
                           </p>
                         </div>
 
                         <div className="flex gap-3 mt-3">
                           <span
                             className={`inline-block px-3 py-1 rounded text-xs font-semibold ${
-                              paymentStatus === 'verified'
-                                ? 'bg-green-100 text-green-800'
-                                : paymentStatus === 'pending'
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
+                              paymentStatus === "verified"
+                                ? "bg-green-100 text-green-800"
+                                : paymentStatus === "pending"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
                             }`}
                           >
-                            {paymentStatus === 'verified'
-                              ? 'Payment Verified'
-                              : paymentStatus === 'pending'
-                              ? 'Awaiting Payment'
-                              : 'Payment Failed'}
+                            {paymentStatus === "verified"
+                              ? "Payment Verified"
+                              : paymentStatus === "pending"
+                                ? "Awaiting Payment"
+                                : "Payment Failed"}
                           </span>
 
                           <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded text-xs font-semibold">
@@ -117,7 +119,9 @@ export default function OrdersPage() {
             </div>
           ) : (
             <Card className="p-12 border-0 shadow-md text-center">
-              <p className="text-gray-600 mb-6">You haven't placed any orders yet.</p>
+              <p className="text-gray-600 mb-6">
+                You haven't placed any orders yet.
+              </p>
               <Button asChild className="bg-green-700 hover:bg-green-800">
                 <Link href="/products">Start Shopping</Link>
               </Button>

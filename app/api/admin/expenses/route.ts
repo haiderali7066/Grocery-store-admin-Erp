@@ -1,60 +1,66 @@
-import { NextRequest, NextResponse } from 'next/server';
-
-const expensesDB: any[] = [];
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Transaction } from "@/lib/models";
 
 export async function GET() {
   try {
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-
-    const monthExpenses = expensesDB.filter((e) => {
-      const date = new Date(e.date);
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    await connectDB();
+    const expenses = await Transaction.find({ type: "expense" }).sort({
+      createdAt: -1,
     });
-
-    const total = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const total = expenses.reduce((acc, exp) => acc + exp.amount, 0);
 
     return NextResponse.json({
-      expenses: monthExpenses,
+      expenses: expenses.map((e) => ({
+        _id: e._id.toString(),
+        category: e.category,
+        amount: e.amount,
+        description: e.description || "",
+        date: e.createdAt.toISOString(),
+      })),
       total,
     });
-  } catch (error) {
-    console.error('[v0] Expenses fetch error:', error);
-    return NextResponse.json(
-      { message: 'Failed to fetch expenses' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
-    const { category, amount, description } = body;
+    await connectDB();
+    const body = await req.json();
+    const { amount, description, category } = body;
 
-    if (!category || !amount) {
+    if (!amount || !category) {
       return NextResponse.json(
-        { message: 'Missing required fields' },
-        { status: 400 }
+        { error: "Amount and category are required" },
+        { status: 400 },
       );
     }
 
-    const expense = {
-      _id: Date.now().toString(),
+    const expense = await Transaction.create({
+      type: "expense",
+      amount: Number(amount),
       category,
-      amount: parseFloat(amount),
       description,
-      date: new Date().toISOString(),
-    };
+      source: "cash", // required field
+    });
 
-    expensesDB.push(expense);
-
-    return NextResponse.json(expense, { status: 201 });
-  } catch (error) {
-    console.error('[v0] Expense creation error:', error);
     return NextResponse.json(
-      { message: 'Failed to create expense' },
-      { status: 500 }
+      {
+        _id: expense._id.toString(),
+        category: expense.category,
+        amount: expense.amount,
+        description: expense.description || "",
+        date: expense.createdAt.toISOString(),
+      },
+      { status: 201 },
+    );
+  } catch (error: any) {
+    // Make sure error.message exists
+    return NextResponse.json(
+      { error: error?.message || "Something went wrong" },
+      { status: 500 },
     );
   }
 }

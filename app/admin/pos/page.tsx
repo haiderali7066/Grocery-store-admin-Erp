@@ -21,8 +21,9 @@ interface POSProduct {
   unitSize: number;
   unitType: string;
   stock: number;
-  image?: string;
+  mainImage?: string; // instead of image
 }
+
 
 interface CartItem {
   productId: string;
@@ -37,7 +38,9 @@ export default function POSPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("Walk-in Customer");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "online">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "cash" | "card" | "online"
+  >("cash");
   const [amountPaid, setAmountPaid] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -54,13 +57,19 @@ export default function POSPage() {
     try {
       const res = await fetch("/api/products");
       const data = await res.json();
-      setProducts(data.products || data || []);
+      // Map to include mainImage
+      const mappedProducts = (data.products || []).map((p: any) => ({
+        ...p,
+        mainImage: p.mainImage || "/placeholder.png",
+      }));
+      setProducts(mappedProducts);
     } catch (error) {
       console.error("Error fetching products:", error);
     } finally {
       setLoading(false);
     }
   };
+
 
   // Barcode scanner handling
   useEffect(() => {
@@ -88,7 +97,7 @@ export default function POSPage() {
   }, [barcodeBuffer, products]);
 
   const filteredProducts = products.filter((p) =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const addToCart = (product: POSProduct) => {
@@ -106,13 +115,23 @@ export default function POSPage() {
         }
         return prev.map((item) =>
           item.productId === product._id
-            ? { ...item, quantity: item.quantity + 1, total: (item.quantity + 1) * item.price }
-            : item
+            ? {
+                ...item,
+                quantity: item.quantity + 1,
+                total: (item.quantity + 1) * item.price,
+              }
+            : item,
         );
       }
       return [
         ...prev,
-        { productId: product._id, name: product.name, price: product.retailPrice, quantity: 1, total: product.retailPrice },
+        {
+          productId: product._id,
+          name: product.name,
+          price: product.retailPrice,
+          quantity: 1,
+          total: product.retailPrice,
+        },
       ];
     });
     setSearchTerm("");
@@ -136,8 +155,10 @@ export default function POSPage() {
 
     setCart((prev) =>
       prev.map((item) =>
-        item.productId === productId ? { ...item, quantity, total: quantity * item.price } : item
-      )
+        item.productId === productId
+          ? { ...item, quantity, total: quantity * item.price }
+          : item,
+      ),
     );
   };
 
@@ -156,7 +177,16 @@ export default function POSPage() {
       const res = await fetch("/api/admin/pos/bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerName, items: cart, subtotal, tax, total, amountPaid: parseFloat(amountPaid), change, paymentMethod }),
+        body: JSON.stringify({
+          customerName,
+          items: cart,
+          subtotal,
+          tax,
+          total,
+          amountPaid: parseFloat(amountPaid),
+          change,
+          paymentMethod,
+        }),
       });
 
       const data = await res.json();
@@ -212,12 +242,16 @@ export default function POSPage() {
             <p><strong>Payment:</strong> ${lastBill.paymentMethod.toUpperCase()}</p>
           </div>
           <div class="items">
-            ${lastBill.items.map((item: CartItem) => `
+            ${lastBill.items
+              .map(
+                (item: CartItem) => `
               <div class="item">
                 <span>${item.name} x${item.quantity}</span>
                 <span>Rs ${item.total.toFixed(2)}</span>
               </div>
-            `).join("")}
+            `,
+              )
+              .join("")}
           </div>
           <div class="total-section">
             <div class="total-row" style="font-weight: normal;">
@@ -266,39 +300,58 @@ export default function POSPage() {
                 <CheckCircle className="h-12 w-12 text-green-600" />
               </div>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900">Bill Completed!</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Bill Completed!
+            </h1>
             <p className="text-gray-600 mt-2">Sale #{lastBill.saleNumber}</p>
           </div>
 
           <div className="border-t border-b py-4 space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal:</span>
-              <span className="font-semibold">Rs {lastBill.subtotal.toFixed(2)}</span>
+              <span className="font-semibold">
+                Rs {lastBill.subtotal.toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Tax (17%):</span>
-              <span className="font-semibold">Rs {lastBill.tax.toFixed(2)}</span>
+              <span className="font-semibold">
+                Rs {lastBill.tax.toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between text-xl font-bold">
               <span>Total:</span>
-              <span className="text-green-600">Rs {lastBill.total.toFixed(2)}</span>
+              <span className="text-green-600">
+                Rs {lastBill.total.toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Amount Paid:</span>
-              <span className="font-semibold">Rs {lastBill.amountPaid.toFixed(2)}</span>
+              <span className="font-semibold">
+                Rs {lastBill.amountPaid.toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between text-lg">
               <span className="text-gray-600">Change:</span>
-              <span className="font-bold text-blue-600">Rs {lastBill.change.toFixed(2)}</span>
+              <span className="font-bold text-blue-600">
+                Rs {lastBill.change.toFixed(2)}
+              </span>
             </div>
           </div>
 
           <div className="flex gap-3 mt-6">
-            <Button onClick={printBill} className="flex-1 bg-green-600 hover:bg-green-700">
+            <Button
+              onClick={printBill}
+              className="flex-1 bg-green-600 hover:bg-green-700"
+            >
               <Printer className="h-4 w-4 mr-2" />
               Print Receipt
             </Button>
-            <Button onClick={resetBill} variant="outline" className="flex-1 bg-transparent">
+            <Button
+              onClick={resetBill}
+              variant="outline"
+              className="flex-1 bg-transparent"
+            >
               New Sale
             </Button>
           </div>
@@ -336,7 +389,9 @@ export default function POSPage() {
               <Card
                 key={product._id}
                 className={`p-3 cursor-pointer hover:shadow-lg transition border-0 ${
-                  highlightedSku === product.sku ? "border-2 border-blue-500" : ""
+                  highlightedSku === product.sku
+                    ? "border-2 border-blue-500"
+                    : ""
                 }`}
               >
                 <button
@@ -345,19 +400,30 @@ export default function POSPage() {
                   className="w-full text-left disabled:opacity-50"
                 >
                   <img
-                    src={product.image || "/placeholder.png"}
+                    src={product.mainImage || "/placeholder.png"}
                     alt={product.name}
                     className="w-full h-24 object-cover rounded mb-2"
                   />
+
                   <p className="font-semibold text-sm">{product.name}</p>
-                  <p className="text-xs text-gray-600">{product.unitSize} {product.unitType}</p>
+                  <p className="text-xs text-gray-600">
+                    {product.unitSize} {product.unitType}
+                  </p>
                   <div className="flex justify-between items-center mt-2">
-                    <span className="font-bold text-green-600">Rs {product.retailPrice}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      product.stock > 10 ? "bg-green-100 text-green-800" :
-                      product.stock > 0 ? "bg-orange-100 text-orange-800" :
-                      "bg-red-100 text-red-800"
-                    }`}>{product.stock} left</span>
+                    <span className="font-bold text-green-600">
+                      Rs {product.retailPrice}
+                    </span>
+                    <span
+                      className={`text-xs px-2 py-1 rounded ${
+                        product.stock > 10
+                          ? "bg-green-100 text-green-800"
+                          : product.stock > 0
+                            ? "bg-orange-100 text-orange-800"
+                            : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {product.stock} left
+                    </span>
                   </div>
                 </button>
               </Card>
@@ -375,23 +441,52 @@ export default function POSPage() {
               <p className="text-gray-500 text-center py-4">Cart is empty</p>
             ) : (
               cart.map((item) => (
-                <div key={item.productId} className="bg-gray-50 p-3 rounded flex justify-between items-start">
+                <div
+                  key={item.productId}
+                  className="bg-gray-50 p-3 rounded flex justify-between items-start"
+                >
                   <div className="flex-1">
                     <p className="font-semibold text-sm">{item.name}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <button onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                        className="px-2 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300">-</button>
-                      <input type="number" value={item.quantity}
-                        onChange={(e) => updateQuantity(item.productId, parseInt(e.target.value) || 0)}
-                        className="w-12 text-center border rounded text-sm"/>
-                      <button onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                        className="px-2 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300">+</button>
+                      <button
+                        onClick={() =>
+                          updateQuantity(item.productId, item.quantity - 1)
+                        }
+                        className="px-2 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        value={item.quantity}
+                        onChange={(e) =>
+                          updateQuantity(
+                            item.productId,
+                            parseInt(e.target.value) || 0,
+                          )
+                        }
+                        className="w-12 text-center border rounded text-sm"
+                      />
+                      <button
+                        onClick={() =>
+                          updateQuantity(item.productId, item.quantity + 1)
+                        }
+                        className="px-2 py-1 bg-gray-200 rounded text-sm hover:bg-gray-300"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-green-600">Rs {item.total.toFixed(2)}</p>
-                    <button onClick={() => removeFromCart(item.productId)}
-                      className="text-red-600 hover:text-red-700 mt-1"><Trash2 size={16}/></button>
+                    <p className="font-bold text-green-600">
+                      Rs {item.total.toFixed(2)}
+                    </p>
+                    <button
+                      onClick={() => removeFromCart(item.productId)}
+                      className="text-red-600 hover:text-red-700 mt-1"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
               ))
@@ -399,21 +494,40 @@ export default function POSPage() {
           </div>
 
           <div className="border-t pt-4 space-y-2 mb-4">
-            <div className="flex justify-between text-sm"><span>Subtotal:</span><span className="font-semibold">Rs {subtotal.toFixed(2)}</span></div>
-            <div className="flex justify-between text-sm"><span>Tax (17%):</span><span className="font-semibold">Rs {tax.toFixed(2)}</span></div>
-            <div className="flex justify-between text-lg font-bold border-t pt-2"><span>Total:</span><span className="text-green-600">Rs {total.toFixed(2)}</span></div>
+            <div className="flex justify-between text-sm">
+              <span>Subtotal:</span>
+              <span className="font-semibold">Rs {subtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Tax (17%):</span>
+              <span className="font-semibold">Rs {tax.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-lg font-bold border-t pt-2">
+              <span>Total:</span>
+              <span className="text-green-600">Rs {total.toFixed(2)}</span>
+            </div>
           </div>
 
           <div className="space-y-3">
             <div>
               <label className="text-sm font-medium">Customer Name</label>
-              <Input placeholder="Walk-in Customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="mt-1"/>
+              <Input
+                placeholder="Walk-in Customer"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="mt-1"
+              />
             </div>
 
             <div>
               <label className="text-sm font-medium">Payment Method</label>
-              <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as "cash"|"card"|"online")}
-                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm">
+              <select
+                value={paymentMethod}
+                onChange={(e) =>
+                  setPaymentMethod(e.target.value as "cash" | "card" | "online")
+                }
+                className="w-full border rounded-lg px-3 py-2 mt-1 text-sm"
+              >
                 <option value="cash">Cash</option>
                 <option value="card">Card</option>
                 <option value="online">Online</option>
@@ -422,22 +536,42 @@ export default function POSPage() {
 
             <div>
               <label className="text-sm font-medium">Amount Paid (Rs)</label>
-              <Input type="number" step="0.01" placeholder="0.00" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} className="mt-1"/>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={amountPaid}
+                onChange={(e) => setAmountPaid(e.target.value)}
+                className="mt-1"
+              />
             </div>
 
             {amountPaid && parseFloat(amountPaid) >= total && (
               <div className="bg-blue-50 p-3 rounded">
                 <p className="text-sm text-gray-600">Change Due</p>
-                <p className="text-lg font-bold text-green-600">Rs {change.toFixed(2)}</p>
+                <p className="text-lg font-bold text-green-600">
+                  Rs {change.toFixed(2)}
+                </p>
               </div>
             )}
           </div>
 
           <div className="flex gap-2 mt-4">
-            <Button onClick={processBill} disabled={isProcessing || cart.length === 0} className="flex-1 bg-green-600 hover:bg-green-700">
-              <DollarSign className="h-4 w-4 mr-2"/> {isProcessing ? "Processing..." : "Complete Bill"}
+            <Button
+              onClick={processBill}
+              disabled={isProcessing || cart.length === 0}
+              className="flex-1 bg-green-600 hover:bg-green-700"
+            >
+              <DollarSign className="h-4 w-4 mr-2" />{" "}
+              {isProcessing ? "Processing..." : "Complete Bill"}
             </Button>
-            <Button onClick={resetBill} variant="outline" className="flex-1 bg-transparent">Clear</Button>
+            <Button
+              onClick={resetBill}
+              variant="outline"
+              className="flex-1 bg-transparent"
+            >
+              Clear
+            </Button>
           </div>
         </Card>
       </div>

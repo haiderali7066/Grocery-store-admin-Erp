@@ -586,7 +586,7 @@ export default function ProductsPage() {
                     )}
                   </td>
                   <td className="py-3 px-4 text-sm text-gray-600">
-                    {product.sku || 'N/A'}
+                    {product.sku || "N/A"}
                   </td>
                   <td className="py-3 px-4 font-medium text-gray-900">
                     {product.name}

@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface Supplier {
   _id: string;
@@ -18,7 +18,7 @@ export default function EditSupplierPage() {
   const router = useRouter();
 
   const [supplier, setSupplier] = useState<Supplier | null>(null);
-  const [formData, setFormData] = useState({ name: '', phone: '', email: '' });
+  const [formData, setFormData] = useState({ name: "", phone: "", email: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -31,10 +31,14 @@ export default function EditSupplierPage() {
       if (res.ok) {
         const data = await res.json();
         setSupplier(data.supplier);
-        setFormData({ name: data.supplier.name, phone: data.supplier.phone, email: data.supplier.email });
+        setFormData({
+          name: data.supplier.name,
+          phone: data.supplier.phone,
+          email: data.supplier.email,
+        });
       }
     } catch (error) {
-      console.error('Failed to fetch supplier:', error);
+      console.error("Failed to fetch supplier:", error);
     }
   };
 
@@ -43,21 +47,22 @@ export default function EditSupplierPage() {
     setIsSubmitting(true);
     try {
       const res = await fetch(`/api/admin/suppliers/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      if (res.ok) router.push('/admin/suppliers');
-      else alert('Failed to update supplier');
+      if (res.ok) router.push("/admin/suppliers");
+      else alert("Failed to update supplier");
     } catch (error) {
       console.error(error);
-      alert('Error updating supplier');
+      alert("Error updating supplier");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (!supplier) return <p className="text-center py-12">Loading supplier...</p>;
+  if (!supplier)
+    return <p className="text-center py-12">Loading supplier...</p>;
 
   return (
     <div className="max-w-md mx-auto py-12">
@@ -68,7 +73,9 @@ export default function EditSupplierPage() {
             <label className="text-sm font-medium">Supplier Name</label>
             <Input
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               className="mt-1"
             />
           </div>
@@ -76,7 +83,9 @@ export default function EditSupplierPage() {
             <label className="text-sm font-medium">Phone</label>
             <Input
               value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, phone: e.target.value })
+              }
               className="mt-1"
             />
           </div>
@@ -85,18 +94,24 @@ export default function EditSupplierPage() {
             <Input
               value={formData.email}
               type="email"
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
               className="mt-1"
             />
           </div>
           <div className="flex gap-2 pt-4">
-            <Button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-700 hover:bg-blue-800 rounded-full">
-              {isSubmitting ? 'Updating...' : 'Update Supplier'}
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 bg-blue-700 hover:bg-blue-800 rounded-full"
+            >
+              {isSubmitting ? "Updating..." : "Update Supplier"}
             </Button>
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push('/admin/suppliers')}
+              onClick={() => router.push("/admin/suppliers")}
               className="flex-1 rounded-full bg-transparent"
             >
               Cancel

@@ -8,7 +8,7 @@ const isValidObjectId = (id: string) => mongoose.Types.ObjectId.isValid(id);
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: any } // params is a Promise in App Router
+  { params }: { params: any }, // params is a Promise in App Router
 ) {
   try {
     await connectDB();
@@ -24,16 +24,24 @@ export async function PATCH(
     const orderId = resolvedParams.id;
 
     if (!isValidObjectId(orderId)) {
-      return NextResponse.json({ message: "Invalid order ID" }, { status: 400 });
+      return NextResponse.json(
+        { message: "Invalid order ID" },
+        { status: 400 },
+      );
     }
 
     const body = await req.json();
 
-    const order = await Order.findByIdAndUpdate(orderId, { $set: body }, { new: true })
+    const order = await Order.findByIdAndUpdate(
+      orderId,
+      { $set: body },
+      { new: true },
+    )
       .populate("user", "name email phone")
       .lean();
 
-    if (!order) return NextResponse.json({ message: "Order not found" }, { status: 404 });
+    if (!order)
+      return NextResponse.json({ message: "Order not found" }, { status: 404 });
 
     return NextResponse.json({ order }, { status: 200 });
   } catch (err: any) {

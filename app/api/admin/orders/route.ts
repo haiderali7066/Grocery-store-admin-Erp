@@ -18,7 +18,10 @@ export async function GET(req: NextRequest) {
     // Fetch orders and populate related fields
     const orders = await Order.find({})
       .populate("user", "name email phone")
-      .populate("items.product", "name retailPrice unitSize unitType discount image") // ✅ populate product details
+      .populate(
+        "items.product",
+        "name retailPrice unitSize unitType discount image",
+      ) // ✅ populate product details
       .sort({ createdAt: -1 })
       .lean();
 
