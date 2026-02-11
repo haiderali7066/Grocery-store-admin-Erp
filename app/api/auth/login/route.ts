@@ -1,7 +1,7 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { User } from '@/lib/models/index';
 import { comparePasswords, generateToken } from '@/lib/auth';
-import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,30 +16,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // IMPORTANT: Use .select('+password') to include the password field
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
 
     if (!user) {
       return NextResponse.json(
-        { message: 'Invalid email or password' },
+        { message: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
-    const isPasswordValid = await comparePasswords(password, user.password);
-
-    if (!isPasswordValid) {
+    // Check if user is active
+    if (!user.isActive) {
       return NextResponse.json(
-        { message: 'Invalid email or password' },
+        { message: 'Account is inactive' },
+        { status: 403 }
+      );
+    }
+
+    // Compare passwords
+    const isValid = await comparePasswords(password, user.password);
+
+    if (!isValid) {
+      return NextResponse.json(
+        { message: 'Invalid credentials' },
         { status: 401 }
       );
     }
 
+    // Generate token
     const token = generateToken({
       userId: user._id.toString(),
       email: user.email,
       role: user.role,
     });
 
+    // Create response with token in cookie
     const response = NextResponse.json(
       {
         message: 'Login successful',
@@ -53,11 +65,13 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
 
-    response.cookies.set('authToken', token, {
+    // Set HTTP-only cookie
+    response.cookies.set('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+      path: '/',
     });
 
     return response;
