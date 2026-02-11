@@ -76,7 +76,7 @@ CategorySchema.pre("validate", function () {
 });
 
 // =========================
-// Product Schema
+// Product Schema (UPDATED)
 // =========================
 export const ProductSchema = new Schema(
   {
@@ -86,6 +86,7 @@ export const ProductSchema = new Schema(
     brand: String,
     description: String,
     retailPrice: { type: Number, required: true },
+    lastBuyingRate: { type: Number, default: 0 }, // Stores the latest Landed Cost
     discount: { type: Number, default: 0 },
     discountType: {
       type: String,
@@ -161,14 +162,14 @@ export const SupplierSchema = new Schema(
     address: String,
     city: String,
     contact: String,
-    balance: { type: Number, default: 0 },
+    balance: { type: Number, default: 0 }, // Positive = we owe them, Negative = Credit
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },
 );
 
 // =========================
-// Purchase Schema
+// Purchase Schema (UPDATED)
 // =========================
 export const PurchaseSchema = new Schema(
   {
@@ -177,18 +178,19 @@ export const PurchaseSchema = new Schema(
     purchaseDate: { type: Date, default: Date.now },
     products: [
       {
-        product: {
-          type: Schema.Types.ObjectId,
-          ref: "Product",
-          required: true,
-        },
-        buyingRate: { type: Number, required: true },
+        product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
         quantity: { type: Number, required: true },
-        batchNumber: { type: String, default: () => Date.now().toString() },
+        buyingRate: { type: Number, required: true }, // Base Price
+        taxType: { type: String, enum: ["percent", "fixed"], default: "percent" },
+        taxValue: { type: Number, default: 0 },
+        unitPriceWithTax: { type: Number, required: true }, // Landed Cost
+        batchNumber: { type: Schema.Types.ObjectId, ref: "InventoryBatch" },
         expiryDate: Date,
       },
     ],
-    totalAmount: { type: Number, required: true },
+    totalAmount: { type: Number, required: true }, // Bill Total
+    amountPaid: { type: Number, default: 0 },       // Actual cash paid
+    balanceDue: { type: Number, default: 0 },       // Remaining to be added to Supplier balance
     paymentMethod: {
       type: String,
       enum: ["cash", "bank", "cheque", "easypaisa", "jazzcash"],
@@ -196,16 +198,13 @@ export const PurchaseSchema = new Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["pending", "completed"],
+      enum: ["pending", "partial", "completed"],
       default: "completed",
     },
-    deductFromInvestment: { type: Boolean, default: true },
-    investmentUsed: { type: Schema.Types.ObjectId, ref: "Investment" },
-    amountFromInvestment: { type: Number, default: 0 },
     notes: String,
     status: {
       type: String,
-      enum: ["pending", "completed"],
+      enum: ["pending", "completed", "cancelled"],
       default: "completed",
     },
   },
@@ -213,13 +212,17 @@ export const PurchaseSchema = new Schema(
 );
 
 // =========================
-// InventoryBatch Schema
+// InventoryBatch Schema (UPDATED)
 // =========================
 export const InventoryBatchSchema = new Schema(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
-    quantity: { type: Number, required: true },
-    buyingRate: { type: Number, required: true },
+    quantity: { type: Number, required: true }, // Original quantity purchased
+    remainingQuantity: { type: Number, required: true }, // Used for FIFO stock deduction
+    buyingRate: { type: Number, required: true }, // Landed Cost (Price + Tax)
+    baseRate: { type: Number }, // Price before tax
+    taxValue: { type: Number },
+    taxType: { type: String, enum: ["percent", "fixed"] },
     purchaseReference: { type: Schema.Types.ObjectId, ref: "Purchase" },
     expiry: Date,
     status: {
@@ -240,7 +243,11 @@ export const POSSaleSchema = new Schema(
     cashier: { type: Schema.Types.ObjectId, ref: "User", required: true },
     items: [
       {
-        product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
+        product: {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
         quantity: { type: Number, required: true },
         weight: String,
         price: { type: Number, required: true },
@@ -356,7 +363,7 @@ export const PaymentSchema = new Schema(
 );
 
 // =========================
-// Refund Schema (renamed from RefundRequest)
+// Refund Schema
 // =========================
 export const RefundSchema = new Schema(
   {
@@ -375,7 +382,7 @@ export const RefundSchema = new Schema(
 );
 
 // =========================
-// HeroBanner Schema (NEW - ADD THIS)
+// HeroBanner Schema
 // =========================
 export const HeroBannerSchema = new Schema(
   {
@@ -390,7 +397,7 @@ export const HeroBannerSchema = new Schema(
 );
 
 // =========================
-// FBRConfig Schema (NEW - ADD THIS)
+// FBRConfig Schema
 // =========================
 export const FBRConfigSchema = new Schema(
   {
@@ -459,14 +466,7 @@ export const TransactionSchema = new Schema(
     reference: { type: Schema.Types.ObjectId, refPath: "referenceModel" },
     referenceModel: {
       type: String,
-      enum: [
-        "Order",
-        "POSSale",
-        "Purchase",
-        "Investment",
-        "Refund",
-        "Expense",
-      ],
+      enum: ["Order", "POSSale", "Purchase", "Investment", "Refund", "Expense"],
     },
     description: String,
     notes: String,
@@ -512,40 +512,21 @@ export const InvestmentSchema = new Schema(
 // Mongoose Models Export
 // =========================
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
-export const Category =
-  mongoose.models.Category || mongoose.model("Category", CategorySchema);
-export const Product =
-  mongoose.models.Product || mongoose.model("Product", ProductSchema);
-export const Bundle =
-  mongoose.models.Bundle || mongoose.model("Bundle", BundleSchema);
-export const Supplier =
-  mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
-export const Purchase =
-  mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
-export const InventoryBatch =
-  mongoose.models.InventoryBatch ||
-  mongoose.model("InventoryBatch", InventoryBatchSchema);
-export const POSSale =
-  mongoose.models.POSSale || mongoose.model("POSSale", POSSaleSchema);
-export const Order =
-  mongoose.models.Order || mongoose.model("Order", OrderSchema);
-export const Payment =
-  mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
-export const Refund =
-  mongoose.models.Refund || mongoose.model("Refund", RefundSchema);
-export const HeroBanner =
-  mongoose.models.HeroBanner || mongoose.model("HeroBanner", HeroBannerSchema);
-export const FBRConfig =
-  mongoose.models.FBRConfig || mongoose.model("FBRConfig", FBRConfigSchema);
-export const Expense =
-  mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
-export const Wallet =
-  mongoose.models.Wallet || mongoose.model("Wallet", WalletSchema);
-export const Transaction =
-  mongoose.models.Transaction ||
-  mongoose.model("Transaction", TransactionSchema);
-export const Investment =
-  mongoose.models.Investment || mongoose.model("Investment", InvestmentSchema);
+export const Category = mongoose.models.Category || mongoose.model("Category", CategorySchema);
+export const Product = mongoose.models.Product || mongoose.model("Product", ProductSchema);
+export const Bundle = mongoose.models.Bundle || mongoose.model("Bundle", BundleSchema);
+export const Supplier = mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
+export const Purchase = mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
+export const InventoryBatch = mongoose.models.InventoryBatch || mongoose.model("InventoryBatch", InventoryBatchSchema);
+export const POSSale = mongoose.models.POSSale || mongoose.model("POSSale", POSSaleSchema);
+export const Order = mongoose.models.Order || mongoose.model("Order", OrderSchema);
+export const Payment = mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
+export const Refund = mongoose.models.Refund || mongoose.model("Refund", RefundSchema);
+export const HeroBanner = mongoose.models.HeroBanner || mongoose.model("HeroBanner", HeroBannerSchema);
+export const FBRConfig = mongoose.models.FBRConfig || mongoose.model("FBRConfig", FBRConfigSchema);
+export const Expense = mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
+export const Wallet = mongoose.models.Wallet || mongoose.model("Wallet", WalletSchema);
+export const Transaction = mongoose.models.Transaction || mongoose.model("Transaction", TransactionSchema);
+export const Investment = mongoose.models.Investment || mongoose.model("Investment", InvestmentSchema);
 
-// Alias for backward compatibility
 export const RefundRequest = Refund;
