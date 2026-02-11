@@ -13,7 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Plus, AlertTriangle, Trash2 } from 'lucide-react';
+import { Plus, AlertTriangle, Trash2, Package, DollarSign, X } from 'lucide-react';
 
 interface InventoryItem {
   _id: string;
@@ -28,11 +28,18 @@ interface Product {
   _id: string;
   name: string;
   sku: string;
+  retailPrice: number;
 }
 
 interface Supplier {
   _id: string;
   name: string;
+}
+
+interface PurchaseProduct {
+  productId: string;
+  quantity: string;
+  buyingRate: string;
 }
 
 export default function InventoryPage() {
@@ -41,17 +48,14 @@ export default function InventoryPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [isRemoveDialogOpen, setIsRemoveDialogOpen] = useState(false);
-  const [selectedItemId, setSelectedItemId] = useState('');
-  const [formData, setFormData] = useState({
-    productId: '',
-    quantity: '',
-    buyingRate: '',
+  const [purchaseProducts, setPurchaseProducts] = useState<PurchaseProduct[]>([
+    { productId: '', quantity: '', buyingRate: '' }
+  ]);
+  const [purchaseData, setPurchaseData] = useState({
     supplierId: '',
-  });
-  const [removeData, setRemoveData] = useState({
-    productId: '',
-    quantity: '',
+    paymentMethod: 'cash' as 'cash' | 'bank' | 'cheque' | 'easypaisa' | 'jazzcash',
+    supplierInvoiceNo: '',
+    notes: '',
   });
 
   useEffect(() => {
@@ -98,86 +102,85 @@ export default function InventoryPage() {
     }
   };
 
-  const handleAddStock = async (e: React.FormEvent) => {
+  const addProductRow = () => {
+    setPurchaseProducts([...purchaseProducts, { productId: '', quantity: '', buyingRate: '' }]);
+  };
+
+  const removeProductRow = (index: number) => {
+    if (purchaseProducts.length > 1) {
+      setPurchaseProducts(purchaseProducts.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateProductRow = (index: number, field: keyof PurchaseProduct, value: string) => {
+    const updated = [...purchaseProducts];
+    updated[index][field] = value;
+    setPurchaseProducts(updated);
+  };
+
+  const calculateTotal = () => {
+    return purchaseProducts.reduce((total, item) => {
+      const quantity = parseFloat(item.quantity) || 0;
+      const rate = parseFloat(item.buyingRate) || 0;
+      return total + (quantity * rate);
+    }, 0);
+  };
+
+  const handleBulkPurchase = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !formData.productId ||
-      !formData.quantity ||
-      !formData.buyingRate ||
-      !formData.supplierId
-    ) {
-      alert("Please fill all fields");
+
+    // Validation
+    if (!purchaseData.supplierId) {
+      alert('Please select a supplier');
+      return;
+    }
+
+    const validProducts = purchaseProducts.filter(
+      p => p.productId && p.quantity && p.buyingRate
+    );
+
+    if (validProducts.length === 0) {
+      alert('Please add at least one product with quantity and buying rate');
       return;
     }
 
     try {
-      const response = await fetch("/api/admin/purchases", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const response = await fetch('/api/admin/purchases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          products: [
-            {
-              product: formData.productId,
-              quantity: parseInt(formData.quantity),
-              buyingRate: parseFloat(formData.buyingRate),
-            },
-          ],
-          supplier: formData.supplierId,
+          supplier: purchaseData.supplierId,
+          products: validProducts.map(p => ({
+            product: p.productId,
+            quantity: parseInt(p.quantity),
+            buyingRate: parseFloat(p.buyingRate),
+          })),
+          paymentMethod: purchaseData.paymentMethod,
+          supplierInvoiceNo: purchaseData.supplierInvoiceNo,
+          notes: purchaseData.notes,
+          totalAmount: calculateTotal(),
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        alert("Stock added successfully");
+        alert(`Purchase created successfully! Total: Rs ${calculateTotal().toFixed(2)}`);
         setIsAddDialogOpen(false);
-        setFormData({
-          productId: "",
-          quantity: "",
-          buyingRate: "",
-          supplierId: "",
+        setPurchaseProducts([{ productId: '', quantity: '', buyingRate: '' }]);
+        setPurchaseData({
+          supplierId: '',
+          paymentMethod: 'cash',
+          supplierInvoiceNo: '',
+          notes: '',
         });
         fetchInventory();
       } else {
-        console.error("Server error:", data);
-        alert(
-          `Failed to add stock: ${data.error || data.message || "Unknown error"}`,
-        );
+        alert(`Failed to create purchase: ${data.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error("Failed to add stock:", error);
-      alert("Error adding stock. Check console for details.");
-    }
-  };
-
-  const handleRemoveStock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!removeData.productId || !removeData.quantity) {
-      alert('Please fill all fields');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/admin/inventory/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          productId: removeData.productId,
-          quantity: parseInt(removeData.quantity),
-        }),
-      });
-
-      if (response.ok) {
-        alert('Stock removed successfully');
-        setIsRemoveDialogOpen(false);
-        setRemoveData({ productId: '', quantity: '' });
-        fetchInventory();
-      } else {
-        alert('Failed to remove stock');
-      }
-    } catch (error) {
-      console.error('Failed to remove stock:', error);
-      alert('Error removing stock');
+      console.error('Failed to create purchase:', error);
+      alert('Error creating purchase. Check console for details.');
     }
   };
 
@@ -185,173 +188,238 @@ export default function InventoryPage() {
     (item) => item.stock <= item.lowStockThreshold
   );
 
+  const totalPurchaseAmount = calculateTotal();
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Inventory</h1>
-          <p className="text-gray-600">Manage stock & FIFO tracking</p>
+          <h1 className="text-3xl font-bold text-gray-900">Inventory Management</h1>
+          <p className="text-gray-600">Bulk purchase, stock tracking & FIFO batches</p>
         </div>
-        <div className="flex gap-2">
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-green-700 hover:bg-green-800 rounded-full">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Stock
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="bg-green-600 hover:bg-green-700 shadow-lg">
+              <Plus className="h-4 w-4 mr-2" />
+              New Purchase Order
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-2xl">Create Purchase Order</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleBulkPurchase} className="space-y-6">
+              {/* Supplier Selection */}
+              <Card className="p-4 bg-blue-50 border-blue-200">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Supplier *
+                    </label>
+                    <select
+                      value={purchaseData.supplierId}
+                      onChange={(e) =>
+                        setPurchaseData({ ...purchaseData, supplierId: e.target.value })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      <option value="">Select Supplier</option>
+                      {suppliers.map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Invoice Number
+                    </label>
+                    <Input
+                      value={purchaseData.supplierInvoiceNo}
+                      onChange={(e) =>
+                        setPurchaseData({ ...purchaseData, supplierInvoiceNo: e.target.value })
+                      }
+                      placeholder="INV-001"
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              {/* Products Section */}
+              <div>
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Package className="h-5 w-5 text-green-600" />
+                    Products
+                  </h3>
+                  <Button
+                    type="button"
+                    onClick={addProductRow}
+                    variant="outline"
+                    size="sm"
+                    className="bg-green-50 border-green-300 text-green-700 hover:bg-green-100"
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Product
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {purchaseProducts.map((item, index) => (
+                    <Card key={index} className="p-4 border-2 border-gray-200">
+                      <div className="grid grid-cols-12 gap-3 items-end">
+                        <div className="col-span-5">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Product *
+                          </label>
+                          <select
+                            value={item.productId}
+                            onChange={(e) => updateProductRow(index, 'productId', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                            required
+                          >
+                            <option value="">Select Product</option>
+                            {products.map((p) => (
+                              <option key={p._id} value={p._id}>
+                                {p.name} ({p.sku}) - Rs {p.retailPrice}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="col-span-3">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Quantity *
+                          </label>
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateProductRow(index, 'quantity', e.target.value)}
+                            placeholder="0"
+                            className="text-sm"
+                            required
+                          />
+                        </div>
+
+                        <div className="col-span-3">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            Buying Rate (Rs) *
+                          </label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={item.buyingRate}
+                            onChange={(e) => updateProductRow(index, 'buyingRate', e.target.value)}
+                            placeholder="0.00"
+                            className="text-sm"
+                            required
+                          />
+                        </div>
+
+                        <div className="col-span-1">
+                          {purchaseProducts.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => removeProductRow(index)}
+                              className="border-red-300 text-red-600 hover:bg-red-50"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {item.quantity && item.buyingRate && (
+                        <div className="mt-2 text-right">
+                          <span className="text-sm font-semibold text-gray-700">
+                            Subtotal: Rs {(parseFloat(item.quantity) * parseFloat(item.buyingRate)).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              </div>
+
+              {/* Payment Details */}
+              <Card className="p-4 bg-amber-50 border-amber-200">
+                <h3 className="text-lg font-semibold flex items-center gap-2 mb-3">
+                  <DollarSign className="h-5 w-5 text-amber-600" />
+                  Payment Details
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Payment Method *
+                    </label>
+                    <select
+                      value={purchaseData.paymentMethod}
+                      onChange={(e) =>
+                        setPurchaseData({ ...purchaseData, paymentMethod: e.target.value as any })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      required
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="bank">Bank Transfer</option>
+                      <option value="cheque">Cheque</option>
+                      <option value="easypaisa">EasyPaisa</option>
+                      <option value="jazzcash">JazzCash</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Notes (Optional)
+                    </label>
+                    <Input
+                      value={purchaseData.notes}
+                      onChange={(e) =>
+                        setPurchaseData({ ...purchaseData, notes: e.target.value })
+                      }
+                      placeholder="Additional notes..."
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              {/* Total Amount */}
+              <Card className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-bold text-gray-700">Total Purchase Amount:</span>
+                  <span className="text-3xl font-bold text-green-600">
+                    Rs {totalPurchaseAmount.toFixed(2)}
+                  </span>
+                </div>
+              </Card>
+
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                className="w-full bg-green-600 hover:bg-green-700 text-white py-3 text-lg font-semibold shadow-lg"
+              >
+                Create Purchase Order
               </Button>
-            </DialogTrigger>
-            <DialogContent className="rounded-2xl">
-              <DialogHeader>
-                <DialogTitle>Add Stock (Purchase)</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleAddStock} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Product
-                  </label>
-                  <select
-                    value={formData.productId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, productId: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                    required
-                  >
-                    <option value="">Select Product</option>
-                    {products.map((p) => (
-                      <option key={p._id} value={p._id}>
-                        {p.name} ({p.sku})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Supplier
-                  </label>
-                  <select
-                    value={formData.supplierId}
-                    onChange={(e) =>
-                      setFormData({ ...formData, supplierId: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                    required
-                  >
-                    <option value="">Select Supplier</option>
-                    {suppliers.map((s) => (
-                      <option key={s._id} value={s._id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity
-                  </label>
-                  <Input
-                    type="number"
-                    value={formData.quantity}
-                    onChange={(e) =>
-                      setFormData({ ...formData, quantity: e.target.value })
-                    }
-                    placeholder="0"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Buying Rate (Rs. per unit)
-                  </label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.buyingRate}
-                    onChange={(e) =>
-                      setFormData({ ...formData, buyingRate: e.target.value })
-                    }
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-
-                <Button type="submit" className="w-full bg-green-700 hover:bg-green-800 rounded-full">
-                  Add Stock
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={isRemoveDialogOpen} onOpenChange={setIsRemoveDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="rounded-full border-red-600 text-red-600 hover:bg-red-50 bg-transparent">
-                <Trash2 className="h-4 w-4 mr-2" />
-                Remove Stock
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="rounded-2xl">
-              <DialogHeader>
-                <DialogTitle>Remove Stock</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleRemoveStock} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Product
-                  </label>
-                  <select
-                    value={removeData.productId}
-                    onChange={(e) =>
-                      setRemoveData({ ...removeData, productId: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500"
-                    required
-                  >
-                    <option value="">Select Product</option>
-                    {products.map((p) => (
-                      <option key={p._id} value={p._id}>
-                        {p.name} ({p.sku})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity to Remove
-                  </label>
-                  <Input
-                    type="number"
-                    value={removeData.quantity}
-                    onChange={(e) =>
-                      setRemoveData({ ...removeData, quantity: e.target.value })
-                    }
-                    placeholder="0"
-                    required
-                  />
-                </div>
-
-                <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white rounded-full">
-                  Remove Stock
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Low Stock Alert */}
       {lowStockItems.length > 0 && (
-        <Card className="p-4 bg-orange-50 border border-orange-200">
+        <Card className="p-4 bg-orange-50 border-2 border-orange-300 shadow-md">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <AlertTriangle className="h-6 w-6 text-orange-600" />
             <div>
-              <p className="font-semibold text-orange-900">Low Stock Alert</p>
+              <p className="font-bold text-orange-900 text-lg">Low Stock Alert</p>
               <p className="text-sm text-orange-700">
-                {lowStockItems.length} products need restocking
+                {lowStockItems.length} products need immediate restocking
               </p>
             </div>
           </div>
@@ -359,59 +427,56 @@ export default function InventoryPage() {
       )}
 
       {/* Inventory Table */}
-      <Card className="p-6 border-0 shadow-md overflow-x-auto">
+      <Card className="p-6 border-0 shadow-lg">
         {isLoading ? (
-          <p>Loading inventory...</p>
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading inventory...</p>
+          </div>
         ) : inventory.length > 0 ? (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Product
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Stock
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Buying Rate
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {inventory.map((item) => (
-                <tr
-                  key={item._id}
-                  className={`border-b border-gray-100 ${
-                    item.stock <= item.lowStockThreshold ? 'bg-orange-50' : ''
-                  }`}
-                >
-                  <td className="py-3 px-4 font-medium text-gray-900">
-                    {item.name}
-                  </td>
-                  <td className="py-3 px-4 text-sm">{item.stock}</td>
-                  <td className="py-3 px-4 text-sm">
-                    Rs. {item.buyingRate.toFixed(2)}
-                  </td>
-                  <td className="py-3 px-4">
-                    {item.stock <= item.lowStockThreshold ? (
-                      <span className="inline-block bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium">
-                        Low Stock
-                      </span>
-                    ) : (
-                      <span className="inline-block bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium">
-                        Adequate
-                      </span>
-                    )}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b-2 border-gray-300">
+                  <th className="text-left py-4 px-4 font-bold text-gray-700">Product</th>
+                  <th className="text-left py-4 px-4 font-bold text-gray-700">Current Stock</th>
+                  <th className="text-left py-4 px-4 font-bold text-gray-700">Avg Buying Rate</th>
+                  <th className="text-left py-4 px-4 font-bold text-gray-700">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {inventory.map((item) => (
+                  <tr
+                    key={item._id}
+                    className={`border-b border-gray-200 hover:bg-gray-50 transition ${
+                      item.stock <= item.lowStockThreshold ? 'bg-orange-50' : ''
+                    }`}
+                  >
+                    <td className="py-4 px-4 font-semibold text-gray-900">{item.name}</td>
+                    <td className="py-4 px-4 text-lg font-bold text-gray-700">{item.stock}</td>
+                    <td className="py-4 px-4 text-gray-700">Rs {item.buyingRate.toFixed(2)}</td>
+                    <td className="py-4 px-4">
+                      {item.stock <= item.lowStockThreshold ? (
+                        <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-sm font-semibold">
+                          <AlertTriangle className="h-4 w-4" />
+                          Low Stock
+                        </span>
+                      ) : (
+                        <span className="inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-semibold">
+                          ✓ Adequate
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <p className="text-center text-gray-500 py-8">No inventory items</p>
+          <div className="text-center py-12">
+            <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 text-lg">No inventory items found</p>
+          </div>
         )}
       </Card>
     </div>
