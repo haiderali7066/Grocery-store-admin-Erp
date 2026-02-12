@@ -31,7 +31,7 @@ interface Order {
   orderStatus: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
   paymentMethod: string;
   createdAt: string;
-  paymentScreenshot?: string;
+  Screenshot?: string;
   trackingNumber?: string;
   trackingProvider?: string;
   items: OrderItem[];
@@ -107,7 +107,6 @@ export default function OrdersPage() {
     });
   };
 
-
   const handleReject = (orderId: string) => {
     updateOrder(orderId, { paymentStatus: "failed", orderStatus: "cancelled" });
   };
@@ -127,14 +126,13 @@ export default function OrdersPage() {
     }));
   };
 
- const handleTrackingSave = (orderId: string) => {
-   const { code, courier } = trackingInputs[orderId] || {};
-   updateOrder(orderId, {
-     trackingNumber: code || "",
-     trackingProvider: courier || "",
-   });
- };
-
+  const handleTrackingSave = (orderId: string) => {
+    const { code, courier } = trackingInputs[orderId] || {};
+    updateOrder(orderId, {
+      trackingNumber: code || "",
+      trackingProvider: courier || "",
+    });
+  };
 
   const handlePrint = (order: Order) => {
     const itemsRows = order.items
@@ -452,9 +450,10 @@ export default function OrdersPage() {
                           <h3 className="font-semibold text-slate-700 mb-2">
                             Payment Proof
                           </h3>
-                          {order.paymentScreenshot ? (
+                          {order.screenshot ? (
                             <img
-                              src={order.paymentScreenshot}
+                              src={order.screenshot}
+                              alt="Payment Screenshot"
                               className="rounded-lg border max-h-96 object-contain hover:scale-105 transition"
                             />
                           ) : (

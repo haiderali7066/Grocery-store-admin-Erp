@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       paymentMethod,
       paymentStatus: "pending",
       orderStatus: "pending",
-      paymentScreenshot: screenshot,
+      screenshot: screenshot, // ✅ FIXED
     });
 
     await order.save();

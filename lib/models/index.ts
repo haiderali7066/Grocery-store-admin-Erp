@@ -299,7 +299,7 @@ export const POSSaleSchema = new Schema(
 // =========================
 // Order Schema
 // =========================
-export const OrderSchema = new Schema(
+export  const OrderSchema = new Schema(
   {
     orderNumber: { type: String, required: true, unique: true },
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -352,13 +352,16 @@ export const OrderSchema = new Schema(
     },
     profit: { type: Number, default: 0 },
     isPOS: { type: Boolean, default: false },
-    trackingCode: String,
-    courierName: String,
+
+    // ✅ Updated tracking fields
+    trackingNumber: String,
+    trackingProvider: String,
     shippedDate: Date,
     deliveredDate: Date,
   },
   { timestamps: true },
 );
+
 
 // =========================
 // Payment Schema
