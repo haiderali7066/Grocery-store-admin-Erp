@@ -1,14 +1,15 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Eye, Download, Printer } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Eye, Download, Printer, User, Search, AlertCircle } from "lucide-react";
 
 interface POSOrder {
   _id: string;
   orderNumber: string;
+  cashierName: string;
   subtotal: number;
   gstAmount: number;
   total: number;
@@ -29,9 +30,9 @@ export default function POSReportsPage() {
   const [filteredOrders, setFilteredOrders] = useState<POSOrder[]>([]);
   const [summary, setSummary] = useState<SaleSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [selectedOrder, setSelectedOrder] = useState<POSOrder | null>(null);
   const [showDetail, setShowDetail] = useState(false);
 
@@ -45,99 +46,84 @@ export default function POSReportsPage() {
 
   const fetchPOSOrders = async () => {
     try {
-      const res = await fetch('/api/admin/pos/orders');
+      const res = await fetch("/api/admin/pos/sale");
       const data = await res.json();
-      setOrders(data.orders || []);
-      calculateSummary(data.orders || []);
+      const apiSales = data.sales || data.orders || (Array.isArray(data) ? data : []);
+      setOrders(apiSales);
+      calculateSummary(apiSales);
       setLoading(false);
     } catch (error) {
-      console.error('Failed to fetch POS orders:', error);
+      console.error("Failed to fetch POS sales:", error);
       setLoading(false);
     }
   };
 
   const calculateSummary = (data: POSOrder[]) => {
     const totalSales = data.length;
-    const totalAmount = data.reduce((sum, order) => sum + order.total, 0);
-    const totalTax = data.reduce((sum, order) => sum + order.gstAmount, 0);
+    const totalAmount = data.reduce((sum, order) => sum + (order.total || 0), 0);
+    const totalTax = data.reduce((sum, order) => sum + (order.gstAmount || 0), 0);
     const avgSaleValue = totalSales > 0 ? totalAmount / totalSales : 0;
 
-    setSummary({
-      totalSales,
-      totalAmount,
-      totalTax,
-      avgSaleValue,
-    });
+    setSummary({ totalSales, totalAmount, totalTax, avgSaleValue });
   };
 
   const applyFilters = () => {
     let filtered = orders;
-
     if (searchTerm) {
-      filtered = filtered.filter((order) =>
-        order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase())
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (o) => o.orderNumber?.toLowerCase().includes(term) || o.cashierName?.toLowerCase().includes(term)
       );
     }
-
-    if (dateFrom) {
-      filtered = filtered.filter((order) =>
-        new Date(order.createdAt) >= new Date(dateFrom)
-      );
-    }
-
+    if (dateFrom) filtered = filtered.filter((o) => new Date(o.createdAt) >= new Date(dateFrom));
     if (dateTo) {
-      filtered = filtered.filter((order) =>
-        new Date(order.createdAt) <= new Date(dateTo)
-      );
+      const dTo = new Date(dateTo);
+      dTo.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((o) => new Date(o.createdAt) <= dTo);
     }
-
     setFilteredOrders(filtered);
   };
 
   const downloadReport = () => {
-    const headers = ['Order #', 'Subtotal', 'GST', 'Total', 'Payment', 'Date'];
-    const rows = filteredOrders.map((order) => [
-      order.orderNumber,
-      order.subtotal.toFixed(2),
-      order.gstAmount.toFixed(2),
-      order.total.toFixed(2),
-      order.paymentMethod,
-      new Date(order.createdAt).toLocaleDateString(),
+    const headers = ["Order #", "Audit: Cashier", "Subtotal", "GST", "Total", "Payment", "Date"];
+    const rows = filteredOrders.map((o) => [
+      o.orderNumber,
+      o.cashierName || "N/A",
+      o.subtotal.toFixed(2),
+      o.gstAmount.toFixed(2),
+      o.total.toFixed(2),
+      o.paymentMethod,
+      new Date(o.createdAt).toLocaleDateString(),
     ]);
-
-    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `pos-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `pos-audit-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-gray-600 text-lg">Loading POS orders...</p>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="flex items-center justify-center h-96 text-gray-500">
+      Loading secure audit logs...
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-2">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">POS Sales Report</h1>
-          <p className="text-gray-600">Transaction history and analytics</p>
+          <h1 className="text-3xl font-bold text-gray-900">POS Sales Audit</h1>
+          <p className="text-gray-600">Complete transaction history with user tracking</p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => window.print()} variant="outline" className="rounded-full">
-            <Printer className="h-4 w-4 mr-2" />
-            Print
+          <Button onClick={() => window.print()} variant="outline" className="rounded-full shadow-sm">
+            <Printer className="h-4 w-4 mr-2" /> Print
           </Button>
-          <Button onClick={downloadReport} className="bg-blue-600 hover:bg-blue-700 rounded-full">
-            <Download className="h-4 w-4 mr-2" />
-            Export CSV
+          <Button onClick={downloadReport} className="bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-sm">
+            <Download className="h-4 w-4 mr-2" /> Export Audit
           </Button>
         </div>
       </div>
@@ -145,165 +131,145 @@ export default function POSReportsPage() {
       {/* Summary Cards */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="p-4 border-0 shadow-md">
-            <p className="text-sm text-gray-600 font-medium">Total Transactions</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{summary.totalSales}</p>
-          </Card>
-          <Card className="p-4 border-0 shadow-md">
-            <p className="text-sm text-gray-600 font-medium">Total Revenue</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">Rs. {summary.totalAmount.toFixed(0)}</p>
-          </Card>
-          <Card className="p-4 border-0 shadow-md">
-            <p className="text-sm text-gray-600 font-medium">Total GST</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">Rs. {summary.totalTax.toFixed(0)}</p>
-          </Card>
-          <Card className="p-4 border-0 shadow-md">
-            <p className="text-sm text-gray-600 font-medium">Average Sale</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">Rs. {summary.avgSaleValue.toFixed(0)}</p>
-          </Card>
+          {[
+            { label: "Total Trans.", val: summary.totalSales, sym: "" },
+            { label: "Total Revenue", val: summary.totalAmount.toFixed(0), sym: "Rs. " },
+            { label: "Total GST", val: summary.totalTax.toFixed(0), sym: "Rs. " },
+            { label: "Avg Sale", val: summary.avgSaleValue.toFixed(0), sym: "Rs. " },
+          ].map((item, i) => (
+            <Card key={i} className="p-4 border-0 shadow-sm bg-white">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{item.label}</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{item.sym}{item.val}</p>
+            </Card>
+          ))}
         </div>
       )}
 
       {/* Filters */}
-      <Card className="p-6 border-0 shadow-md">
+      <Card className="p-5 border-0 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Search Order #
-            </label>
-            <Input
-              placeholder="Search..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+          <div className="relative">
+            <Search className="absolute left-3 top-9 h-4 w-4 text-gray-400" />
+            <label className="text-xs font-bold text-gray-600 mb-1 block">Search Order or User</label>
+            <Input 
+              className="pl-9" 
+              placeholder="Ex: POS-101 or John Doe" 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              From Date
-            </label>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
+            <label className="text-xs font-bold text-gray-600 mb-1 block">Date From</label>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              To Date
-            </label>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
+            <label className="text-xs font-bold text-gray-600 mb-1 block">Date To</label>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
           </div>
         </div>
       </Card>
 
-      {/* Orders Table */}
-      <Card className="p-6 border-0 shadow-md overflow-x-auto">
-        {filteredOrders.length > 0 ? (
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Order #</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Subtotal</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">GST</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Total</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Payment</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Date</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Action</th>
+      {/* Table */}
+      <Card className="border-0 shadow-sm overflow-hidden bg-white">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Order #</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Processed By</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Total</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Method</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Date</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase">Action</th>
               </tr>
             </thead>
-            <tbody>
-              {filteredOrders.map((order) => (
-                <tr key={order._id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-3 px-4 font-medium text-gray-900">{order.orderNumber}</td>
-                  <td className="py-3 px-4 text-sm">Rs. {order.subtotal.toFixed(0)}</td>
-                  <td className="py-3 px-4 text-sm">Rs. {order.gstAmount.toFixed(0)}</td>
-                  <td className="py-3 px-4 text-sm font-semibold">Rs. {order.total.toFixed(0)}</td>
-                  <td className="py-3 px-4 text-sm">
-                    <span className="inline-block px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                      {order.paymentMethod.toUpperCase()}
+            <tbody className="divide-y divide-gray-100">
+              {filteredOrders.length > 0 ? filteredOrders.map((order) => (
+                <tr key={order._id} className="hover:bg-gray-50/50 transition-colors">
+                  <td className="px-6 py-4 font-semibold text-gray-900">{order.orderNumber}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-7 w-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                        {/* SAFE charAt CHECK */}
+                        {order.cashierName?.charAt(0).toUpperCase() || "?"}
+                      </div>
+                      <span className="text-sm text-gray-700 font-medium">{order.cashierName || "System"}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm font-bold text-gray-900">Rs. {order.total?.toFixed(0)}</td>
+                  <td className="px-6 py-4">
+                    <span className="px-2 py-1 rounded text-[10px] font-bold bg-gray-100 text-gray-600 uppercase">
+                      {order.paymentMethod}
                     </span>
                   </td>
-                  <td className="py-3 px-4 text-sm">{new Date(order.createdAt).toLocaleDateString()}</td>
-                  <td className="py-3 px-4">
-                    <Button
-                      onClick={() => {
-                        setSelectedOrder(order);
-                        setShowDetail(true);
-                      }}
-                      size="sm"
-                      variant="outline"
-                      className="rounded-full"
-                    >
-                      <Eye className="h-4 w-4" />
+                  <td className="px-6 py-4 text-sm text-gray-500">{new Date(order.createdAt).toLocaleDateString()}</td>
+                  <td className="px-6 py-4">
+                    <Button onClick={() => { setSelectedOrder(order); setShowDetail(true); }} size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-full">
+                      <Eye className="h-4 w-4 text-indigo-600" />
                     </Button>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-400">No audit records found matching your filters.</td></tr>
+              )}
             </tbody>
           </table>
-        ) : (
-          <p className="text-center text-gray-500 py-8">No orders found</p>
-        )}
+        </div>
       </Card>
 
-      {/* Detail Modal */}
+      {/* Detailed Audit Modal */}
       {showDetail && selectedOrder && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md p-6 rounded-2xl">
-            <h2 className="text-2xl font-bold mb-4">Order Details</h2>
-
-            <div className="space-y-3 mb-6">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Order #:</span>
-                <span className="font-medium">{selectedOrder.orderNumber}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Date:</span>
-                <span className="font-medium">{new Date(selectedOrder.createdAt).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Payment:</span>
-                <span className="font-medium">{selectedOrder.paymentMethod.toUpperCase()}</span>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="bg-indigo-600 p-6 text-white">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-indigo-100 text-xs font-bold uppercase">Audit Record</p>
+                  <h2 className="text-2xl font-bold">{selectedOrder.orderNumber}</h2>
+                </div>
+                <div className="bg-white/20 p-2 rounded-lg backdrop-blur-md">
+                   <User className="h-5 w-5" />
+                </div>
               </div>
             </div>
 
-            <div className="border-t border-b border-gray-200 py-3 mb-6">
-              <h3 className="font-semibold mb-2">Items ({selectedOrder.items.length})</h3>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {selectedOrder.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-sm">
-                    <span>{item.name || 'Item'} x{item.quantity}</span>
-                    <span>Rs. {(item.subtotal || item.price * item.quantity).toFixed(0)}</span>
-                  </div>
-                ))}
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 font-medium">Cashier / Auditor:</span>
+                <span className="text-gray-900 font-bold">{selectedOrder.cashierName || "Unknown"}</span>
               </div>
-            </div>
+              
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Itemized List</p>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {selectedOrder.items?.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-xs">
+                      <span className="text-gray-700">{item.name} <span className="text-gray-400">x{item.quantity}</span></span>
+                      <span className="font-semibold">Rs. {item.subtotal?.toFixed(0)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
-            <div className="space-y-2 mb-6">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal:</span>
-                <span>Rs. {selectedOrder.subtotal.toFixed(0)}</span>
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Subtotal</span>
+                  <span>Rs. {selectedOrder.subtotal?.toFixed(0)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>Tax (GST)</span>
+                  <span>Rs. {selectedOrder.gstAmount?.toFixed(0)}</span>
+                </div>
+                <div className="flex justify-between text-lg font-black text-indigo-600 pt-2 border-t border-dashed">
+                  <span>Total Amount</span>
+                  <span>Rs. {selectedOrder.total?.toFixed(0)}</span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">GST (17%):</span>
-                <span>Rs. {selectedOrder.gstAmount.toFixed(0)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold pt-2 border-t">
-                <span>Total:</span>
-                <span>Rs. {selectedOrder.total.toFixed(0)}</span>
-              </div>
-            </div>
 
-            <Button
-              onClick={() => setShowDetail(false)}
-              className="w-full bg-gray-600 hover:bg-gray-700 text-white rounded-full"
-            >
-              Close
-            </Button>
+              <Button onClick={() => setShowDetail(false)} className="w-full h-12 bg-gray-900 hover:bg-black text-white rounded-xl mt-4">
+                Close Audit Entry
+              </Button>
+            </div>
           </Card>
         </div>
       )}

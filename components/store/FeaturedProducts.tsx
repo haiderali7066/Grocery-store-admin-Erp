@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { ProductCard } from "./ProductCard";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/components/cart/CartProvider";
+import {
+  ChevronRight,
+  Sparkles,
+  Loader2,
+  PauseCircle,
+  PlayCircle,
+} from "lucide-react";
 
 interface Product {
   _id: string;
@@ -34,21 +41,10 @@ export function FeaturedProducts() {
         const response = await fetch("/api/products?isFeatured=true&limit=12");
         if (response.ok) {
           const data = await response.json();
-          console.log(
-            "[v0] Featured products fetched:",
-            data.products?.length || 0,
-          );
           setProducts(data.products || []);
-        } else {
-          console.error(
-            "[v0] Failed to fetch featured products - Status:",
-            response.status,
-          );
-          const errorData = await response.json();
-          console.error("[v0] Error details:", errorData);
         }
       } catch (error) {
-        console.error("[v0] Failed to fetch featured products:", error);
+        console.error("Failed to fetch featured products:", error);
       } finally {
         setIsLoading(false);
       }
@@ -58,14 +54,9 @@ export function FeaturedProducts() {
   }, []);
 
   const handleAddToCart = (productId: string) => {
-    console.log("[v0] handleAddToCart called with productId:", productId);
     const product = products.find((p) => p._id === productId);
-    if (!product) {
-      console.log("[v0] Product not found:", productId);
-      return;
-    }
+    if (!product) return;
 
-    console.log("[v0] Adding item to cart:", product.name);
     addItem({
       id: product._id,
       name: product.name,
@@ -74,62 +65,88 @@ export function FeaturedProducts() {
       weight: `${product.unitSize} ${product.unitType}`,
       discount: product.discount,
     });
-    console.log("[v0] Item added successfully");
   };
 
   if (isLoading) {
     return (
-      <div className="py-12">
-        <div className="max-w-7xl mx-auto px-4">
-          <h2 className="text-3xl font-bold mb-8">Featured Products</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[...Array(8)].map((_, i) => (
-              <div
-                key={i}
-                className="bg-gray-200 h-64 rounded-lg animate-pulse"
-              />
-            ))}
-          </div>
-        </div>
+      <div className="py-20 flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="h-8 w-8 animate-spin text-amber-600" />
+        <p className="text-amber-800 font-medium animate-pulse">
+          Loading amazing deals...
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="py-16 bg-amber-500 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center mb-12">
-          <div>
-            <h2 className="text-4xl font-bold text-foreground">
-              Featured Products
+    <section className="py-12 md:py-20 bg-gradient-to-b from-amber-400 to-amber-500 overflow-hidden relative">
+      {/* Background Decorative Elements */}
+      <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
+        <div className="absolute top-10 left-10 w-32 h-32 rounded-full bg-white" />
+        <div className="absolute bottom-10 right-10 w-64 h-64 rounded-full bg-white" />
+      </div>
+
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 relative z-20">
+        <div className="flex flex-col md:flex-row justify-between items-end md:items-center gap-4 mb-10 md:mb-16">
+          <div className="text-left">
+            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs font-bold uppercase tracking-widest mb-3">
+              <Sparkles className="h-3 w-3" />
+              Top Picks
+            </div>
+            <h2 className="text-3xl md:text-5xl font-black text-white leading-tight">
+              Featured <span className="text-amber-900">Products</span>
             </h2>
-            <p className="text-muted-foreground mt-2">
-              Handpicked items updated daily
+            <p className="text-amber-100 mt-2 text-sm md:text-lg max-w-md">
+              Handpicked premium items refreshed every 24 hours.
             </p>
           </div>
+
           <button
             onClick={() => router.push("/products?featured=true")}
-            className="px-6 py-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-all font-semibold text-sm"
+            className="group flex items-center gap-2 px-6 py-3 rounded-2xl bg-white text-amber-600 hover:bg-amber-900 hover:text-white transition-all duration-300 font-bold text-sm shadow-xl shadow-amber-600/20"
           >
-            View All
+            Explore All
+            <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
 
         {products.length > 0 ? (
           <div
-            className="relative"
+            className="group relative"
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
+            onTouchStart={() => setIsPaused(true)}
+            onTouchEnd={() => setIsPaused(false)}
           >
-            {/* Gradient Overlays */}
-            <div className="absolute left-0 top-0 bottom-0 w-32 bg-gradient-to-r from-amber-500 to-transparent z-10 pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-amber-500 to-transparent z-10 pointer-events-none" />
+            {/* Soft Edge Blurring */}
+            <div className="absolute -left-1 top-0 bottom-0 w-16 md:w-40 bg-gradient-to-r from-amber-400 to-transparent z-30 pointer-events-none" />
+            <div className="absolute -right-1 top-0 bottom-0 w-16 md:w-40 bg-gradient-to-l from-amber-500 to-transparent z-30 pointer-events-none" />
 
-            {/* Scrolling Train Container */}
-            <div className="overflow-hidden">
-              <div className={`flex gap-6 ${isPaused ? "" : "animate-scroll"}`}>
+            {/* Marquee Container */}
+            <div className="flex overflow-hidden select-none border-y border-white/10 py-8">
+              <div
+                className={`flex gap-4 md:gap-8 flex-shrink-0 items-center justify-around min-w-full ${
+                  isPaused ? "pause-animation" : "animate-marquee"
+                }`}
+              >
+                {/* First set of products */}
                 {products.map((product) => (
-                  <div key={product._id} className="flex-shrink-0 w-72">
+                  <div
+                    key={`${product._id}-1`}
+                    className="w-[280px] md:w-[320px] transition-transform duration-300 hover:scale-[1.02]"
+                  >
+                    <ProductCard
+                      product={product}
+                      onAddToCart={handleAddToCart}
+                    />
+                  </div>
+                ))}
+                {/* Duplicate set for seamless loop */}
+                {products.map((product) => (
+                  <div
+                    key={`${product._id}-2`}
+                    className="w-[280px] md:w-[320px] transition-transform duration-300 hover:scale-[1.02]"
+                  >
                     <ProductCard
                       product={product}
                       onAddToCart={handleAddToCart}
@@ -139,40 +156,60 @@ export function FeaturedProducts() {
               </div>
             </div>
 
-            {/* Pause indicator */}
-            {isPaused && (
-              <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm z-20">
-                Paused
-              </div>
-            )}
+            {/* Visual Status Indicator */}
+            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 text-white/60">
+              {isPaused ? (
+                <PauseCircle className="h-4 w-4 animate-pulse" />
+              ) : (
+                <PlayCircle className="h-4 w-4" />
+              )}
+              <span className="text-[10px] font-bold uppercase tracking-tighter">
+                {isPaused ? "Paused for viewing" : "Auto-scrolling"}
+              </span>
+            </div>
           </div>
         ) : (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground">
-              No featured products available
+          <div className="text-center py-20 bg-white/10 backdrop-blur-sm rounded-[3rem] border border-white/20">
+            <p className="text-white font-medium text-lg">
+              Checking the warehouse for new featured items...
             </p>
           </div>
         )}
       </div>
 
-      <style jsx>{`
-        @keyframes scroll {
+      <style jsx global>{`
+        @keyframes marquee {
           0% {
             transform: translateX(0);
           }
           100% {
-            transform: translateX(-100%);
+            transform: translateX(calc(-50% - 1rem));
           }
         }
 
-        .animate-scroll {
-          animation: scroll 30s linear infinite;
+        .animate-marquee {
+          animation: marquee 40s linear infinite;
         }
 
-        .animate-scroll:hover {
+        @media (max-width: 768px) {
+          .animate-marquee {
+            animation-duration: 25s;
+          }
+        }
+
+        .pause-animation {
           animation-play-state: paused;
         }
+
+        /* Support for reduced motion accessibility */
+        @media (prefers-reduced-motion: reduce) {
+          .animate-marquee {
+            animation: none;
+            overflow-x: auto;
+            justify-content: flex-start;
+          }
+        }
       `}</style>
-    </div>
+    </section>
   );
 }

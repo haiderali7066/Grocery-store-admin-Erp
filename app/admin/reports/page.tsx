@@ -1,393 +1,188 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Download, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { useEffect, useState, useCallback } from "react";
+import { Card } from "@/components/ui/card";
+import { 
+  AlertTriangle, Loader2, TrendingUp, TrendingDown, 
+  Wallet, ShoppingBag, Receipt, Package, RefreshCcw 
+} from "lucide-react";
 
-interface ProfitLossData {
-  period: string;
-  totalRevenue: number;
-  totalCogs: number;
-  grossProfit: number;
-  grossProfitMargin: number;
-  operatingExpenses: number;
-  operatingProfit: number;
-  operatingMargin: number;
-  taxExpense: number;
-  netProfit: number;
-  netProfitMargin: number;
-}
+export default function ProfitLossPage() {
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState("monthly");
 
-interface RevenueBreakdown {
-  source: string;
-  amount: number;
-  percentage: number;
-}
-
-interface ExpenseBreakdown {
-  category: string;
-  amount: number;
-  percentage: number;
-}
-
-export default function ReportsPage() {
-  const [plData, setPLData] = useState<ProfitLossData | null>(null);
-  const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueBreakdown[]>([]);
-  const [expenseBreakdown, setExpenseBreakdown] = useState<ExpenseBreakdown[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [period, setPeriod] = useState('monthly');
-
-  useEffect(() => {
-    fetchReports();
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/reports?period=${period}`);
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || "Failed to load reports");
+      setData(result);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, [period]);
 
-  const fetchReports = async () => {
-    try {
-      const params = new URLSearchParams({
-        period,
-        ...(dateFrom && { dateFrom }),
-        ...(dateTo && { dateTo }),
-      });
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-      const response = await fetch(`/api/admin/reports/pl?${params}`);
-      if (response.ok) {
-        const data = await response.json();
-        setPLData(data.plData);
-        setRevenueBreakdown(data.revenueBreakdown || []);
-        setExpenseBreakdown(data.expenseBreakdown || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch P&L report:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDateChange = () => {
-    setIsLoading(true);
-    fetchReports();
-  };
-
-  const exportReport = () => {
-    if (!plData) return;
-
-    const reportContent = `
-PROFIT & LOSS REPORT
-Period: ${plData.period}
-Generated: ${new Date().toLocaleString()}
-
-========================================
-REVENUE SECTION
-========================================
-Total Revenue: Rs. ${plData.totalRevenue.toFixed(2)}
-
-COST OF GOODS SOLD
-${revenueBreakdown.length > 0 ? revenueBreakdown.map((r) => `${r.source}: Rs. ${r.amount.toFixed(2)} (${r.percentage.toFixed(1)}%)`).join('\n') : 'N/A'}
-
-Total COGS: Rs. ${plData.totalCogs.toFixed(2)}
-
-========================================
-PROFIT ANALYSIS
-========================================
-Gross Profit: Rs. ${plData.grossProfit.toFixed(2)}
-Gross Profit Margin: ${plData.grossProfitMargin.toFixed(2)}%
-
-Operating Expenses: Rs. ${plData.operatingExpenses.toFixed(2)}
-${expenseBreakdown.length > 0 ? expenseBreakdown.map((e) => `  - ${e.category}: Rs. ${e.amount.toFixed(2)} (${e.percentage.toFixed(1)}%)`).join('\n') : '  N/A'}
-
-Operating Profit: Rs. ${plData.operatingProfit.toFixed(2)}
-Operating Margin: ${plData.operatingMargin.toFixed(2)}%
-
-Tax Expense: Rs. ${plData.taxExpense.toFixed(2)}
-
-NET PROFIT: Rs. ${plData.netProfit.toFixed(2)}
-Net Profit Margin: ${plData.netProfitMargin.toFixed(2)}%
-    `;
-
-    const blob = new Blob([reportContent], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `profit-loss-report-${new Date().getTime()}.txt`;
-    a.click();
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-gray-600 text-lg">Loading reports...</p>
-      </div>
-    );
-  }
+  if (loading && !data) return <LoadingScreen />;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+      {/* Header Section */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Profit & Loss Report</h1>
-          <p className="text-gray-600">Financial analysis and performance metrics</p>
+          <h1 className="text-4xl font-black tracking-tighter text-slate-900">
+            Analytics <span className="text-blue-600">.</span>
+          </h1>
+          <p className="text-slate-500 font-medium">Financial health & performance overview</p>
         </div>
-        <Button onClick={exportReport} className="bg-blue-600 hover:bg-blue-700 rounded-full">
-          <Download className="h-4 w-4 mr-2" />
-          Export Report
-        </Button>
+
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {["daily", "weekly", "monthly"].map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${
+                period === p ? "bg-white shadow-sm text-blue-600" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              {p}
+            </button>
+          ))}
+          <button onClick={fetchData} className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
+            <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+      </header>
+
+      {/* Main Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatBox
+          title="Total Revenue"
+          icon={<ShoppingBag size={18} />}
+          value={data?.stats?.totalRevenue}
+          sub={`Online: Rs. ${data?.breakdown?.online?.toLocaleString()}`}
+          color="blue"
+        />
+        <StatBox
+          title="Net Profit"
+          icon={data?.stats?.netProfit >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+          value={data?.stats?.netProfit}
+          sub={`${data?.stats?.margins?.net?.toFixed(1)}% Net Margin`}
+          color={data?.stats?.netProfit >= 0 ? "green" : "red"}
+        />
+        <StatBox
+          title="Total Expenses"
+          icon={<Receipt size={18} />}
+          value={data?.stats?.totalExpenses}
+          sub={`${data?.breakdown?.expenses?.length} Categories`}
+          color="amber"
+        />
+        <StatBox
+          title="Inventory Value"
+          icon={<Package size={18} />}
+          value={data?.stats?.inventoryValue}
+          sub="Current Asset Stock"
+          color="indigo"
+        />
       </div>
 
-      {/* Date Filters */}
-      <Card className="p-6 border-0 shadow-md">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Period
-            </label>
-            <select
-              value={period}
-              onChange={(e) => {
-                setPeriod(e.target.value);
-                setIsLoading(true);
-                setTimeout(() => fetchReports(), 0);
-              }}
-              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-              <option value="custom">Custom Range</option>
-            </select>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Expense Breakdown */}
+        <Card className="lg:col-span-1 p-6 border-slate-100 shadow-xl shadow-slate-200/50">
+          <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <Wallet size={18} className="text-slate-400" /> Expense Breakdown
+          </h3>
+          <div className="space-y-4">
+            {data?.breakdown?.expenses?.map((ex: any, i: number) => (
+              <div key={i}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="font-semibold text-slate-600">{ex.category}</span>
+                  <span className="font-bold text-slate-900">Rs. {ex.amount.toLocaleString()}</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-amber-400 h-full rounded-full" 
+                    style={{ width: `${(ex.amount / data.stats.totalExpenses) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+            {(!data?.breakdown?.expenses || data?.breakdown?.expenses.length === 0) && (
+              <p className="text-center py-8 text-slate-400 italic text-sm">No expenses recorded for this period.</p>
+            )}
           </div>
+        </Card>
 
-          {period === 'custom' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  From Date
-                </label>
-                <Input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  To Date
-                </label>
-                <Input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                />
-              </div>
-              <div className="flex items-end">
-                <Button
-                  onClick={handleDateChange}
-                  className="w-full bg-blue-600 hover:bg-blue-700 rounded-full"
-                >
-                  Apply Filter
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </Card>
-
-      {/* P&L Summary */}
-      {plData && (
-        <>
-          {/* Revenue Section */}
-          <Card className="p-6 border-0 shadow-md bg-gradient-to-br from-green-50 to-green-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-green-600" />
-              Revenue
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-600">Total Revenue</p>
-                <p className="text-3xl font-bold text-green-900 mt-2">
-                  Rs. {plData.totalRevenue.toFixed(0)}
+        {/* Profitability Indicator */}
+        <Card className="lg:col-span-2 p-6 border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col justify-center">
+            <div className="text-center space-y-2">
+                <p className="text-slate-500 font-medium">Gross Profit Margin</p>
+                <h2 className="text-6xl font-black text-slate-900">
+                    {data?.stats?.margins?.gross?.toFixed(1)}%
+                </h2>
+                <p className="text-sm text-slate-400 max-w-xs mx-auto">
+                    This represents your profit after Cost of Goods Sold but before operational expenses.
                 </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Revenue Sources</p>
-                <div className="mt-2 space-y-1">
-                  {revenueBreakdown.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-gray-700">{item.source}:</span>
-                      <span className="font-medium">
-                        Rs. {item.amount.toFixed(0)} ({item.percentage.toFixed(1)}%)
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
-          </Card>
+        </Card>
+      </div>
 
-          {/* Cost Section */}
-          <Card className="p-6 border-0 shadow-md bg-gradient-to-br from-orange-50 to-orange-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Cost of Goods Sold</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-600">Total COGS</p>
-                <p className="text-3xl font-bold text-orange-900 mt-2">
-                  Rs. {plData.totalCogs.toFixed(0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Gross Profit</p>
-                <p className="text-2xl font-bold text-green-700 mt-2">
-                  Rs. {plData.grossProfit.toFixed(0)}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Margin: {plData.grossProfitMargin.toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          </Card>
+      {error && <ErrorAlert error={error} />}
+    </div>
+  );
+}
 
-          {/* Operating Section */}
-          <Card className="p-6 border-0 shadow-md bg-gradient-to-br from-blue-50 to-blue-100">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <DollarSign className="h-5 w-5 text-blue-600" />
-              Operating Expenses
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-600">Total Operating Expenses</p>
-                <p className="text-3xl font-bold text-blue-900 mt-2">
-                  Rs. {plData.operatingExpenses.toFixed(0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Expense Breakdown</p>
-                <div className="mt-2 space-y-1">
-                  {expenseBreakdown.map((item, idx) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-gray-700">{item.category}:</span>
-                      <span className="font-medium">
-                        Rs. {item.amount.toFixed(0)} ({item.percentage.toFixed(1)}%)
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Card>
+// --- Sub-components ---
 
-          {/* Net Profit Section */}
-          <Card
-            className={`p-6 border-0 shadow-md ${
-              plData.netProfit >= 0
-                ? 'bg-gradient-to-br from-green-50 to-green-100'
-                : 'bg-gradient-to-br from-red-50 to-red-100'
-            }`}
-          >
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              {plData.netProfit >= 0 ? (
-                <TrendingUp className="h-5 w-5 text-green-600" />
-              ) : (
-                <TrendingDown className="h-5 w-5 text-red-600" />
-              )}
-              Net Profit
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-gray-600">Operating Profit</p>
-                <p
-                  className={`text-2xl font-bold mt-2 ${
-                    plData.operatingProfit >= 0 ? 'text-green-900' : 'text-red-900'
-                  }`}
-                >
-                  Rs. {plData.operatingProfit.toFixed(0)}
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Margin: {plData.operatingMargin.toFixed(2)}%
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Tax Expense</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
-                  Rs. {plData.taxExpense.toFixed(0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-600">Net Profit</p>
-                <p
-                  className={`text-3xl font-bold mt-2 ${
-                    plData.netProfit >= 0 ? 'text-green-900' : 'text-red-900'
-                  }`}
-                >
-                  Rs. {plData.netProfit.toFixed(0)}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Margin: {plData.netProfitMargin.toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          </Card>
+function StatBox({ title, value, sub, icon, color }: any) {
+  const colors: any = {
+    blue: "bg-blue-50 text-blue-600 border-blue-100",
+    green: "bg-emerald-50 text-emerald-600 border-emerald-100",
+    red: "bg-rose-50 text-rose-600 border-rose-100",
+    amber: "bg-amber-50 text-amber-600 border-amber-100",
+    indigo: "bg-indigo-50 text-indigo-600 border-indigo-100",
+  };
 
-          {/* Summary Table */}
-          <Card className="p-6 border-0 shadow-md overflow-x-auto">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Summary</h2>
-            <table className="w-full">
-              <tbody>
-                <tr className="border-b">
-                  <td className="py-3 px-4 font-medium text-gray-900">Total Revenue</td>
-                  <td className="py-3 px-4 text-right font-semibold">
-                    Rs. {plData.totalRevenue.toFixed(2)}
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-3 px-4 font-medium text-gray-900">Less: Cost of Goods Sold</td>
-                  <td className="py-3 px-4 text-right font-semibold text-red-600">
-                    (Rs. {plData.totalCogs.toFixed(2)})
-                  </td>
-                </tr>
-                <tr className="border-b bg-green-50">
-                  <td className="py-3 px-4 font-bold text-gray-900">Gross Profit</td>
-                  <td className="py-3 px-4 text-right font-bold text-green-900">
-                    Rs. {plData.grossProfit.toFixed(2)}
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-3 px-4 font-medium text-gray-900">Less: Operating Expenses</td>
-                  <td className="py-3 px-4 text-right font-semibold text-red-600">
-                    (Rs. {plData.operatingExpenses.toFixed(2)})
-                  </td>
-                </tr>
-                <tr className="border-b bg-blue-50">
-                  <td className="py-3 px-4 font-bold text-gray-900">Operating Profit</td>
-                  <td className="py-3 px-4 text-right font-bold text-blue-900">
-                    Rs. {plData.operatingProfit.toFixed(2)}
-                  </td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-3 px-4 font-medium text-gray-900">Less: Tax Expense</td>
-                  <td className="py-3 px-4 text-right font-semibold text-red-600">
-                    (Rs. {plData.taxExpense.toFixed(2)})
-                  </td>
-                </tr>
-                <tr className="bg-green-100">
-                  <td className="py-3 px-4 font-bold text-gray-900 text-lg">NET PROFIT</td>
-                  <td
-                    className={`py-3 px-4 text-right font-bold text-lg ${
-                      plData.netProfit >= 0 ? 'text-green-900' : 'text-red-900'
-                    }`}
-                  >
-                    Rs. {plData.netProfit.toFixed(2)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </Card>
-        </>
-      )}
+  return (
+    <Card className="p-6 border-slate-100 shadow-lg shadow-slate-200/40 hover:scale-[1.02] transition-transform">
+      <div className="flex items-center gap-3 mb-3">
+        <div className={`p-2 rounded-lg border ${colors[color]}`}>{icon}</div>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{title}</p>
+      </div>
+      <p className="text-2xl font-black text-slate-900">
+        Rs. {(value ?? 0).toLocaleString()}
+      </p>
+      <p className="text-xs mt-2 text-slate-500 font-medium">{sub}</p>
+    </Card>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div className="h-screen flex flex-col items-center justify-center space-y-4 bg-slate-50">
+      <div className="relative">
+        <Loader2 className="animate-spin text-blue-600" size={48} />
+        <div className="absolute inset-0 blur-xl bg-blue-400/20 animate-pulse"></div>
+      </div>
+      <p className="text-slate-500 font-bold tracking-widest text-xs uppercase">Analyzing Financials...</p>
+    </div>
+  );
+}
+
+function ErrorAlert({ error }: { error: string }) {
+  return (
+    <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700">
+      <AlertTriangle size={20} />
+      <p className="text-sm font-medium">{error}</p>
     </div>
   );
 }

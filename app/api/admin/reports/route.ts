@@ -1,105 +1,90 @@
-import { connectDB } from '@/lib/db';
-import { Order, Product, InventoryBatch } from '@/lib/models/index';
-import { getInventoryValuation } from '@/lib/inventory';
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, getTokenFromCookie } from '@/lib/auth';
+import { connectDB } from "@/lib/db";
+import { Order, POSSale, Expense, InventoryBatch } from "@/lib/models/index";
+import { NextRequest, NextResponse } from "next/server";
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+import moment from "moment";
 
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
 
-    const token = getTokenFromCookie(req.headers.get('cookie') || '');
-    if (!token) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-    }
-
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
     const payload = verifyToken(token);
-    if (!payload || payload.role !== 'admin') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get all orders
-    const orders = await Order.find().populate('items.product');
+    const { searchParams } = new URL(req.url);
+    const period = searchParams.get("period") || "monthly";
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
 
-    // Calculate totals
-    const totalSales = orders.reduce((sum, order) => sum + order.total, 0);
-    const totalProfit = orders.reduce((sum, order) => sum + (order.profit || 0), 0);
+    let start = moment().startOf("month").toDate();
+    let end = moment().endOf("day").toDate();
 
-    // Calculate COGS (Cost of Goods Sold)
-    const totalCost = orders.reduce((sum, order) => {
-      return (
-        sum +
-        order.items.reduce((itemSum: number, item: any) => {
-          const costPerUnit = (item.price * 100) / (100 + (item.gst || 17));
-          return itemSum + costPerUnit * item.quantity;
-        }, 0)
-      );
-    }, 0);
+    if (period === "daily") start = moment().startOf("day").toDate();
+    else if (period === "weekly") start = moment().subtract(7, "days").startOf("day").toDate();
+    else if (period === "custom" && dateFrom && dateTo) {
+      start = moment(dateFrom).startOf("day").toDate();
+      end = moment(dateTo).endOf("day").toDate();
+    }
 
-    // Get product-wise profit
-    const products = await Product.find();
-    const productSales = products.slice(0, 5).map((product) => {
-      const productOrders = orders.filter((order) =>
-        order.items.some(
-          (item: any) => item.product._id.toString() === product._id.toString()
-        )
-      );
+    const matchQuery = { createdAt: { $gte: start, $lte: end } };
 
-      const sales = productOrders.reduce((sum, order) => {
-        const productItems = order.items.filter(
-          (item: any) => item.product._id.toString() === product._id.toString()
-        );
-        return sum + productItems.reduce((s: number, item: any) => s + item.subtotal, 0);
-      }, 0);
+    // Optimized Aggregation
+    const [financialStats, expenseStats, inventoryValue] = await Promise.all([
+      // 1. Calculate Revenue & COGS from both Online and POS
+      Promise.all([
+        Order.aggregate([
+          { $match: { ...matchQuery, orderStatus: { $ne: "cancelled" } } },
+          { $group: { _id: null, rev: { $sum: "$subtotal" }, profit: { $sum: "$profit" } } }
+        ]),
+        POSSale.aggregate([
+          { $match: { ...matchQuery, paymentStatus: "completed" } },
+          { $group: { _id: null, rev: { $sum: "$subtotal" }, cogs: { $sum: "$costOfGoods" } } }
+        ])
+      ]),
+      // 2. Expense Breakdown
+      Expense.aggregate([
+        { $match: { date: { $gte: start, $lte: end } } },
+        { $group: { _id: "$category", total: { $sum: "$amount" } } }
+      ]),
+      // 3. Current Inventory Value
+      InventoryBatch.aggregate([
+        { $match: { status: { $ne: "finished" } } },
+        { $group: { _id: null, total: { $sum: { $multiply: ["$remainingQuantity", "$buyingRate"] } } } }
+      ])
+    ]);
 
-      const profit =
-        sales > 0 ? (sales * totalProfit) / totalSales : 0;
+    const online = financialStats[0][0] || { rev: 0, profit: 0 };
+    const pos = financialStats[1][0] || { rev: 0, cogs: 0 };
+    
+    const totalRevenue = online.rev + pos.rev;
+    const totalCOGS = (online.rev - online.profit) + pos.cogs;
+    const totalExpenses = expenseStats.reduce((acc, curr) => acc + curr.total, 0);
+    const grossProfit = totalRevenue - totalCOGS;
+    const netProfit = grossProfit - totalExpenses;
 
-      return {
-        name: product.name,
-        sales,
-        profit,
-      };
-    });
-
-    // Calculate tax data
-    const taxableItems = orders.reduce((sum, order) => {
-      return (
-        sum +
-        order.items.reduce((s: number, item: any) => {
-          if (item.gst > 0) return s + item.quantity;
-          return s;
-        }, 0)
-      );
-    }, 0);
-
-    const taxAmount = orders.reduce((sum, order) => sum + order.gstAmount, 0);
-
-    // Inventory valuation
-    const inventoryValuation = await getInventoryValuation();
-
-    return NextResponse.json(
-      {
-        report: {
-          totalSales,
-          totalCost,
-          totalProfit,
-          productSales,
-          taxData: {
-            taxableAmount: totalSales,
-            taxAmount,
-            exemptAmount: 0,
-          },
-          inventoryValuation: inventoryValuation.totalValue,
+    return NextResponse.json({
+      success: true,
+      stats: {
+        totalRevenue,
+        grossProfit,
+        netProfit,
+        totalExpenses,
+        inventoryValue: inventoryValue[0]?.total || 0,
+        margins: {
+          gross: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
+          net: totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0,
         },
       },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Reports generation error:', error);
-    return NextResponse.json(
-      { message: 'Internal server error' },
-      { status: 500 }
-    );
+      breakdown: {
+        online: online.rev,
+        pos: pos.rev,
+        expenses: expenseStats.map(e => ({ category: e._id, amount: e.total })),
+      }
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -3,16 +3,14 @@ import { connectDB } from "@/lib/db";
 import { Category } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
-// PUBLIC GET: fetch visible categories (no auth)
+// PUBLIC GET — returns only visible categories, sorted
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
 
-    // Only fetch visible categories for the public
-    const categories = await Category.find({ isVisible: true }).sort({
-      sortOrder: 1,
-      name: 1,
-    });
+    const categories = await Category.find({ isVisible: true })
+      .sort({ sortOrder: 1, name: 1 })
+      .lean(); // lean() returns plain JS objects — faster, less memory
 
     return NextResponse.json({ categories }, { status: 200 });
   } catch (error) {
@@ -24,12 +22,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// PROTECTED CREATE category
+// PROTECTED POST — admin only
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
-    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    const token = getTokenFromCookie(req.headers.get("cookie") ?? "");
     if (!token)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
@@ -37,25 +35,27 @@ export async function POST(req: NextRequest) {
     if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
 
-    const { name, icon } = await req.json();
+    const body = await req.json();
+    const name: string | undefined = body?.name?.trim();
+    const icon: string = body?.icon?.trim() ?? "";
+
     if (!name)
       return NextResponse.json(
         { error: "Category name is required" },
         { status: 400 },
       );
 
-    // Check if category exists
+    // Case-insensitive duplicate check
     const existing = await Category.findOne({
       name: { $regex: new RegExp(`^${name}$`, "i") },
     });
     if (existing)
       return NextResponse.json(
         { error: "Category already exists" },
-        { status: 400 },
+        { status: 409 }, // 409 Conflict is more semantically correct than 400
       );
 
-    const category = new Category({ name, icon: icon || "" });
-    await category.save();
+    const category = await Category.create({ name, icon });
 
     return NextResponse.json(
       { message: "Category created", category },

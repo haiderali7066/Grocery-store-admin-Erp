@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Navbar } from "@/components/store/Navbar";
 import { Footer } from "@/components/store/Footer";
 import { useCart } from "@/components/cart/CartProvider";
@@ -9,7 +10,17 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle } from "lucide-react";
+import { 
+  AlertCircle, 
+  Truck, 
+  CreditCard, 
+  ShieldCheck, 
+  UploadCloud, 
+  ChevronRight,
+  PackageCheck,
+  Building2,
+  Smartphone
+} from "lucide-react";
 
 export default function CheckoutPage() {
   const { items, subtotal, gstAmount, total, clearCart } = useCart();
@@ -28,53 +39,41 @@ export default function CheckoutPage() {
     zipCode: "",
   });
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) setScreenshotFile(e.target.files[0]);
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      setScreenshotFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return router.push("/login");
-    if (!screenshotFile) {
-      alert("Please upload payment screenshot.");
-      return;
-    }
+    if (!screenshotFile) return alert("Please upload payment screenshot.");
 
     setIsProcessing(true);
-
     try {
-      // =========================
-      // Upload screenshot to Cloudinary
-      // =========================
+      // Cloudinary Upload
       const formDataCloud = new FormData();
       formDataCloud.append("file", screenshotFile);
-      formDataCloud.append(
-        "upload_preset",
-        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!, // ✅ use env
-      );
+      formDataCloud.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
 
       const cloudRes = await fetch(
         `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
-        { method: "POST", body: formDataCloud },
+        { method: "POST", body: formDataCloud }
       );
 
       const cloudData = await cloudRes.json();
-      console.log("Cloudinary response:", cloudData);
+      if (!cloudData.secure_url) throw new Error("Payment proof upload failed");
 
-      if (!cloudData.secure_url) {
-        throw new Error(cloudData.error?.message || "Cloudinary upload failed");
-      }
-
-      const screenshotUrl = cloudData.secure_url;
-
-      // =========================
-      // Send order to backend
-      // =========================
+      // Create Order
       const orderRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -86,7 +85,7 @@ export default function CheckoutPage() {
           gstAmount,
           total,
           paymentMethod,
-          screenshot: screenshotUrl,
+          screenshot: cloudData.secure_url,
         }),
       });
 
@@ -96,153 +95,233 @@ export default function CheckoutPage() {
       clearCart();
       router.push(`/orders/${data.order._id}`);
     } catch (error: any) {
-      console.error("Checkout error:", error);
       alert(error.message || "Checkout failed. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
 
-  if (!user)
+  if (!user || items.length === 0) {
     return (
-      <div className="text-center py-20">
-        <h2 className="text-2xl font-bold mb-4">Please Login to Checkout</h2>
-        <Button asChild className="bg-green-700">
-          <a href="/login">Login</a>
-        </Button>
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50">
+        <div className="bg-white p-10 rounded-3xl shadow-xl text-center max-w-md w-full border border-gray-100">
+          <div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <PackageCheck className="h-10 w-10 text-green-700" />
+          </div>
+          <h2 className="text-2xl font-black text-gray-900 mb-2">
+            {!user ? "Login Required" : "Cart is Empty"}
+          </h2>
+          <p className="text-gray-500 mb-8">
+            {!user 
+              ? "Please sign in to your account to complete your purchase securely." 
+              : "Looks like you haven't added anything to your basket yet."}
+          </p>
+          <Button asChild className="w-full bg-green-700 hover:bg-green-800 h-12 rounded-xl text-lg font-bold">
+            <a href={!user ? "/login" : "/products"}>
+              {!user ? "Secure Login" : "Start Shopping"}
+            </a>
+          </Button>
+        </div>
       </div>
     );
-
-  if (items.length === 0)
-    return (
-      <div className="text-center py-20">
-        <h2 className="text-2xl font-bold mb-4">Your Cart is Empty</h2>
-        <Button asChild className="bg-green-700">
-          <a href="/products">Continue Shopping</a>
-        </Button>
-      </div>
-    );
+  }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gray-50/50 flex flex-col">
       <Navbar />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Checkout Form */}
-          <form onSubmit={handleSubmit} className="lg:col-span-2 space-y-8">
-            {/* Shipping Address */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-bold mb-4">Shipping Address</h2>
-              <div className="space-y-4">
-                {[
-                  "fullName",
-                  "email",
-                  "phone",
-                  "street",
-                  "city",
-                  "province",
-                  "zipCode",
-                ].map((key) => (
-                  <div key={key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {key}
-                    </label>
-                    <Input
-                      name={key}
-                      type={key === "email" ? "email" : "text"}
-                      value={formData[key as keyof typeof formData]}
-                      onChange={handleChange}
-                      required
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+      
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
+        {/* Checkout Header / Stepper */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-gray-900 tracking-tight">Checkout</h1>
+            <p className="text-gray-500 font-medium">Securely complete your purchase</p>
+          </div>
+          <div className="hidden md:flex items-center gap-3 text-sm font-bold text-gray-400">
+            <span className="text-green-700">Basket</span>
+            <ChevronRight className="h-4 w-4" />
+            <span className="text-green-700 bg-green-100 px-3 py-1 rounded-full">Details</span>
+            <ChevronRight className="h-4 w-4" />
+            <span>Success</span>
+          </div>
+        </div>
 
-            {/* Payment Method */}
-            <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-bold mb-4">Payment Method</h2>
-              <Tabs value={paymentMethod} onValueChange={setPaymentMethod}>
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="bank">Bank Transfer</TabsTrigger>
-                  <TabsTrigger value="easypaisa">EasyPaisa</TabsTrigger>
-                  <TabsTrigger value="jazzcash">JazzCash</TabsTrigger>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+          {/* Main Form Area */}
+          <form onSubmit={handleSubmit} className="lg:col-span-8 space-y-8">
+            
+            {/* 1. Shipping Section */}
+            <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="bg-amber-100 p-3 rounded-2xl">
+                  <Truck className="h-6 w-6 text-amber-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">Shipping Details</h2>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-bold text-gray-700 ml-1">Full Name</label>
+                  <Input name="fullName" placeholder="John Doe" value={formData.fullName} onChange={handleChange} required className="h-12 rounded-xl" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700 ml-1">Email Address</label>
+                  <Input name="email" type="email" placeholder="john@example.com" value={formData.email} onChange={handleChange} required className="h-12 rounded-xl" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700 ml-1">Phone Number</label>
+                  <Input name="phone" placeholder="03xx xxxxxxx" value={formData.phone} onChange={handleChange} required className="h-12 rounded-xl" />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-bold text-gray-700 ml-1">Street Address</label>
+                  <Input name="street" placeholder="House #, Block, Area" value={formData.street} onChange={handleChange} required className="h-12 rounded-xl" />
+                </div>
+                <div className="grid grid-cols-3 gap-4 md:col-span-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-gray-700">City</label>
+                    <Input name="city" value={formData.city} onChange={handleChange} required className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-gray-700">Province</label>
+                    <Input name="province" value={formData.province} onChange={handleChange} required className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-gray-700">Zip</label>
+                    <Input name="zipCode" value={formData.zipCode} onChange={handleChange} required className="h-12 rounded-xl" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 2. Payment Section */}
+            <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="bg-blue-100 p-3 rounded-2xl">
+                  <CreditCard className="h-6 w-6 text-blue-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900">Payment Method</h2>
+              </div>
+
+              <Tabs value={paymentMethod} onValueChange={setPaymentMethod} className="w-full">
+                <TabsList className="grid w-full grid-cols-3 h-14 bg-gray-100 p-1 rounded-2xl mb-8">
+                  <TabsTrigger value="bank" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold">
+                    <Building2 className="mr-2 h-4 w-4 hidden sm:inline" /> Bank
+                  </TabsTrigger>
+                  <TabsTrigger value="easypaisa" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold">
+                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" /> EasyPaisa
+                  </TabsTrigger>
+                  <TabsTrigger value="jazzcash" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold">
+                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" /> JazzCash
+                  </TabsTrigger>
                 </TabsList>
+
                 {["bank", "easypaisa", "jazzcash"].map((method) => (
-                  <TabsContent key={method} value={method} className="mt-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <div className="flex gap-2 mb-3">
-                        <AlertCircle className="h-5 w-5 text-blue-600" />
-                        <p className="text-sm text-blue-800">
-                          {method === "bank" &&
-                            "Please transfer the amount to the bank account and upload receipt."}
-                          {method === "easypaisa" &&
-                            "Send money to this EasyPaisa number: 03001234567"}
-                          {method === "jazzcash" &&
-                            "Send money to this JazzCash number: 03009876543"}
-                        </p>
+                  <TabsContent key={method} value={method} className="space-y-6">
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
+                      <div className="flex gap-4">
+                        <AlertCircle className="h-6 w-6 text-blue-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-blue-900 mb-1">Payment Instructions</p>
+                          <p className="text-sm text-blue-700 leading-relaxed">
+                            {method === "bank" && "Bank Alfalah: 0123-456789-01 (Account: MyStore Pvt Ltd)"}
+                            {method === "easypaisa" && "EasyPaisa: 0300-1234567 (Account: Admin Name)"}
+                            {method === "jazzcash" && "JazzCash: 0300-9876543 (Account: Admin Name)"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Styled Upload Area */}
+                    <div className="relative">
+                      <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-4">
+                        Payment Proof (Screenshot)
+                      </label>
+                      <div className={`border-2 border-dashed rounded-3xl p-8 transition-all flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 cursor-pointer ${previewUrl ? 'border-green-300' : 'border-gray-200'}`}>
+                        <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" required />
+                        {previewUrl ? (
+                          <div className="flex flex-col items-center">
+                            <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border-2 border-white shadow-md">
+                              <Image src={previewUrl} alt="Preview" fill className="object-cover" />
+                            </div>
+                            <span className="text-sm font-bold text-green-700">Image Uploaded Successfully</span>
+                          </div>
+                        ) : (
+                          <>
+                            <UploadCloud className="h-10 w-10 text-gray-400 mb-2" />
+                            <p className="text-gray-500 font-medium">Click or drag receipt to upload</p>
+                            <p className="text-xs text-gray-400 mt-1">PNG, JPG or PDF (Max 5MB)</p>
+                          </>
+                        )}
                       </div>
                     </div>
                   </TabsContent>
                 ))}
               </Tabs>
-
-              {/* Payment Proof */}
-              <div className="mt-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Upload Payment Proof
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="block w-full"
-                  required
-                />
-              </div>
-            </div>
+            </section>
 
             <Button
               type="submit"
               disabled={isProcessing}
-              className="w-full bg-green-700 hover:bg-green-800 py-3 text-lg"
+              className="w-full h-16 bg-green-700 hover:bg-green-800 rounded-2xl text-xl font-black shadow-xl shadow-green-100 transition-all active:scale-[0.98] disabled:opacity-70"
             >
-              {isProcessing ? "Processing..." : "Complete Order"}
+              {isProcessing ? "Validating Payment..." : "Place Secure Order"}
             </Button>
           </form>
 
-          {/* Order Summary */}
-          <div className="h-fit sticky top-20">
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
-              <h2 className="text-xl font-bold mb-4">Order Summary</h2>
-              <div className="space-y-2 mb-4 border-b border-gray-200 pb-4">
-                {items.map((item) => (
-                  <div key={item.id} className="flex justify-between text-sm">
-                    <span>
-                      {item.name} x {item.quantity}
-                    </span>
-                    <span>Rs. {(item.price * item.quantity).toFixed(0)}</span>
+          {/* Sidebar / Summary Area */}
+          <aside className="lg:col-span-4">
+            <div className="sticky top-24 space-y-6">
+              <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100">
+                <h2 className="text-xl font-black text-gray-900 mb-6">Order Summary</h2>
+                
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar mb-6">
+                  {items.map((item) => (
+                    <div key={item.id} className="flex gap-4">
+                      <div className="relative h-16 w-16 bg-gray-50 rounded-xl overflow-hidden shrink-0 border border-gray-100">
+                         <Image src={item.image || "/placeholder.svg"} alt={item.name} fill className="object-contain p-2" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-gray-800 line-clamp-1">{item.name}</p>
+                        <p className="text-xs text-gray-400 font-medium">{item.quantity} units • {item.weight}</p>
+                        <p className="text-sm font-bold text-gray-900 mt-1">Rs. {(item.price * item.quantity).toFixed(0)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-3 pt-6 border-t border-gray-100">
+                  <div className="flex justify-between text-gray-500 font-medium">
+                    <span>Subtotal</span>
+                    <span>Rs. {subtotal.toFixed(0)}</span>
                   </div>
-                ))}
-              </div>
-              <div className="space-y-2 border-b border-gray-200 pb-4 mb-4">
-                <div className="flex justify-between text-sm">
-                  <span>Subtotal</span>
-                  <span>Rs. {subtotal.toFixed(0)}</span>
+                  <div className="flex justify-between text-gray-500 font-medium">
+                    <span>GST (17%)</span>
+                    <span>Rs. {gstAmount.toFixed(0)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-500 font-medium">
+                    <span>Shipping</span>
+                    <span className="text-green-600 font-bold">Free</span>
+                  </div>
+                  <div className="flex justify-between pt-4 border-t border-gray-100">
+                    <span className="text-lg font-black text-gray-900">Total</span>
+                    <div className="text-right">
+                      <p className="text-2xl font-black text-green-700 leading-none">Rs. {total.toFixed(0)}</p>
+                      <p className="text-[10px] text-gray-400 uppercase font-black mt-1">PKR (Approx)</p>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span>GST (17%)</span>
-                  <span>Rs. {gstAmount.toFixed(0)}</span>
-                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="font-bold">Total</span>
-                <span className="font-bold text-green-700 text-lg">
-                  Rs. {total.toFixed(0)}
-                </span>
+
+              {/* Trust Badge */}
+              <div className="bg-green-50 rounded-2xl p-6 border border-green-100 flex items-center gap-4">
+                <ShieldCheck className="h-8 w-8 text-green-600" />
+                <div>
+                  <p className="text-sm font-bold text-green-900">Secure Checkout</p>
+                  <p className="text-xs text-green-700">Your data is encrypted and protected</p>
+                </div>
               </div>
             </div>
-          </div>
+          </aside>
         </div>
       </main>
       <Footer />

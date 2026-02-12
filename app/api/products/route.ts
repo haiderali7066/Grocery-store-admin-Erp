@@ -1,34 +1,49 @@
-import { connectDB } from '@/lib/db';
-import { Product } from '@/lib/models/index';
-import { NextRequest, NextResponse } from 'next/server';
+import { connectDB } from "@/lib/db";
+import { Product } from "@/lib/models/index";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
 
-    const searchParams = req.nextUrl.searchParams;
-    const isFeatured = searchParams.get('isFeatured');
-    const isHot = searchParams.get('isHot');
-    const category = searchParams.get('category');
-    const limit = parseInt(searchParams.get('limit') || '20');
-    const skip = parseInt(searchParams.get('skip') || '0');
+    const { searchParams } = req.nextUrl;
+    const isFeatured = searchParams.get("isFeatured");
+    const isHot = searchParams.get("isHot");
+    const category = searchParams.get("category");
+    const search = searchParams.get("search");
+    const minPrice = searchParams.get("minPrice");
+    const maxPrice = searchParams.get("maxPrice");
+    const limit = parseInt(searchParams.get("limit") || "50"); // Increased limit
+    const skip = parseInt(searchParams.get("skip") || "0");
 
-    const filter: any = { status: 'active', onlineVisible: true };
+    // Build Filter Object
+    const filter: any = { status: "active", onlineVisible: true };
 
-    if (isFeatured === 'true') {
-      filter.isFeatured = true;
-    }
-    if (isHot === 'true') {
-      filter.isHot = true;
-    }
-    if (category) {
+    if (isFeatured === "true") filter.isFeatured = true;
+    if (isHot === "true") filter.isHot = true;
+
+    // Category Filter
+    if (category && category !== "all") {
       filter.category = category;
+    }
+
+    // Search Filter (Case insensitive regex)
+    if (search) {
+      filter.name = { $regex: search, $options: "i" };
+    }
+
+    // Price Filter
+    if (minPrice || maxPrice) {
+      filter.retailPrice = {};
+      if (minPrice) filter.retailPrice.$gte = parseInt(minPrice);
+      if (maxPrice) filter.retailPrice.$lte = parseInt(maxPrice);
     }
 
     const products = await Product.find(filter)
       .limit(limit)
       .skip(skip)
-      .populate('category');
+      .populate("category") // This returns the object, handled in frontend interface
+      .sort({ createdAt: -1 }); // Show newest first
 
     const total = await Product.countDocuments(filter);
 
@@ -39,16 +54,13 @@ export async function GET(req: NextRequest) {
         page: Math.floor(skip / limit) + 1,
         pages: Math.ceil(total / limit),
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
-    console.error('[v0] Products fetch error:', error);
+    console.error("[Products API] Error:", error);
     return NextResponse.json(
-      { 
-        message: 'Internal server error',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
+      { message: "Internal server error" },
+      { status: 500 },
     );
   }
 }
