@@ -24,13 +24,18 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { customerName, items, paymentMethod, amountPaid } = body;
+    const {
+      customerName,
+      items,
+      billDiscountType,
+      billDiscountValue,
+      billDiscountAmount: clientDiscountAmount,
+      paymentMethod,
+      amountPaid,
+    } = body;
 
     if (!items || items.length === 0) {
-      return NextResponse.json(
-        { error: "Cart is empty" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
     }
 
     // Generate sale number
@@ -41,7 +46,6 @@ export async function POST(req: NextRequest) {
 
     const processedItems = [];
     let totalCostOfGoods = 0;
-    let totalProfit = 0;
 
     // Process each item with FIFO batch deduction
     for (const cartItem of items) {
@@ -49,28 +53,21 @@ export async function POST(req: NextRequest) {
       if (!product) {
         return NextResponse.json(
           { error: `Product not found: ${cartItem.productId}` },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
       if (product.stock < cartItem.quantity) {
         return NextResponse.json(
           { error: `Insufficient stock for ${product.name}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
-      // Calculate item pricing with discount and tax
+      // Per-item pricing: price × qty + tax (no per-item discount)
       const basePrice = cartItem.price * cartItem.quantity;
-      
-      const discountAmount =
-        cartItem.discountType === "percentage"
-          ? basePrice * (cartItem.discountValue / 100)
-          : cartItem.discountValue * cartItem.quantity;
-      
-      const afterDiscount = Math.max(0, basePrice - discountAmount);
-      const taxAmount = afterDiscount * (cartItem.taxRate / 100);
-      const itemTotal = afterDiscount + taxAmount;
+      const taxAmount = basePrice * (cartItem.taxRate / 100);
+      const itemTotal = basePrice + taxAmount;
 
       // FIFO: Get batches for this product (oldest first)
       const batches = await InventoryBatch.find({
@@ -82,7 +79,7 @@ export async function POST(req: NextRequest) {
       if (batches.length === 0) {
         return NextResponse.json(
           { error: `No inventory batches found for ${product.name}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -95,13 +92,12 @@ export async function POST(req: NextRequest) {
         if (remainingQty <= 0) break;
 
         const qtyFromBatch = Math.min(remainingQty, batch.remainingQuantity);
-        const batchCost = batch.buyingRate * qtyFromBatch; // buyingRate is the full landed cost
+        const batchCost = batch.buyingRate * qtyFromBatch;
 
         totalCost += batchCost;
         batch.remainingQuantity -= qtyFromBatch;
         remainingQty -= qtyFromBatch;
 
-        // Update batch status
         if (batch.remainingQuantity === 0) {
           batch.status = "finished";
         } else if (batch.remainingQuantity < batch.quantity) {
@@ -119,7 +115,7 @@ export async function POST(req: NextRequest) {
       if (remainingQty > 0) {
         return NextResponse.json(
           { error: `Insufficient inventory batches for ${product.name}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -127,43 +123,48 @@ export async function POST(req: NextRequest) {
       product.stock -= cartItem.quantity;
       await product.save();
 
-      const itemCostPrice = totalCost / cartItem.quantity; // Average cost per unit from batches
-      const itemProfit = itemTotal - totalCost;
-
+      const itemCostPrice = totalCost / cartItem.quantity;
       totalCostOfGoods += totalCost;
-      totalProfit += itemProfit;
 
       processedItems.push({
         product: product._id,
         name: product.name,
         quantity: cartItem.quantity,
         price: cartItem.price,
-        discountType: cartItem.discountType || "percentage",
-        discountValue: cartItem.discountValue || 0,
-        discountAmount: discountAmount,
+        discountType: "percentage",
+        discountValue: 0,
+        discountAmount: 0,
         taxRate: cartItem.taxRate,
         taxAmount: taxAmount,
         total: itemTotal,
         costPrice: itemCostPrice,
-        batchId: usedBatches[0]?.batchId, // Primary batch for reference
+        batchId: usedBatches[0]?.batchId,
       });
     }
 
     // Calculate totals
     const subtotal = processedItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
-      0
-    );
-    const totalDiscount = processedItems.reduce(
-      (sum, item) => sum + item.discountAmount,
-      0
+      0,
     );
     const totalTax = processedItems.reduce(
       (sum, item) => sum + item.taxAmount,
-      0
+      0,
     );
-    const total = processedItems.reduce((sum, item) => sum + item.total, 0);
+    const subtotalWithTax = subtotal + totalTax;
+
+    // Apply bill-level discount (server-side recalculation for safety)
+    const discountValue = parseFloat(billDiscountValue) || 0;
+    const billDiscountAmountServer =
+      billDiscountType === "percentage"
+        ? subtotalWithTax * (discountValue / 100)
+        : Math.min(discountValue, subtotalWithTax);
+
+    const total = Math.max(0, subtotalWithTax - billDiscountAmountServer);
     const change = amountPaid - total;
+
+    // Profit: total revenue minus cost of goods minus discount
+    const totalProfit = total - totalCostOfGoods;
 
     // Create POS Sale
     const posSale = new POSSale({
@@ -172,11 +173,11 @@ export async function POST(req: NextRequest) {
       cashier: payload.userId,
       items: processedItems,
       subtotal,
-      discount: totalDiscount,
+      discount: billDiscountAmountServer,
       tax: totalTax,
-      gstAmount: totalTax, // Alias
+      gstAmount: totalTax,
       totalAmount: total,
-      total: total, // Alias
+      total,
       amountPaid,
       change,
       paymentMethod,
@@ -226,7 +227,7 @@ export async function POST(req: NextRequest) {
         customerName: posSale.customerName,
         items: processedItems,
         subtotal,
-        discount: totalDiscount,
+        discount: billDiscountAmountServer,
         tax: totalTax,
         total,
         amountPaid,
@@ -236,7 +237,7 @@ export async function POST(req: NextRequest) {
         costOfGoods: totalCostOfGoods,
         createdAt: posSale.createdAt,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("POS bill error:", error);
@@ -244,7 +245,7 @@ export async function POST(req: NextRequest) {
       {
         error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
