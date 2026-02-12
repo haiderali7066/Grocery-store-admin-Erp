@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db';
-import { Wallet, Transaction } from '@/lib/models';
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Wallet, Transaction } from "@/lib/models";
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,7 +8,13 @@ export async function GET(req: NextRequest) {
 
     let wallet = await Wallet.findOne({});
     if (!wallet) {
-      wallet = await Wallet.create({ cash: 0, bank: 0, easyPaisa: 0, jazzCash: 0, card: 0 });
+      wallet = await Wallet.create({
+        cash: 0,
+        bank: 0,
+        easyPaisa: 0,
+        jazzCash: 0,
+        card: 0,
+      });
     }
 
     const transactions = await Transaction.find({})
@@ -21,12 +27,20 @@ export async function GET(req: NextRequest) {
       easyPaisa: wallet.easyPaisa || 0,
       jazzCash: wallet.jazzCash || 0,
       card: wallet.card || 0,
-      totalBalance: (wallet.cash + wallet.bank + wallet.easyPaisa + wallet.jazzCash + wallet.card),
+      totalBalance:
+        wallet.cash +
+        wallet.bank +
+        wallet.easyPaisa +
+        wallet.jazzCash +
+        wallet.card,
       // Optional: Calculate totals from transactions for the summary cards
     };
 
     return NextResponse.json({ wallet: walletData, transactions });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch wallet' }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch wallet" },
+      { status: 500 },
+    );
   }
 }

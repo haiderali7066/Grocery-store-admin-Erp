@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     if (!supplierDoc) {
       return NextResponse.json(
         { error: "Supplier not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       if (!productDoc) {
         return NextResponse.json(
           { error: `Product not found: ${item.product}` },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
@@ -181,16 +181,15 @@ export async function POST(req: NextRequest) {
           profitPerUnit: b.profitPerUnit,
         })),
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Purchase creation error:", error);
     return NextResponse.json(
       {
-        error:
-          error instanceof Error ? error.message : "Internal server error",
+        error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -219,7 +218,7 @@ export async function GET(req: NextRequest) {
     console.error("Purchases fetch error:", error);
     return NextResponse.json(
       { message: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
         // Get the current active batch (first non-finished batch)
         const currentBatch = batches.find(
-          (b) => b.status === "active" || b.status === "partial"
+          (b) => b.status === "active" || b.status === "partial",
         );
 
         // Format batch details
@@ -57,7 +57,8 @@ export async function GET(req: NextRequest) {
           currentBatch: currentBatch
             ? {
                 _id: currentBatch._id,
-                quantity: currentBatch.remainingQuantity || currentBatch.quantity,
+                quantity:
+                  currentBatch.remainingQuantity || currentBatch.quantity,
                 buyingRate: currentBatch.baseRate || currentBatch.buyingRate,
                 taxType: currentBatch.taxType || "percent",
                 taxValue: currentBatch.taxValue || 0,
@@ -71,7 +72,7 @@ export async function GET(req: NextRequest) {
             : null,
           lowStockThreshold: product.lowStockThreshold || 10,
         };
-      })
+      }),
     );
 
     return NextResponse.json({ inventory }, { status: 200 });
@@ -79,7 +80,7 @@ export async function GET(req: NextRequest) {
     console.error("Inventory fetch error:", error);
     return NextResponse.json(
       { message: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

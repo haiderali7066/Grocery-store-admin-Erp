@@ -32,7 +32,7 @@ interface Product {
   discountType: "percentage" | "fixed";
   stock: number;
   category: string; // Assuming this is the ID. If populated object, handle accordingly.
-  weight: number;   // Added to interface based on usage
+  weight: number; // Added to interface based on usage
   weightUnit: string; // Added to interface based on usage
   status: string;
   isNewArrival: boolean;
@@ -55,7 +55,7 @@ export default function ProductsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  
+
   // Track which product is being edited (null = creating new)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -161,7 +161,7 @@ export default function ProductsPage() {
       discountType: product.discountType || "percentage",
       category: product.category, // Ensure this matches the ID format of your <select>
       weight: (product as any).unitSize?.toString() || "", // Adjust based on your actual DB field name (unitSize vs weight)
-      weightUnit: (product as any).unitType || "kg",       // Adjust based on your actual DB field name (unitType vs weightUnit)
+      weightUnit: (product as any).unitType || "kg", // Adjust based on your actual DB field name (unitType vs weightUnit)
       isFlashSale: product.isNewArrival,
       isHot: product.isHot,
       isFeatured: product.isFeatured,
@@ -194,10 +194,10 @@ export default function ProductsPage() {
       }
 
       // Determine URL and Method based on editing state
-      const url = editingId 
-        ? `/api/admin/products/${editingId}` 
+      const url = editingId
+        ? `/api/admin/products/${editingId}`
         : "/api/admin/products";
-      
+
       const method = editingId ? "PUT" : "POST";
 
       const response = await fetch(url, {
@@ -209,7 +209,11 @@ export default function ProductsPage() {
         setIsDialogOpen(false);
         resetForm();
         fetchProducts();
-        alert(editingId ? "Product updated successfully!" : "Product created successfully!");
+        alert(
+          editingId
+            ? "Product updated successfully!"
+            : "Product created successfully!",
+        );
       } else {
         const errorData = await response.json();
         alert(`Failed to save product: ${errorData.error || "Unknown error"}`);
@@ -257,15 +261,15 @@ export default function ProductsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600">Manage your store products</p>
         </div>
-        <Dialog 
-          open={isDialogOpen} 
+        <Dialog
+          open={isDialogOpen}
           onOpenChange={(open) => {
             setIsDialogOpen(open);
             if (!open) resetForm(); // Reset form when dialog closes
           }}
         >
           <DialogTrigger asChild>
-            <Button 
+            <Button
               className="bg-green-700 hover:bg-green-800"
               onClick={resetForm} // Ensure form is clean for "Add"
             >
@@ -275,7 +279,9 @@ export default function ProductsPage() {
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>{editingId ? "Edit Product" : "Add New Product"}</DialogTitle>
+              <DialogTitle>
+                {editingId ? "Edit Product" : "Add New Product"}
+              </DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -463,7 +469,9 @@ export default function ProductsPage() {
               </div>
 
               <div className="space-y-3 border-t pt-4">
-                <p className="text-sm font-medium text-gray-700">Product Tags</p>
+                <p className="text-sm font-medium text-gray-700">
+                  Product Tags
+                </p>
 
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -512,7 +520,13 @@ export default function ProductsPage() {
                 className="w-full bg-green-700 hover:bg-green-800"
                 disabled={categories.length === 0 || isUploading}
               >
-                {isUploading ? (editingId ? "Updating..." : "Creating...") : (editingId ? "Update Product" : "Create Product")}
+                {isUploading
+                  ? editingId
+                    ? "Updating..."
+                    : "Creating..."
+                  : editingId
+                    ? "Update Product"
+                    : "Create Product"}
               </Button>
             </form>
           </DialogContent>
@@ -538,16 +552,29 @@ export default function ProductsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Image</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Name</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Price</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Tags</th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">Actions</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Image
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Name
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Price
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Tags
+                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredProducts.map((product) => (
-                <tr key={product._id} className="border-b border-gray-100 hover:bg-gray-50">
+                <tr
+                  key={product._id}
+                  className="border-b border-gray-100 hover:bg-gray-50"
+                >
                   <td className="py-3 px-4">
                     {product.mainImage ? (
                       <div className="relative w-12 h-12">
@@ -565,8 +592,12 @@ export default function ProductsPage() {
                       </div>
                     )}
                   </td>
-                  <td className="py-3 px-4 font-medium text-gray-900">{product.name}</td>
-                  <td className="py-3 px-4 text-sm">Rs. {product.retailPrice}</td>
+                  <td className="py-3 px-4 font-medium text-gray-900">
+                    {product.name}
+                  </td>
+                  <td className="py-3 px-4 text-sm">
+                    Rs. {product.retailPrice}
+                  </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-1 flex-wrap">
                       {product.isNewArrival && (
@@ -580,7 +611,9 @@ export default function ProductsPage() {
                         </span>
                       )}
                       {product.isFeatured && (
-                        <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">Featured</span>
+                        <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
+                          Featured
+                        </span>
                       )}
                     </div>
                   </td>

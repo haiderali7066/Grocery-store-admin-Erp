@@ -10,16 +10,16 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  AlertCircle, 
-  Truck, 
-  CreditCard, 
-  ShieldCheck, 
-  UploadCloud, 
+import {
+  AlertCircle,
+  Truck,
+  CreditCard,
+  ShieldCheck,
+  UploadCloud,
   ChevronRight,
   PackageCheck,
   Building2,
-  Smartphone
+  Smartphone,
 } from "lucide-react";
 
 export default function CheckoutPage() {
@@ -63,11 +63,14 @@ export default function CheckoutPage() {
       // Cloudinary Upload
       const formDataCloud = new FormData();
       formDataCloud.append("file", screenshotFile);
-      formDataCloud.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+      formDataCloud.append(
+        "upload_preset",
+        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!,
+      );
 
       const cloudRes = await fetch(
         `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
-        { method: "POST", body: formDataCloud }
+        { method: "POST", body: formDataCloud },
       );
 
       const cloudData = await cloudRes.json();
@@ -112,11 +115,14 @@ export default function CheckoutPage() {
             {!user ? "Login Required" : "Cart is Empty"}
           </h2>
           <p className="text-gray-500 mb-8">
-            {!user 
-              ? "Please sign in to your account to complete your purchase securely." 
+            {!user
+              ? "Please sign in to your account to complete your purchase securely."
               : "Looks like you haven't added anything to your basket yet."}
           </p>
-          <Button asChild className="w-full bg-green-700 hover:bg-green-800 h-12 rounded-xl text-lg font-bold">
+          <Button
+            asChild
+            className="w-full bg-green-700 hover:bg-green-800 h-12 rounded-xl text-lg font-bold"
+          >
             <a href={!user ? "/login" : "/products"}>
               {!user ? "Secure Login" : "Start Shopping"}
             </a>
@@ -129,18 +135,24 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-gray-50/50 flex flex-col">
       <Navbar />
-      
+
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
         {/* Checkout Header / Stepper */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
           <div>
-            <h1 className="text-3xl font-black text-gray-900 tracking-tight">Checkout</h1>
-            <p className="text-gray-500 font-medium">Securely complete your purchase</p>
+            <h1 className="text-3xl font-black text-gray-900 tracking-tight">
+              Checkout
+            </h1>
+            <p className="text-gray-500 font-medium">
+              Securely complete your purchase
+            </p>
           </div>
           <div className="hidden md:flex items-center gap-3 text-sm font-bold text-gray-400">
             <span className="text-green-700">Basket</span>
             <ChevronRight className="h-4 w-4" />
-            <span className="text-green-700 bg-green-100 px-3 py-1 rounded-full">Details</span>
+            <span className="text-green-700 bg-green-100 px-3 py-1 rounded-full">
+              Details
+            </span>
             <ChevronRight className="h-4 w-4" />
             <span>Success</span>
           </div>
@@ -149,45 +161,107 @@ export default function CheckoutPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           {/* Main Form Area */}
           <form onSubmit={handleSubmit} className="lg:col-span-8 space-y-8">
-            
             {/* 1. Shipping Section */}
             <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4 mb-8">
                 <div className="bg-amber-100 p-3 rounded-2xl">
                   <Truck className="h-6 w-6 text-amber-600" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900">Shipping Details</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Shipping Details
+                </h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Full Name</label>
-                  <Input name="fullName" placeholder="John Doe" value={formData.fullName} onChange={handleChange} required className="h-12 rounded-xl" />
+                  <label className="text-sm font-bold text-gray-700 ml-1">
+                    Full Name
+                  </label>
+                  <Input
+                    name="fullName"
+                    placeholder="John Doe"
+                    value={formData.fullName}
+                    onChange={handleChange}
+                    required
+                    className="h-12 rounded-xl"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Email Address</label>
-                  <Input name="email" type="email" placeholder="john@example.com" value={formData.email} onChange={handleChange} required className="h-12 rounded-xl" />
+                  <label className="text-sm font-bold text-gray-700 ml-1">
+                    Email Address
+                  </label>
+                  <Input
+                    name="email"
+                    type="email"
+                    placeholder="john@example.com"
+                    value={formData.email}
+                    onChange={handleChange}
+                    required
+                    className="h-12 rounded-xl"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Phone Number</label>
-                  <Input name="phone" placeholder="03xx xxxxxxx" value={formData.phone} onChange={handleChange} required className="h-12 rounded-xl" />
+                  <label className="text-sm font-bold text-gray-700 ml-1">
+                    Phone Number
+                  </label>
+                  <Input
+                    name="phone"
+                    placeholder="03xx xxxxxxx"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    required
+                    className="h-12 rounded-xl"
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">Street Address</label>
-                  <Input name="street" placeholder="House #, Block, Area" value={formData.street} onChange={handleChange} required className="h-12 rounded-xl" />
+                  <label className="text-sm font-bold text-gray-700 ml-1">
+                    Street Address
+                  </label>
+                  <Input
+                    name="street"
+                    placeholder="House #, Block, Area"
+                    value={formData.street}
+                    onChange={handleChange}
+                    required
+                    className="h-12 rounded-xl"
+                  />
                 </div>
                 <div className="grid grid-cols-3 gap-4 md:col-span-2">
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">City</label>
-                    <Input name="city" value={formData.city} onChange={handleChange} required className="h-12 rounded-xl" />
+                    <label className="text-sm font-bold text-gray-700">
+                      City
+                    </label>
+                    <Input
+                      name="city"
+                      value={formData.city}
+                      onChange={handleChange}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">Province</label>
-                    <Input name="province" value={formData.province} onChange={handleChange} required className="h-12 rounded-xl" />
+                    <label className="text-sm font-bold text-gray-700">
+                      Province
+                    </label>
+                    <Input
+                      name="province"
+                      value={formData.province}
+                      onChange={handleChange}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">Zip</label>
-                    <Input name="zipCode" value={formData.zipCode} onChange={handleChange} required className="h-12 rounded-xl" />
+                    <label className="text-sm font-bold text-gray-700">
+                      Zip
+                    </label>
+                    <Input
+                      name="zipCode"
+                      value={formData.zipCode}
+                      onChange={handleChange}
+                      required
+                      className="h-12 rounded-xl"
+                    />
                   </div>
                 </div>
               </div>
@@ -199,33 +273,59 @@ export default function CheckoutPage() {
                 <div className="bg-blue-100 p-3 rounded-2xl">
                   <CreditCard className="h-6 w-6 text-blue-600" />
                 </div>
-                <h2 className="text-2xl font-bold text-gray-900">Payment Method</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Payment Method
+                </h2>
               </div>
 
-              <Tabs value={paymentMethod} onValueChange={setPaymentMethod} className="w-full">
+              <Tabs
+                value={paymentMethod}
+                onValueChange={setPaymentMethod}
+                className="w-full"
+              >
                 <TabsList className="grid w-full grid-cols-3 h-14 bg-gray-100 p-1 rounded-2xl mb-8">
-                  <TabsTrigger value="bank" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold">
+                  <TabsTrigger
+                    value="bank"
+                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
+                  >
                     <Building2 className="mr-2 h-4 w-4 hidden sm:inline" /> Bank
                   </TabsTrigger>
-                  <TabsTrigger value="easypaisa" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold">
-                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" /> EasyPaisa
+                  <TabsTrigger
+                    value="easypaisa"
+                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
+                  >
+                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" />{" "}
+                    EasyPaisa
                   </TabsTrigger>
-                  <TabsTrigger value="jazzcash" className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold">
-                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" /> JazzCash
+                  <TabsTrigger
+                    value="jazzcash"
+                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
+                  >
+                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" />{" "}
+                    JazzCash
                   </TabsTrigger>
                 </TabsList>
 
                 {["bank", "easypaisa", "jazzcash"].map((method) => (
-                  <TabsContent key={method} value={method} className="space-y-6">
+                  <TabsContent
+                    key={method}
+                    value={method}
+                    className="space-y-6"
+                  >
                     <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
                       <div className="flex gap-4">
                         <AlertCircle className="h-6 w-6 text-blue-600 shrink-0" />
                         <div>
-                          <p className="font-bold text-blue-900 mb-1">Payment Instructions</p>
+                          <p className="font-bold text-blue-900 mb-1">
+                            Payment Instructions
+                          </p>
                           <p className="text-sm text-blue-700 leading-relaxed">
-                            {method === "bank" && "Bank Alfalah: 0123-456789-01 (Account: MyStore Pvt Ltd)"}
-                            {method === "easypaisa" && "EasyPaisa: 0300-1234567 (Account: Admin Name)"}
-                            {method === "jazzcash" && "JazzCash: 0300-9876543 (Account: Admin Name)"}
+                            {method === "bank" &&
+                              "Bank Alfalah: 0123-456789-01 (Account: MyStore Pvt Ltd)"}
+                            {method === "easypaisa" &&
+                              "EasyPaisa: 0300-1234567 (Account: Admin Name)"}
+                            {method === "jazzcash" &&
+                              "JazzCash: 0300-9876543 (Account: Admin Name)"}
                           </p>
                         </div>
                       </div>
@@ -236,20 +336,39 @@ export default function CheckoutPage() {
                       <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-4">
                         Payment Proof (Screenshot)
                       </label>
-                      <div className={`border-2 border-dashed rounded-3xl p-8 transition-all flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 cursor-pointer ${previewUrl ? 'border-green-300' : 'border-gray-200'}`}>
-                        <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" required />
+                      <div
+                        className={`border-2 border-dashed rounded-3xl p-8 transition-all flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 cursor-pointer ${previewUrl ? "border-green-300" : "border-gray-200"}`}
+                      >
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          required
+                        />
                         {previewUrl ? (
                           <div className="flex flex-col items-center">
                             <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border-2 border-white shadow-md">
-                              <Image src={previewUrl} alt="Preview" fill className="object-cover" />
+                              <Image
+                                src={previewUrl}
+                                alt="Preview"
+                                fill
+                                className="object-cover"
+                              />
                             </div>
-                            <span className="text-sm font-bold text-green-700">Image Uploaded Successfully</span>
+                            <span className="text-sm font-bold text-green-700">
+                              Image Uploaded Successfully
+                            </span>
                           </div>
                         ) : (
                           <>
                             <UploadCloud className="h-10 w-10 text-gray-400 mb-2" />
-                            <p className="text-gray-500 font-medium">Click or drag receipt to upload</p>
-                            <p className="text-xs text-gray-400 mt-1">PNG, JPG or PDF (Max 5MB)</p>
+                            <p className="text-gray-500 font-medium">
+                              Click or drag receipt to upload
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              PNG, JPG or PDF (Max 5MB)
+                            </p>
                           </>
                         )}
                       </div>
@@ -272,18 +391,31 @@ export default function CheckoutPage() {
           <aside className="lg:col-span-4">
             <div className="sticky top-24 space-y-6">
               <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100">
-                <h2 className="text-xl font-black text-gray-900 mb-6">Order Summary</h2>
-                
+                <h2 className="text-xl font-black text-gray-900 mb-6">
+                  Order Summary
+                </h2>
+
                 <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar mb-6">
                   {items.map((item) => (
                     <div key={item.id} className="flex gap-4">
                       <div className="relative h-16 w-16 bg-gray-50 rounded-xl overflow-hidden shrink-0 border border-gray-100">
-                         <Image src={item.image || "/placeholder.svg"} alt={item.name} fill className="object-contain p-2" />
+                        <Image
+                          src={item.image || "/placeholder.svg"}
+                          alt={item.name}
+                          fill
+                          className="object-contain p-2"
+                        />
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm font-bold text-gray-800 line-clamp-1">{item.name}</p>
-                        <p className="text-xs text-gray-400 font-medium">{item.quantity} units • {item.weight}</p>
-                        <p className="text-sm font-bold text-gray-900 mt-1">Rs. {(item.price * item.quantity).toFixed(0)}</p>
+                        <p className="text-sm font-bold text-gray-800 line-clamp-1">
+                          {item.name}
+                        </p>
+                        <p className="text-xs text-gray-400 font-medium">
+                          {item.quantity} units • {item.weight}
+                        </p>
+                        <p className="text-sm font-bold text-gray-900 mt-1">
+                          Rs. {(item.price * item.quantity).toFixed(0)}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -303,10 +435,16 @@ export default function CheckoutPage() {
                     <span className="text-green-600 font-bold">Free</span>
                   </div>
                   <div className="flex justify-between pt-4 border-t border-gray-100">
-                    <span className="text-lg font-black text-gray-900">Total</span>
+                    <span className="text-lg font-black text-gray-900">
+                      Total
+                    </span>
                     <div className="text-right">
-                      <p className="text-2xl font-black text-green-700 leading-none">Rs. {total.toFixed(0)}</p>
-                      <p className="text-[10px] text-gray-400 uppercase font-black mt-1">PKR (Approx)</p>
+                      <p className="text-2xl font-black text-green-700 leading-none">
+                        Rs. {total.toFixed(0)}
+                      </p>
+                      <p className="text-[10px] text-gray-400 uppercase font-black mt-1">
+                        PKR (Approx)
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -316,8 +454,12 @@ export default function CheckoutPage() {
               <div className="bg-green-50 rounded-2xl p-6 border border-green-100 flex items-center gap-4">
                 <ShieldCheck className="h-8 w-8 text-green-600" />
                 <div>
-                  <p className="text-sm font-bold text-green-900">Secure Checkout</p>
-                  <p className="text-xs text-green-700">Your data is encrypted and protected</p>
+                  <p className="text-sm font-bold text-green-900">
+                    Secure Checkout
+                  </p>
+                  <p className="text-xs text-green-700">
+                    Your data is encrypted and protected
+                  </p>
                 </div>
               </div>
             </div>

@@ -88,9 +88,9 @@ export async function PUT(
     const name = formData.get("name") as string;
     const sku = formData.get("sku") as string;
     const description = formData.get("description") as string;
-    
+
     // No basePrice/retailPrice update here as requested
-    
+
     const discount = Number(formData.get("discount") || 0);
     const discountType = formData.get("discountType") as "percentage" | "fixed";
     const category = formData.get("category") as string;
@@ -135,11 +135,11 @@ export async function PUT(
     product.discount = discount;
     product.discountType = discountType;
     product.category = category;
-    
+
     // Map form fields 'weight'/'weightUnit' to schema fields 'unitSize'/'unitType'
-    product.unitSize = weight; 
+    product.unitSize = weight;
     product.unitType = weightUnit;
-    
+
     product.isNewArrival = isFlashSale; // Mapping isFlashSale to isNewArrival based on previous logic
     product.isHot = isHot;
     product.isFeatured = isFeatured;

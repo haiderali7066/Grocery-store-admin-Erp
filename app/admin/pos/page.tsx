@@ -62,7 +62,9 @@ export default function POSPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("Walk-in Customer");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "online">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "cash" | "card" | "online"
+  >("cash");
   const [amountPaid, setAmountPaid] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -77,7 +79,9 @@ export default function POSPage() {
   const [showSettings, setShowSettings] = useState(false);
 
   // ─── Bill-level Discount (per transaction, not saved) ─────────────────────
-  const [billDiscountType, setBillDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [billDiscountType, setBillDiscountType] = useState<
+    "percentage" | "fixed"
+  >("percentage");
   const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
 
   useEffect(() => {
@@ -213,7 +217,8 @@ export default function POSPage() {
   // ── Process sale ──────────────────────────────────────────────────────────
   const processBill = async () => {
     if (cart.length === 0) return alert("Cart is empty");
-    if (!amountPaid || paid < total) return alert("Amount paid must be ≥ total");
+    if (!amountPaid || paid < total)
+      return alert("Amount paid must be ≥ total");
 
     setIsProcessing(true);
     try {
@@ -316,36 +321,50 @@ export default function POSPage() {
             <div className="inline-flex p-4 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl shadow-lg mb-4">
               <CheckCircle className="h-14 w-14 text-white" />
             </div>
-            <h1 className="text-3xl font-black text-gray-900">Payment Successful!</h1>
+            <h1 className="text-3xl font-black text-gray-900">
+              Payment Successful!
+            </h1>
             <p className="text-gray-500 mt-1">Sale #{lastBill.saleNumber}</p>
           </div>
 
           <div className="bg-gray-50 rounded-2xl p-5 mb-6 space-y-2.5">
             <div className="flex justify-between text-gray-600 text-sm">
               <span>Subtotal</span>
-              <span className="font-semibold">Rs {Number(lastBill.subtotal).toFixed(2)}</span>
+              <span className="font-semibold">
+                Rs {Number(lastBill.subtotal).toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between text-gray-600 text-sm">
               <span>Tax</span>
-              <span className="font-semibold">Rs {Number(lastBill.tax).toFixed(2)}</span>
+              <span className="font-semibold">
+                Rs {Number(lastBill.tax).toFixed(2)}
+              </span>
             </div>
             {lastBill.discount > 0 && (
               <div className="flex justify-between text-emerald-600 text-sm">
                 <span>Discount</span>
-                <span className="font-semibold">− Rs {Number(lastBill.discount).toFixed(2)}</span>
+                <span className="font-semibold">
+                  − Rs {Number(lastBill.discount).toFixed(2)}
+                </span>
               </div>
             )}
             <div className="border-t-2 border-dashed border-gray-200 pt-3 flex justify-between">
               <span className="text-lg font-black text-gray-900">Total</span>
-              <span className="text-2xl font-black text-emerald-600">Rs {Number(lastBill.total).toFixed(2)}</span>
+              <span className="text-2xl font-black text-emerald-600">
+                Rs {Number(lastBill.total).toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between text-gray-600 text-sm pt-1">
               <span>Amount Paid</span>
-              <span className="font-semibold">Rs {Number(lastBill.amountPaid).toFixed(2)}</span>
+              <span className="font-semibold">
+                Rs {Number(lastBill.amountPaid).toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between text-blue-600">
               <span className="font-semibold">Change Due</span>
-              <span className="text-xl font-black">Rs {Number(lastBill.change).toFixed(2)}</span>
+              <span className="text-xl font-black">
+                Rs {Number(lastBill.change).toFixed(2)}
+              </span>
             </div>
           </div>
 
@@ -379,7 +398,9 @@ export default function POSPage() {
               <ShoppingCart className="h-7 w-7 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-gray-900">Point of Sale</h1>
+              <h1 className="text-2xl font-black text-gray-900">
+                Point of Sale
+              </h1>
               <p className="text-gray-500 text-sm">Fast & efficient billing</p>
             </div>
           </div>
@@ -411,7 +432,10 @@ export default function POSPage() {
                 <Percent className="h-5 w-5 text-purple-600" />
                 Tax Settings
               </h3>
-              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -427,10 +451,14 @@ export default function POSPage() {
                 max="100"
                 step="0.1"
                 value={globalTaxRate}
-                onChange={(e) => setGlobalTaxRate(parseFloat(e.target.value) || 0)}
+                onChange={(e) =>
+                  setGlobalTaxRate(parseFloat(e.target.value) || 0)
+                }
                 className="h-11 text-lg font-bold border-2 border-gray-200 focus:border-blue-400 rounded-xl"
               />
-              <p className="text-xs text-gray-500">Applied to all items added to cart</p>
+              <p className="text-xs text-gray-500">
+                Applied to all items added to cart
+              </p>
             </div>
 
             <div className="flex gap-3 mt-5">
@@ -452,8 +480,9 @@ export default function POSPage() {
 
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
               <p className="text-xs text-blue-700">
-                <strong>💡 Tip:</strong> Tax rate is saved and applied to all future items.
-                Existing cart items will update when you click "Save & Apply to Cart".
+                <strong>💡 Tip:</strong> Tax rate is saved and applied to all
+                future items. Existing cart items will update when you click
+                "Save & Apply to Cart".
               </p>
             </div>
           </Card>
@@ -517,7 +546,8 @@ export default function POSPage() {
                         {product.name}
                       </p>
                       <p className="text-[10px] text-gray-400 mb-2">
-                        {product.unitSize}{product.unitType} · {product.sku}
+                        {product.unitSize}
+                        {product.unitType} · {product.sku}
                       </p>
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-black text-emerald-600">
@@ -552,7 +582,10 @@ export default function POSPage() {
                   Order ({cart.length} items)
                 </h2>
                 {cart.length > 0 && (
-                  <button onClick={resetBill} className="text-white/70 hover:text-white transition-colors">
+                  <button
+                    onClick={resetBill}
+                    className="text-white/70 hover:text-white transition-colors"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 )}
@@ -567,10 +600,15 @@ export default function POSPage() {
                   </div>
                 ) : (
                   cart.map((item) => (
-                    <div key={item.productId} className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden">
+                    <div
+                      key={item.productId}
+                      className="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden"
+                    >
                       <div className="flex items-center gap-2 px-3 py-2.5">
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-xs text-gray-900 truncate">{item.name}</p>
+                          <p className="font-semibold text-xs text-gray-900 truncate">
+                            {item.name}
+                          </p>
                           <p className="text-[10px] text-gray-400">
                             Rs {item.price} / unit
                             <span className="text-blue-500 ml-1">
@@ -581,16 +619,26 @@ export default function POSPage() {
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             onClick={() => {
-                              if (item.quantity <= 1) removeFromCart(item.productId);
-                              else updateCartItem(item.productId, { quantity: item.quantity - 1 });
+                              if (item.quantity <= 1)
+                                removeFromCart(item.productId);
+                              else
+                                updateCartItem(item.productId, {
+                                  quantity: item.quantity - 1,
+                                });
                             }}
                             className="w-6 h-6 bg-white border border-gray-300 rounded-md flex items-center justify-center hover:bg-gray-50 shadow-sm"
                           >
                             <Minus className="h-2.5 w-2.5" />
                           </button>
-                          <span className="w-7 text-center font-bold text-gray-800 text-xs">{item.quantity}</span>
+                          <span className="w-7 text-center font-bold text-gray-800 text-xs">
+                            {item.quantity}
+                          </span>
                           <button
-                            onClick={() => updateCartItem(item.productId, { quantity: item.quantity + 1 })}
+                            onClick={() =>
+                              updateCartItem(item.productId, {
+                                quantity: item.quantity + 1,
+                              })
+                            }
                             className="w-6 h-6 bg-white border border-gray-300 rounded-md flex items-center justify-center hover:bg-gray-50 shadow-sm"
                           >
                             <Plus className="h-2.5 w-2.5" />
@@ -604,8 +652,12 @@ export default function POSPage() {
                         </div>
                       </div>
                       <div className="flex justify-between items-center px-3 pb-2 pt-1 border-t border-slate-200">
-                        <span className="text-[10px] text-gray-500">Tax: {item.taxRate}%</span>
-                        <span className="text-sm font-black text-emerald-600">Rs {item.total.toFixed(2)}</span>
+                        <span className="text-[10px] text-gray-500">
+                          Tax: {item.taxRate}%
+                        </span>
+                        <span className="text-sm font-black text-emerald-600">
+                          Rs {item.total.toFixed(2)}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -618,21 +670,29 @@ export default function POSPage() {
                 <div className="bg-slate-50 rounded-xl p-3 space-y-1.5 text-sm">
                   <div className="flex justify-between text-gray-600">
                     <span>Subtotal</span>
-                    <span className="font-medium">Rs {subtotal.toFixed(2)}</span>
+                    <span className="font-medium">
+                      Rs {subtotal.toFixed(2)}
+                    </span>
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>Tax ({globalTaxRate}%)</span>
-                    <span className="font-medium">Rs {totalTax.toFixed(2)}</span>
+                    <span className="font-medium">
+                      Rs {totalTax.toFixed(2)}
+                    </span>
                   </div>
                   {billDiscountAmount > 0 && (
                     <div className="flex justify-between text-orange-600">
                       <span>Discount</span>
-                      <span className="font-medium">− Rs {billDiscountAmount.toFixed(2)}</span>
+                      <span className="font-medium">
+                        − Rs {billDiscountAmount.toFixed(2)}
+                      </span>
                     </div>
                   )}
                   <div className="border-t border-gray-200 pt-1.5 flex justify-between">
                     <span className="font-black text-gray-900">Total</span>
-                    <span className="font-black text-indigo-600 text-lg">Rs {total.toFixed(2)}</span>
+                    <span className="font-black text-indigo-600 text-lg">
+                      Rs {total.toFixed(2)}
+                    </span>
                   </div>
                 </div>
 
@@ -656,7 +716,11 @@ export default function POSPage() {
                   <div className="flex gap-2">
                     <select
                       value={billDiscountType}
-                      onChange={(e) => setBillDiscountType(e.target.value as "percentage" | "fixed")}
+                      onChange={(e) =>
+                        setBillDiscountType(
+                          e.target.value as "percentage" | "fixed",
+                        )
+                      }
                       className="h-9 border-2 border-orange-200 rounded-lg px-2 font-bold text-sm bg-white focus:outline-none focus:border-orange-400"
                     >
                       <option value="percentage">%</option>
@@ -667,7 +731,9 @@ export default function POSPage() {
                       min="0"
                       step="0.01"
                       value={billDiscountValue || ""}
-                      onChange={(e) => setBillDiscountValue(parseFloat(e.target.value) || 0)}
+                      onChange={(e) =>
+                        setBillDiscountValue(parseFloat(e.target.value) || 0)
+                      }
                       placeholder="0"
                       className="flex-1 h-9 text-sm font-bold border-2 border-orange-200 focus:border-orange-400 rounded-lg bg-white"
                     />
@@ -708,7 +774,9 @@ export default function POSPage() {
                 <div>
                   <div className="flex items-center gap-1.5 mb-1">
                     <DollarSign className="h-3.5 w-3.5 text-gray-400" />
-                    <label className="text-xs font-bold text-gray-700">Amount Paid (Rs)</label>
+                    <label className="text-xs font-bold text-gray-700">
+                      Amount Paid (Rs)
+                    </label>
                   </div>
                   <Input
                     type="number"
@@ -734,8 +802,12 @@ export default function POSPage() {
                 {/* Change due */}
                 {paid >= total && total > 0 && (
                   <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 flex justify-between items-center">
-                    <span className="text-sm font-bold text-emerald-700">Change Due</span>
-                    <span className="text-2xl font-black text-emerald-600">Rs {change.toFixed(2)}</span>
+                    <span className="text-sm font-bold text-emerald-700">
+                      Change Due
+                    </span>
+                    <span className="text-2xl font-black text-emerald-600">
+                      Rs {change.toFixed(2)}
+                    </span>
                   </div>
                 )}
 
@@ -750,7 +822,12 @@ export default function POSPage() {
                 <div className="flex gap-2">
                   <Button
                     onClick={processBill}
-                    disabled={isProcessing || cart.length === 0 || !amountPaid || paid < total}
+                    disabled={
+                      isProcessing ||
+                      cart.length === 0 ||
+                      !amountPaid ||
+                      paid < total
+                    }
                     className="flex-1 h-12 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold rounded-xl shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isProcessing ? (
@@ -780,13 +857,17 @@ export default function POSPage() {
             <div className="grid grid-cols-2 gap-3">
               <Card className="bg-gradient-to-br from-violet-500 to-purple-600 text-white p-4 border-0 rounded-xl shadow-md">
                 <p className="text-xs opacity-80 mb-1">Total Items</p>
-                <p className="text-3xl font-black">{cart.reduce((s, i) => s + i.quantity, 0)}</p>
+                <p className="text-3xl font-black">
+                  {cart.reduce((s, i) => s + i.quantity, 0)}
+                </p>
               </Card>
               <Card className="bg-gradient-to-br from-orange-500 to-rose-500 text-white p-4 border-0 rounded-xl shadow-md">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-xs opacity-80 mb-1">Savings</p>
-                    <p className="text-xl font-black">Rs {billDiscountAmount.toFixed(0)}</p>
+                    <p className="text-xl font-black">
+                      Rs {billDiscountAmount.toFixed(0)}
+                    </p>
                   </div>
                   <TrendingUp className="h-8 w-8 opacity-60" />
                 </div>

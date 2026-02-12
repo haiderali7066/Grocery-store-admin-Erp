@@ -23,7 +23,8 @@ export async function GET(req: NextRequest) {
     let end = moment().endOf("day").toDate();
 
     if (period === "daily") start = moment().startOf("day").toDate();
-    else if (period === "weekly") start = moment().subtract(7, "days").startOf("day").toDate();
+    else if (period === "weekly")
+      start = moment().subtract(7, "days").startOf("day").toDate();
     else if (period === "custom" && dateFrom && dateTo) {
       start = moment(dateFrom).startOf("day").toDate();
       end = moment(dateTo).endOf("day").toDate();
@@ -37,31 +38,53 @@ export async function GET(req: NextRequest) {
       Promise.all([
         Order.aggregate([
           { $match: { ...matchQuery, orderStatus: { $ne: "cancelled" } } },
-          { $group: { _id: null, rev: { $sum: "$subtotal" }, profit: { $sum: "$profit" } } }
+          {
+            $group: {
+              _id: null,
+              rev: { $sum: "$subtotal" },
+              profit: { $sum: "$profit" },
+            },
+          },
         ]),
         POSSale.aggregate([
           { $match: { ...matchQuery, paymentStatus: "completed" } },
-          { $group: { _id: null, rev: { $sum: "$subtotal" }, cogs: { $sum: "$costOfGoods" } } }
-        ])
+          {
+            $group: {
+              _id: null,
+              rev: { $sum: "$subtotal" },
+              cogs: { $sum: "$costOfGoods" },
+            },
+          },
+        ]),
       ]),
       // 2. Expense Breakdown
       Expense.aggregate([
         { $match: { date: { $gte: start, $lte: end } } },
-        { $group: { _id: "$category", total: { $sum: "$amount" } } }
+        { $group: { _id: "$category", total: { $sum: "$amount" } } },
       ]),
       // 3. Current Inventory Value
       InventoryBatch.aggregate([
         { $match: { status: { $ne: "finished" } } },
-        { $group: { _id: null, total: { $sum: { $multiply: ["$remainingQuantity", "$buyingRate"] } } } }
-      ])
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: { $multiply: ["$remainingQuantity", "$buyingRate"] },
+            },
+          },
+        },
+      ]),
     ]);
 
     const online = financialStats[0][0] || { rev: 0, profit: 0 };
     const pos = financialStats[1][0] || { rev: 0, cogs: 0 };
-    
+
     const totalRevenue = online.rev + pos.rev;
-    const totalCOGS = (online.rev - online.profit) + pos.cogs;
-    const totalExpenses = expenseStats.reduce((acc, curr) => acc + curr.total, 0);
+    const totalCOGS = online.rev - online.profit + pos.cogs;
+    const totalExpenses = expenseStats.reduce(
+      (acc, curr) => acc + curr.total,
+      0,
+    );
     const grossProfit = totalRevenue - totalCOGS;
     const netProfit = grossProfit - totalExpenses;
 
@@ -81,8 +104,11 @@ export async function GET(req: NextRequest) {
       breakdown: {
         online: online.rev,
         pos: pos.rev,
-        expenses: expenseStats.map(e => ({ category: e._id, amount: e.total })),
-      }
+        expenses: expenseStats.map((e) => ({
+          category: e._id,
+          amount: e.total,
+        })),
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

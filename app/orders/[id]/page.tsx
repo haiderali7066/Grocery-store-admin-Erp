@@ -100,7 +100,9 @@ export default function OrderDetailPage() {
           <Card className="p-6 border-0 shadow-md mb-6">
             <div className="flex justify-between items-center">
               <div>
-                <h1 className="text-2xl font-bold">Order {order.orderNumber}</h1>
+                <h1 className="text-2xl font-bold">
+                  Order {order.orderNumber}
+                </h1>
                 <p className="text-gray-600 mt-1">
                   Placed on {new Date(order.createdAt).toLocaleDateString()}
                 </p>
@@ -110,10 +112,10 @@ export default function OrderDetailPage() {
                   order.orderStatus === "delivered"
                     ? "bg-green-100 text-green-800"
                     : order.orderStatus === "shipped"
-                    ? "bg-blue-100 text-blue-800"
-                    : order.orderStatus === "pending"
-                    ? "bg-yellow-100 text-yellow-800"
-                    : "bg-red-100 text-red-800"
+                      ? "bg-blue-100 text-blue-800"
+                      : order.orderStatus === "pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-red-100 text-red-800"
                 }`}
               >
                 {order.orderStatus.toUpperCase()}
@@ -125,7 +127,10 @@ export default function OrderDetailPage() {
           <Card className="p-6 border-0 shadow-md mb-6">
             <h2 className="text-lg font-bold mb-4">Items</h2>
             {order.items.map((item, i) => (
-              <div key={i} className="flex justify-between items-center border-b py-3">
+              <div
+                key={i}
+                className="flex justify-between items-center border-b py-3"
+              >
                 <div className="flex items-center space-x-4">
                   {item.product?.images?.[0] && (
                     <img
@@ -156,7 +161,10 @@ export default function OrderDetailPage() {
                 {order.trackingProvider}
               </p>
               {order.trackingURL && (
-                <Button asChild className="mt-2 w-full bg-blue-600 hover:bg-blue-700">
+                <Button
+                  asChild
+                  className="mt-2 w-full bg-blue-600 hover:bg-blue-700"
+                >
                   <Link href={order.trackingURL} target="_blank">
                     Track Package
                   </Link>
@@ -168,10 +176,14 @@ export default function OrderDetailPage() {
           {/* Shipping Address */}
           <Card className="p-6 border-0 shadow-md mb-6">
             <h2 className="text-lg font-bold mb-4">Shipping Address</h2>
-            <p>{order.shippingAddress?.street}, {order.shippingAddress?.city}</p>
+            <p>
+              {order.shippingAddress?.street}, {order.shippingAddress?.city}
+            </p>
             <p>{order.shippingAddress?.province}</p>
             <p>{order.shippingAddress?.zipCode}</p>
-            {order.shippingAddress?.country && <p>{order.shippingAddress.country}</p>}
+            {order.shippingAddress?.country && (
+              <p>{order.shippingAddress.country}</p>
+            )}
           </Card>
 
           {/* Order Summary */}
@@ -189,7 +201,10 @@ export default function OrderDetailPage() {
               <span>Total</span>
               <span>Rs. {order.total}</span>
             </div>
-            <Button onClick={downloadInvoice} className="mt-4 w-full bg-green-700 hover:bg-green-800">
+            <Button
+              onClick={downloadInvoice}
+              className="mt-4 w-full bg-green-700 hover:bg-green-800"
+            >
               <Download className="h-4 w-4 mr-2" /> Download Invoice
             </Button>
           </Card>

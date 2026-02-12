@@ -2,9 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Card } from "@/components/ui/card";
-import { 
-  AlertTriangle, Loader2, TrendingUp, TrendingDown, 
-  Wallet, ShoppingBag, Receipt, Package, RefreshCcw 
+import {
+  AlertTriangle,
+  Loader2,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  ShoppingBag,
+  Receipt,
+  Package,
+  RefreshCcw,
 } from "lucide-react";
 
 export default function ProfitLossPage() {
@@ -42,7 +49,9 @@ export default function ProfitLossPage() {
           <h1 className="text-4xl font-black tracking-tighter text-slate-900">
             Analytics <span className="text-blue-600">.</span>
           </h1>
-          <p className="text-slate-500 font-medium">Financial health & performance overview</p>
+          <p className="text-slate-500 font-medium">
+            Financial health & performance overview
+          </p>
         </div>
 
         <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -51,13 +60,18 @@ export default function ProfitLossPage() {
               key={p}
               onClick={() => setPeriod(p)}
               className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition-all ${
-                period === p ? "bg-white shadow-sm text-blue-600" : "text-slate-500 hover:text-slate-700"
+                period === p
+                  ? "bg-white shadow-sm text-blue-600"
+                  : "text-slate-500 hover:text-slate-700"
               }`}
             >
               {p}
             </button>
           ))}
-          <button onClick={fetchData} className="p-2 text-slate-400 hover:text-blue-600 transition-colors">
+          <button
+            onClick={fetchData}
+            className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
+          >
             <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
@@ -74,7 +88,13 @@ export default function ProfitLossPage() {
         />
         <StatBox
           title="Net Profit"
-          icon={data?.stats?.netProfit >= 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
+          icon={
+            data?.stats?.netProfit >= 0 ? (
+              <TrendingUp size={18} />
+            ) : (
+              <TrendingDown size={18} />
+            )
+          }
           value={data?.stats?.netProfit}
           sub={`${data?.stats?.margins?.net?.toFixed(1)}% Net Margin`}
           color={data?.stats?.netProfit >= 0 ? "green" : "red"}
@@ -105,34 +125,44 @@ export default function ProfitLossPage() {
             {data?.breakdown?.expenses?.map((ex: any, i: number) => (
               <div key={i}>
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="font-semibold text-slate-600">{ex.category}</span>
-                  <span className="font-bold text-slate-900">Rs. {ex.amount.toLocaleString()}</span>
+                  <span className="font-semibold text-slate-600">
+                    {ex.category}
+                  </span>
+                  <span className="font-bold text-slate-900">
+                    Rs. {ex.amount.toLocaleString()}
+                  </span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-amber-400 h-full rounded-full" 
-                    style={{ width: `${(ex.amount / data.stats.totalExpenses) * 100}%` }}
+                  <div
+                    className="bg-amber-400 h-full rounded-full"
+                    style={{
+                      width: `${(ex.amount / data.stats.totalExpenses) * 100}%`,
+                    }}
                   />
                 </div>
               </div>
             ))}
-            {(!data?.breakdown?.expenses || data?.breakdown?.expenses.length === 0) && (
-              <p className="text-center py-8 text-slate-400 italic text-sm">No expenses recorded for this period.</p>
+            {(!data?.breakdown?.expenses ||
+              data?.breakdown?.expenses.length === 0) && (
+              <p className="text-center py-8 text-slate-400 italic text-sm">
+                No expenses recorded for this period.
+              </p>
             )}
           </div>
         </Card>
 
         {/* Profitability Indicator */}
         <Card className="lg:col-span-2 p-6 border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col justify-center">
-            <div className="text-center space-y-2">
-                <p className="text-slate-500 font-medium">Gross Profit Margin</p>
-                <h2 className="text-6xl font-black text-slate-900">
-                    {data?.stats?.margins?.gross?.toFixed(1)}%
-                </h2>
-                <p className="text-sm text-slate-400 max-w-xs mx-auto">
-                    This represents your profit after Cost of Goods Sold but before operational expenses.
-                </p>
-            </div>
+          <div className="text-center space-y-2">
+            <p className="text-slate-500 font-medium">Gross Profit Margin</p>
+            <h2 className="text-6xl font-black text-slate-900">
+              {data?.stats?.margins?.gross?.toFixed(1)}%
+            </h2>
+            <p className="text-sm text-slate-400 max-w-xs mx-auto">
+              This represents your profit after Cost of Goods Sold but before
+              operational expenses.
+            </p>
+          </div>
         </Card>
       </div>
 
@@ -156,7 +186,9 @@ function StatBox({ title, value, sub, icon, color }: any) {
     <Card className="p-6 border-slate-100 shadow-lg shadow-slate-200/40 hover:scale-[1.02] transition-transform">
       <div className="flex items-center gap-3 mb-3">
         <div className={`p-2 rounded-lg border ${colors[color]}`}>{icon}</div>
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{title}</p>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+          {title}
+        </p>
       </div>
       <p className="text-2xl font-black text-slate-900">
         Rs. {(value ?? 0).toLocaleString()}
@@ -173,7 +205,9 @@ function LoadingScreen() {
         <Loader2 className="animate-spin text-blue-600" size={48} />
         <div className="absolute inset-0 blur-xl bg-blue-400/20 animate-pulse"></div>
       </div>
-      <p className="text-slate-500 font-bold tracking-widest text-xs uppercase">Analyzing Financials...</p>
+      <p className="text-slate-500 font-bold tracking-widest text-xs uppercase">
+        Analyzing Financials...
+      </p>
     </div>
   );
 }
