@@ -1,21 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Navbar } from "@/components/store/Navbar";
 import { HeroCarousel } from "@/components/store/HeroCarousel";
 import { FeaturedProducts } from "@/components/store/FeaturedProducts";
 import { Footer } from "@/components/store/Footer";
 import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { useEffect, useState } from "react";
 import {
   Truck,
   Shield,
   Clock,
   Leaf,
-  Star,
-  TrendingUp,
-  Package,
   Award,
+  Package,
   Users,
   Heart,
 } from "lucide-react";
@@ -25,32 +23,36 @@ interface Category {
   name: string;
   isVisible: boolean;
   sortOrder: number;
+  icon?: string; // optional icon string
 }
 
 export default function Home() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch("/api/admin/categories"); // public GET route
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        const data = await res.json();
+
+        if (Array.isArray(data.categories)) {
+          setCategories(data.categories); // only visible categories come from API
+        } else {
+          throw new Error("Invalid categories format");
+        }
+      } catch (err: any) {
+        console.error("Error fetching categories:", err);
+        setError("Failed to fetch categories");
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
     fetchCategories();
   }, []);
-
-  const fetchCategories = async () => {
-    try {
-      const res = await fetch("/api/admin/categories");
-      if (res.ok) {
-        const data = await res.json();
-        // Only show visible categories
-        setCategories(data.categories.filter((cat: Category) => cat.isVisible));
-      } else {
-        console.error("Failed to fetch categories");
-      }
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-    } finally {
-      setLoadingCategories(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -66,50 +68,43 @@ export default function Home() {
         <section className="bg-secondary/30 py-12">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
-              <div className="flex flex-col items-center text-center p-4">
-                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <Truck className="h-8 w-8 text-primary" />
+              {[
+                {
+                  icon: Truck,
+                  title: "Free Delivery",
+                  desc: "On orders over Rs. 2000",
+                },
+                {
+                  icon: Leaf,
+                  title: "100% Fresh",
+                  desc: "Farm-fresh quality guaranteed",
+                },
+                {
+                  icon: Shield,
+                  title: "Secure Payment",
+                  desc: "100% secure transactions",
+                },
+                {
+                  icon: Clock,
+                  title: "24/7 Support",
+                  desc: "Always here to help",
+                },
+              ].map((feature, idx) => (
+                <div
+                  key={idx}
+                  className="flex flex-col items-center text-center p-4"
+                >
+                  <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                    <feature.icon className="h-8 w-8 text-primary" />
+                  </div>
+                  <h3 className="font-semibold text-sm md:text-base mb-2">
+                    {feature.title}
+                  </h3>
+                  <p className="text-xs md:text-sm text-muted-foreground">
+                    {feature.desc}
+                  </p>
                 </div>
-                <h3 className="font-semibold text-sm md:text-base mb-2">
-                  Free Delivery
-                </h3>
-                <p className="text-xs md:text-sm text-muted-foreground">
-                  On orders over Rs. 2000
-                </p>
-              </div>
-              <div className="flex flex-col items-center text-center p-4">
-                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <Leaf className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="font-semibold text-sm md:text-base mb-2">
-                  100% Fresh
-                </h3>
-                <p className="text-xs md:text-sm text-muted-foreground">
-                  Farm-fresh quality guaranteed
-                </p>
-              </div>
-              <div className="flex flex-col items-center text-center p-4">
-                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <Shield className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="font-semibold text-sm md:text-base mb-2">
-                  Secure Payment
-                </h3>
-                <p className="text-xs md:text-sm text-muted-foreground">
-                  100% secure transactions
-                </p>
-              </div>
-              <div className="flex flex-col items-center text-center p-4">
-                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <Clock className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="font-semibold text-sm md:text-base mb-2">
-                  24/7 Support
-                </h3>
-                <p className="text-xs md:text-sm text-muted-foreground">
-                  Always here to help
-                </p>
-              </div>
+              ))}
             </div>
           </div>
         </section>
@@ -127,6 +122,8 @@ export default function Home() {
 
           {loadingCategories ? (
             <p className="text-center text-gray-500">Loading categories...</p>
+          ) : error ? (
+            <p className="text-center text-red-500">{error}</p>
           ) : categories.length === 0 ? (
             <p className="text-center text-gray-500">No categories available</p>
           ) : (
@@ -134,14 +131,20 @@ export default function Home() {
               {categories.map((category) => (
                 <Link
                   key={category._id}
-                  href={`/products?category=${category.name}`}
+                  href={`/products?category=${encodeURIComponent(category.name)}`}
                   className="group"
                 >
                   <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-orange-500 hover:shadow-lg transition-all hover:scale-105 cursor-pointer aspect-square">
                     <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center text-4xl mb-3 group-hover:scale-110 transition-transform">
-                      {category.icon
-                        ? category.icon
-                        : category.name.charAt(0).toUpperCase()}
+                      {category.icon ? (
+                        <img
+                          src={category.icon}
+                          alt={category.name}
+                          className="w-8 h-8 object-contain"
+                        />
+                      ) : (
+                        category.name.charAt(0).toUpperCase()
+                      )}
                     </div>
                     <h3 className="font-semibold text-sm md:text-base text-center">
                       {category.name}
@@ -167,42 +170,36 @@ export default function Home() {
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <Award className="h-8 w-8 text-primary-foreground" />
+            {[
+              {
+                icon: Award,
+                title: "Premium Quality",
+                desc: "Handpicked products meeting highest standards",
+              },
+              {
+                icon: Package,
+                title: "Careful Packaging",
+                desc: "Products packed with care to ensure freshness",
+              },
+              {
+                icon: Users,
+                title: "10,000+ Customers",
+                desc: "Join our growing family of satisfied shoppers",
+              },
+              {
+                icon: Heart,
+                title: "Customer First",
+                desc: "Your satisfaction is our top priority",
+              },
+            ].map((item, idx) => (
+              <div key={idx} className="text-center">
+                <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
+                  <item.icon className="h-8 w-8 text-primary-foreground" />
+                </div>
+                <h3 className="font-semibold text-lg mb-2">{item.title}</h3>
+                <p className="text-muted-foreground text-sm">{item.desc}</p>
               </div>
-              <h3 className="font-semibold text-lg mb-2">Premium Quality</h3>
-              <p className="text-muted-foreground text-sm">
-                Handpicked products meeting highest standards
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <Package className="h-8 w-8 text-primary-foreground" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">Careful Packaging</h3>
-              <p className="text-muted-foreground text-sm">
-                Products packed with care to ensure freshness
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="h-8 w-8 text-primary-foreground" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">10,000+ Customers</h3>
-              <p className="text-muted-foreground text-sm">
-                Join our growing family of satisfied shoppers
-              </p>
-            </div>
-            <div className="text-center">
-              <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center mx-auto mb-4">
-                <Heart className="h-8 w-8 text-primary-foreground" />
-              </div>
-              <h3 className="font-semibold text-lg mb-2">Customer First</h3>
-              <p className="text-muted-foreground text-sm">
-                Your satisfaction is our top priority
-              </p>
-            </div>
+            ))}
           </div>
         </section>
 

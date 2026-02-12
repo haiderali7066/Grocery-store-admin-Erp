@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     // Parse FormData
     const formData = await req.formData();
     const name = formData.get("name") as string;
-    const basePrice = formData.get("basePrice") as string;
+    // REMOVED basePrice extraction
     const category = formData.get("category") as string;
     const weight = formData.get("weight") as string;
     const weightUnit = formData.get("weightUnit") as string;
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       name,
       sku,
       description,
-      retailPrice: parseFloat(basePrice),
+      retailPrice: 0, // Defaulted to 0 since input was removed
       discount: discount ? parseFloat(discount) : 0,
       discountType: discountType || "percentage",
       category: categoryDoc._id,

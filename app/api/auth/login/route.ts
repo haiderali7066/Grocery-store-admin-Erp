@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db';
-import { User } from '@/lib/models/index';
-import { comparePasswords, generateToken } from '@/lib/auth';
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { User } from "@/lib/models/index";
+import { comparePasswords, generateToken } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,26 +11,28 @@ export async function POST(req: NextRequest) {
 
     if (!email || !password) {
       return NextResponse.json(
-        { message: 'Email and password are required' },
-        { status: 400 }
+        { message: "Email and password are required" },
+        { status: 400 },
       );
     }
 
     // IMPORTANT: Use .select('+password') to include the password field
-    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password",
+    );
 
     if (!user) {
       return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
+        { message: "Invalid credentials" },
+        { status: 401 },
       );
     }
 
     // Check if user is active
     if (!user.isActive) {
       return NextResponse.json(
-        { message: 'Account is inactive' },
-        { status: 403 }
+        { message: "Account is inactive" },
+        { status: 403 },
       );
     }
 
@@ -39,8 +41,8 @@ export async function POST(req: NextRequest) {
 
     if (!isValid) {
       return NextResponse.json(
-        { message: 'Invalid credentials' },
-        { status: 401 }
+        { message: "Invalid credentials" },
+        { status: 401 },
       );
     }
 
@@ -54,7 +56,7 @@ export async function POST(req: NextRequest) {
     // Create response with token in cookie
     const response = NextResponse.json(
       {
-        message: 'Login successful',
+        message: "Login successful",
         user: {
           id: user._id,
           name: user.name,
@@ -62,24 +64,24 @@ export async function POST(req: NextRequest) {
           role: user.role,
         },
       },
-      { status: 200 }
+      { status: 200 },
     );
 
     // Set HTTP-only cookie
-    response.cookies.set('token', token, {
+    response.cookies.set("token", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
-      path: '/',
+      path: "/",
     });
 
     return response;
   } catch (error) {
-    console.error('Login error:', error);
+    console.error("Login error:", error);
     return NextResponse.json(
-      { message: 'Internal server error' },
-      { status: 500 }
+      { message: "Internal server error" },
+      { status: 500 },
     );
   }
 }

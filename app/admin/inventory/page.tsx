@@ -18,15 +18,32 @@ import {
   Package,
   Receipt,
   Wallet,
-  Percent,
-  Hash,
+  TrendingUp,
+  Truck,
+  Layers,
 } from "lucide-react";
+
+interface BatchInfo {
+  _id: string;
+  quantity: number;
+  buyingRate: number;
+  taxType: string;
+  taxValue: number;
+  freightPerUnit: number;
+  unitCostWithTax: number;
+  sellingPrice: number;
+  profitPerUnit: number;
+  status: string;
+  createdAt: string;
+}
 
 interface InventoryItem {
   _id: string;
   name: string;
+  sku: string;
   stock: number;
-  buyingRate: number;
+  batches: BatchInfo[];
+  currentBatch?: BatchInfo;
   lowStockThreshold: number;
 }
 
@@ -34,20 +51,22 @@ interface Product {
   _id: string;
   name: string;
   sku: string;
-  retailPrice: number;
 }
 
 interface Supplier {
   _id: string;
   name: string;
+  balance: number;
 }
 
 interface PurchaseProduct {
   productId: string;
   quantity: string;
-  buyingRate: string; // Base rate excluding tax
-  taxType: "percent" | "fixed"; // New: Toggle between % and Fixed
-  taxValue: string; // The amount/percentage
+  buyingRate: string;
+  taxType: "percentage" | "fixed";
+  taxValue: string;
+  freightPerUnit: string;
+  sellingPrice: string;
 }
 
 export default function InventoryPage() {
@@ -56,15 +75,28 @@ export default function InventoryPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
-  // Purchase Form State
   const [purchaseProducts, setPurchaseProducts] = useState<PurchaseProduct[]>([
-    { productId: "", quantity: "", buyingRate: "", taxType: "percent", taxValue: "0" },
+    {
+      productId: "",
+      quantity: "",
+      buyingRate: "",
+      taxType: "percentage",
+      taxValue: "0",
+      freightPerUnit: "0",
+      sellingPrice: "",
+    },
   ]);
 
   const [purchaseData, setPurchaseData] = useState({
     supplierId: "",
-    paymentMethod: "cash" as "cash" | "bank" | "cheque" | "easypaisa" | "jazzcash",
+    paymentMethod: "cash" as
+      | "cash"
+      | "bank"
+      | "cheque"
+      | "easypaisa"
+      | "jazzcash",
     supplierInvoiceNo: "",
     notes: "",
     amountPaid: "0",
@@ -81,10 +113,13 @@ export default function InventoryPage() {
       const response = await fetch("/api/admin/inventory");
       if (response.ok) {
         const data = await response.json();
-        setInventory(data.inventory);
+        setInventory(data.inventory || []);
+      } else {
+        setInventory([]);
       }
     } catch (error) {
       console.error("Failed to fetch inventory:", error);
+      setInventory([]);
     } finally {
       setIsLoading(false);
     }
@@ -114,10 +149,28 @@ export default function InventoryPage() {
     }
   };
 
+  const toggleRowExpand = (productId: string) => {
+    const newExpanded = new Set(expandedRows);
+    if (newExpanded.has(productId)) {
+      newExpanded.delete(productId);
+    } else {
+      newExpanded.add(productId);
+    }
+    setExpandedRows(newExpanded);
+  };
+
   const addProductRow = () => {
     setPurchaseProducts([
       ...purchaseProducts,
-      { productId: "", quantity: "", buyingRate: "", taxType: "percent", taxValue: "0" },
+      {
+        productId: "",
+        quantity: "",
+        buyingRate: "",
+        taxType: "percentage",
+        taxValue: "0",
+        freightPerUnit: "0",
+        sellingPrice: "",
+      },
     ]);
   };
 
@@ -130,36 +183,48 @@ export default function InventoryPage() {
   const updateProductRow = (
     index: number,
     field: keyof PurchaseProduct,
-    value: string
+    value: string,
   ) => {
     const updated = [...purchaseProducts];
-    (updated[index] as any)[field] = value;
+    updated[index][field] = value as any;
     setPurchaseProducts(updated);
   };
 
-  // --- New Calculation Logic for Fixed/Percent Tax ---
-
-  const calculateUnitPriceWithTax = (item: PurchaseProduct) => {
-    const rate = parseFloat(item.buyingRate) || 0;
+  // Calculate Unit Cost = Base Rate + Tax + Freight
+  const calculateUnitCost = (item: PurchaseProduct) => {
+    const baseRate = parseFloat(item.buyingRate) || 0;
     const taxVal = parseFloat(item.taxValue) || 0;
+    const freight = parseFloat(item.freightPerUnit) || 0;
 
-    if (item.taxType === "percent") {
-      return rate + (rate * (taxVal / 100));
+    let costWithTax = baseRate;
+    if (item.taxType === "percentage") {
+      costWithTax = baseRate + baseRate * (taxVal / 100);
     } else {
-      // Fixed tax is added directly to the unit price
-      return rate + taxVal;
+      costWithTax = baseRate + taxVal;
     }
+
+    return costWithTax + freight;
   };
 
   const calculateItemSubtotal = (item: PurchaseProduct) => {
     const qty = parseFloat(item.quantity) || 0;
-    const unitPriceWithTax = calculateUnitPriceWithTax(item);
-    return qty * unitPriceWithTax;
+    const unitCost = calculateUnitCost(item);
+    return qty * unitCost;
+  };
+
+  const calculateProfit = (item: PurchaseProduct) => {
+    const unitCost = calculateUnitCost(item);
+    const selling = parseFloat(item.sellingPrice) || 0;
+    const profitPerUnit = selling - unitCost;
+    const quantity = parseFloat(item.quantity) || 0;
+    const totalProfit = profitPerUnit * quantity;
+    const margin = unitCost > 0 ? (profitPerUnit / unitCost) * 100 : 0;
+    return { profitPerUnit, totalProfit, margin };
   };
 
   const totalBillAmount = purchaseProducts.reduce(
     (total, item) => total + calculateItemSubtotal(item),
-    0
+    0,
   );
 
   const amountPaid = parseFloat(purchaseData.amountPaid) || 0;
@@ -174,11 +239,11 @@ export default function InventoryPage() {
     }
 
     const validProducts = purchaseProducts.filter(
-      (p) => p.productId && p.quantity && p.buyingRate
+      (p) => p.productId && p.quantity && p.buyingRate && p.sellingPrice,
     );
 
     if (validProducts.length === 0) {
-      alert("Please add at least one valid product");
+      alert("Please add at least one valid product with all details");
       return;
     }
 
@@ -191,10 +256,12 @@ export default function InventoryPage() {
           products: validProducts.map((p) => ({
             product: p.productId,
             quantity: parseInt(p.quantity),
-            buyingRate: parseFloat(p.buyingRate), // Original base cost
-            taxType: p.taxType,
+            buyingRate: parseFloat(p.buyingRate),
+            taxType: p.taxType, // Send as "percentage" or "fixed" - backend will convert
             taxValue: parseFloat(p.taxValue),
-            unitPriceWithTax: calculateUnitPriceWithTax(p), // This is the "Batch Cost" for profit calc
+            freightPerUnit: parseFloat(p.freightPerUnit),
+            unitCostWithTax: calculateUnitCost(p),
+            sellingPrice: parseFloat(p.sellingPrice),
           })),
           paymentMethod: purchaseData.paymentMethod,
           supplierInvoiceNo: purchaseData.supplierInvoiceNo,
@@ -205,10 +272,24 @@ export default function InventoryPage() {
         }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        alert("Purchase recorded! New batch created for profit tracking.");
+        alert(
+          `Purchase created successfully!\n\nTotal Bill: Rs ${totalBillAmount.toFixed(2)}\nPaid: Rs ${amountPaid.toFixed(2)}\nBalance Due: Rs ${balanceDue.toFixed(2)}`,
+        );
         setIsAddDialogOpen(false);
-        setPurchaseProducts([{ productId: "", quantity: "", buyingRate: "", taxType: "percent", taxValue: "0" }]);
+        setPurchaseProducts([
+          {
+            productId: "",
+            quantity: "",
+            buyingRate: "",
+            taxType: "percentage",
+            taxValue: "0",
+            freightPerUnit: "0",
+            sellingPrice: "",
+          },
+        ]);
         setPurchaseData({
           supplierId: "",
           paymentMethod: "cash",
@@ -217,22 +298,31 @@ export default function InventoryPage() {
           amountPaid: "0",
         });
         fetchInventory();
+        fetchSuppliers();
       } else {
-        const errorData = await response.json();
-        alert(`Error: ${errorData.error}`);
+        alert(`Failed: ${data.error || "Unknown error"}`);
       }
     } catch (error) {
-      console.error("Submission error:", error);
+      console.error("Purchase error:", error);
+      alert("Error creating purchase");
     }
   };
+
+  const lowStockItems = (inventory || []).filter(
+    (item) => item && item.stock <= item.lowStockThreshold,
+  );
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Inventory & Batches</h1>
-          <p className="text-gray-500 text-sm">Track unit-wise profit with accurate landing costs.</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Inventory & FIFO Batches
+          </h1>
+          <p className="text-gray-500 text-sm">
+            Track unit costs with taxes & freight charges per product
+          </p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
@@ -241,7 +331,7 @@ export default function InventoryPage() {
               New Purchase Order
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
+          <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl font-bold flex items-center gap-2">
                 <Receipt className="h-6 w-6 text-blue-600" />
@@ -251,40 +341,85 @@ export default function InventoryPage() {
 
             <form onSubmit={handleBulkPurchase} className="space-y-6 mt-4">
               {/* Supplier Section */}
-              <Card className="p-4 bg-slate-50 border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-sm font-semibold mb-1 block">Supplier *</label>
-                  <select
-                    value={purchaseData.supplierId}
-                    onChange={(e) => setPurchaseData({ ...purchaseData, supplierId: e.target.value })}
-                    className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                    required
-                  >
-                    <option value="">Choose Supplier</option>
-                    {suppliers.map((s) => (
-                      <option key={s._id} value={s._id}>{s.name}</option>
-                    ))}
-                  </select>
+              <Card className="p-4 bg-slate-50 border-slate-200">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm font-semibold mb-1 block">
+                      Supplier *
+                    </label>
+                    <select
+                      value={purchaseData.supplierId}
+                      onChange={(e) =>
+                        setPurchaseData({
+                          ...purchaseData,
+                          supplierId: e.target.value,
+                        })
+                      }
+                      className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                      required
+                    >
+                      <option value="">Choose Supplier</option>
+                      {suppliers.map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.name}{" "}
+                          {s.balance > 0
+                            ? `(Owe: Rs ${s.balance.toFixed(2)})`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold mb-1 block">
+                      Invoice #
+                    </label>
+                    <Input
+                      value={purchaseData.supplierInvoiceNo}
+                      onChange={(e) =>
+                        setPurchaseData({
+                          ...purchaseData,
+                          supplierInvoiceNo: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. INV-99"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold mb-1 block">
+                      Payment Method
+                    </label>
+                    <select
+                      value={purchaseData.paymentMethod}
+                      onChange={(e) =>
+                        setPurchaseData({
+                          ...purchaseData,
+                          paymentMethod: e.target.value as any,
+                        })
+                      }
+                      className="w-full p-2 border rounded-md bg-white"
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="bank">Bank Transfer</option>
+                      <option value="cheque">Cheque</option>
+                      <option value="easypaisa">EasyPaisa</option>
+                      <option value="jazzcash">JazzCash</option>
+                    </select>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm font-semibold mb-1 block">Invoice #</label>
+                <div className="mt-4">
+                  <label className="text-sm font-semibold mb-1 block">
+                    Notes (Optional)
+                  </label>
                   <Input
-                    value={purchaseData.supplierInvoiceNo}
-                    onChange={(e) => setPurchaseData({ ...purchaseData, supplierInvoiceNo: e.target.value })}
-                    placeholder="e.g. INV-99"
+                    value={purchaseData.notes}
+                    onChange={(e) =>
+                      setPurchaseData({
+                        ...purchaseData,
+                        notes: e.target.value,
+                      })
+                    }
+                    placeholder="Add any additional notes..."
                   />
-                </div>
-                <div>
-                  <label className="text-sm font-semibold mb-1 block">Payment Method</label>
-                  <select
-                    value={purchaseData.paymentMethod}
-                    onChange={(e) => setPurchaseData({ ...purchaseData, paymentMethod: e.target.value as any })}
-                    className="w-full p-2 border rounded-md bg-white"
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="bank">Bank Transfer</option>
-                    <option value="easypaisa">EasyPaisa</option>
-                  </select>
                 </div>
               </Card>
 
@@ -292,157 +427,615 @@ export default function InventoryPage() {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-bold flex items-center gap-2">
-                    <Package className="h-5 w-5 text-green-600" /> Purchase Items
+                    <Package className="h-5 w-5 text-green-600" /> Purchase
+                    Items
                   </h3>
-                  <Button type="button" onClick={addProductRow} variant="outline" size="sm" className="text-green-600 border-green-600">
+                  <Button
+                    type="button"
+                    onClick={addProductRow}
+                    variant="outline"
+                    size="sm"
+                    className="text-green-600 border-green-600"
+                  >
                     <Plus className="h-4 w-4 mr-1" /> Add Product
                   </Button>
                 </div>
 
                 <div className="space-y-3">
-                  {purchaseProducts.map((item, index) => (
-                    <Card key={index} className="p-4 border-l-4 border-l-blue-500 shadow-sm">
-                      <div className="grid grid-cols-12 gap-4 items-end">
-                        <div className="col-span-12 md:col-span-3">
-                          <label className="text-[10px] uppercase font-bold text-gray-400">Product</label>
-                          <select
-                            value={item.productId}
-                            onChange={(e) => updateProductRow(index, "productId", e.target.value)}
-                            className="w-full mt-1 p-2 border rounded-md text-sm bg-white"
-                            required
-                          >
-                            <option value="">Select...</option>
-                            {products.map((p) => (
-                              <option key={p._id} value={p._id}>{p.name}</option>
-                            ))}
-                          </select>
-                        </div>
+                  {purchaseProducts.map((item, index) => {
+                    const { profitPerUnit, totalProfit, margin } =
+                      calculateProfit(item);
+                    const unitCost = calculateUnitCost(item);
+                    const baseRate = parseFloat(item.buyingRate) || 0;
+                    const taxVal = parseFloat(item.taxValue) || 0;
+                    const freight = parseFloat(item.freightPerUnit) || 0;
 
-                        <div className="col-span-3 md:col-span-1">
-                          <label className="text-[10px] uppercase font-bold text-gray-400">Qty</label>
-                          <Input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => updateProductRow(index, "quantity", e.target.value)}
-                            required
-                          />
-                        </div>
+                    let taxAmount = 0;
+                    if (item.taxType === "percentage") {
+                      taxAmount = baseRate * (taxVal / 100);
+                    } else {
+                      taxAmount = taxVal;
+                    }
 
-                        <div className="col-span-4 md:col-span-2">
-                          <label className="text-[10px] uppercase font-bold text-gray-400">Base Rate</label>
-                          <Input
-                            type="number"
-                            value={item.buyingRate}
-                            onChange={(e) => updateProductRow(index, "buyingRate", e.target.value)}
-                            required
-                          />
-                        </div>
-
-                        <div className="col-span-5 md:col-span-3">
-                          <label className="text-[10px] uppercase font-bold text-gray-400">Tax Type & Value</label>
-                          <div className="flex mt-1">
+                    return (
+                      <Card
+                        key={index}
+                        className="p-4 border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition"
+                      >
+                        <div className="grid grid-cols-12 gap-3 items-end mb-3">
+                          <div className="col-span-12 md:col-span-3">
+                            <label className="text-[10px] uppercase font-bold text-gray-400">
+                              Product *
+                            </label>
                             <select
-                              value={item.taxType}
-                              onChange={(e) => updateProductRow(index, "taxType", e.target.value)}
-                              className="p-2 border rounded-l-md bg-slate-50 text-xs font-bold border-r-0"
+                              value={item.productId}
+                              onChange={(e) =>
+                                updateProductRow(
+                                  index,
+                                  "productId",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full mt-1 p-2 border rounded-md text-sm bg-white"
+                              required
                             >
-                              <option value="percent">%</option>
-                              <option value="fixed">Rs</option>
+                              <option value="">Select...</option>
+                              {products.map((p) => (
+                                <option key={p._id} value={p._id}>
+                                  {p.name} ({p.sku})
+                                </option>
+                              ))}
                             </select>
+                          </div>
+
+                          <div className="col-span-3 md:col-span-1">
+                            <label className="text-[10px] uppercase font-bold text-gray-400">
+                              Qty *
+                            </label>
                             <Input
                               type="number"
-                              value={item.taxValue}
-                              onChange={(e) => updateProductRow(index, "taxValue", e.target.value)}
-                              className="rounded-l-none"
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateProductRow(
+                                  index,
+                                  "quantity",
+                                  e.target.value,
+                                )
+                              }
+                              required
+                              className="mt-1"
+                              min="1"
                             />
+                          </div>
+
+                          <div className="col-span-3 md:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-gray-400">
+                              Base Rate (Rs) *
+                            </label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={item.buyingRate}
+                              onChange={(e) =>
+                                updateProductRow(
+                                  index,
+                                  "buyingRate",
+                                  e.target.value,
+                                )
+                              }
+                              required
+                              className="mt-1"
+                              min="0"
+                            />
+                          </div>
+
+                          <div className="col-span-3 md:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-gray-400">
+                              Tax Type & Value
+                            </label>
+                            <div className="flex mt-1">
+                              <select
+                                value={item.taxType}
+                                onChange={(e) =>
+                                  updateProductRow(
+                                    index,
+                                    "taxType",
+                                    e.target.value,
+                                  )
+                                }
+                                className="p-2 border rounded-l-md bg-slate-50 text-xs font-bold border-r-0"
+                              >
+                                <option value="percentage">%</option>
+                                <option value="fixed">Rs</option>
+                              </select>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={item.taxValue}
+                                onChange={(e) =>
+                                  updateProductRow(
+                                    index,
+                                    "taxValue",
+                                    e.target.value,
+                                  )
+                                }
+                                className="rounded-l-none"
+                                min="0"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="col-span-3 md:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-gray-400 flex items-center gap-1">
+                              <Truck className="h-3 w-3" />
+                              Freight/Unit (Rs)
+                            </label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={item.freightPerUnit}
+                              onChange={(e) =>
+                                updateProductRow(
+                                  index,
+                                  "freightPerUnit",
+                                  e.target.value,
+                                )
+                              }
+                              className="mt-1"
+                              min="0"
+                            />
+                          </div>
+
+                          <div className="col-span-3 md:col-span-1">
+                            {purchaseProducts.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeProductRow(index)}
+                                className="text-red-400 w-full hover:text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-5 w-5" />
+                              </Button>
+                            )}
                           </div>
                         </div>
 
-                        <div className="col-span-10 md:col-span-2 bg-blue-50 p-2 rounded border border-blue-100">
-                          <label className="text-[9px] uppercase font-bold text-blue-500 block">Landed Cost (Batch)</label>
-                          <p className="text-sm font-bold text-blue-700">Rs {calculateUnitPriceWithTax(item).toFixed(2)}</p>
-                        </div>
+                        {/* Unit Cost Breakdown */}
+                        {item.buyingRate && (
+                          <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <div className="grid grid-cols-5 gap-2 text-xs">
+                              <div>
+                                <span className="text-gray-500">Base</span>
+                                <p className="font-bold text-gray-900">
+                                  Rs {baseRate.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">+ Tax</span>
+                                <p className="font-bold text-blue-600">
+                                  Rs {taxAmount.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">+ Freight</span>
+                                <p className="font-bold text-purple-600">
+                                  Rs {freight.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">
+                                  = Unit Cost
+                                </span>
+                                <p className="font-bold text-lg text-blue-700">
+                                  Rs {unitCost.toFixed(2)}
+                                </p>
+                              </div>
+                              <div>
+                                <label className="text-[10px] uppercase font-bold text-gray-400 block mb-1">
+                                  Selling Price *
+                                </label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={item.sellingPrice}
+                                  onChange={(e) =>
+                                    updateProductRow(
+                                      index,
+                                      "sellingPrice",
+                                      e.target.value,
+                                    )
+                                  }
+                                  required
+                                  className="h-8"
+                                  min="0"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
-                        <div className="col-span-2 md:col-span-1 text-right">
-                          <Button type="button" variant="ghost" size="sm" onClick={() => removeProductRow(index)} className="text-red-400">
-                            <Trash2 className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
+                        {/* Profit Summary */}
+                        {item.quantity &&
+                          item.buyingRate &&
+                          item.sellingPrice && (
+                            <div className="p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                              <div className="grid grid-cols-4 gap-4 text-sm">
+                                <div>
+                                  <span className="text-gray-600">
+                                    Total Cost:
+                                  </span>
+                                  <p className="font-bold text-gray-900">
+                                    Rs {calculateItemSubtotal(item).toFixed(2)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">
+                                    Revenue:
+                                  </span>
+                                  <p className="font-bold text-gray-900">
+                                    Rs{" "}
+                                    {(
+                                      parseFloat(item.quantity) *
+                                      parseFloat(item.sellingPrice)
+                                    ).toFixed(2)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">
+                                    Total Profit:
+                                  </span>
+                                  <p
+                                    className={`font-bold ${totalProfit >= 0 ? "text-green-600" : "text-red-600"}`}
+                                  >
+                                    Rs {totalProfit.toFixed(2)}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Margin:</span>
+                                  <p
+                                    className={`font-bold ${margin >= 0 ? "text-green-600" : "text-red-600"}`}
+                                  >
+                                    {margin.toFixed(1)}% (Rs{" "}
+                                    {profitPerUnit.toFixed(2)}/unit)
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                      </Card>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Financial Summary */}
+              {/* Payment & Summary */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
                 <Card className="p-4 border-orange-200 bg-orange-50/50">
                   <h4 className="font-bold text-orange-800 flex items-center gap-2 mb-3">
                     <Wallet className="h-4 w-4" /> Payment
                   </h4>
-                  <label className="text-sm font-semibold block mb-1">Amount Paid to Supplier Now</label>
-                  <Input
-                    type="number"
-                    value={purchaseData.amountPaid}
-                    onChange={(e) => setPurchaseData({ ...purchaseData, amountPaid: e.target.value })}
-                    className="text-lg font-bold bg-white border-orange-300"
-                  />
+
+                  <div>
+                    <label className="text-sm font-semibold block mb-1">
+                      Amount Paid to Supplier Now
+                    </label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={purchaseData.amountPaid}
+                      onChange={(e) =>
+                        setPurchaseData({
+                          ...purchaseData,
+                          amountPaid: e.target.value,
+                        })
+                      }
+                      className="text-lg font-bold bg-white border-orange-300"
+                      min="0"
+                    />
+                  </div>
                 </Card>
 
-                <Card className="p-6 bg-slate-900 text-white flex flex-col justify-center space-y-2 shadow-xl">
-                  <div className="flex justify-between items-center opacity-80 text-sm">
-                    <span>Total Bill:</span>
-                    <span>Rs {totalBillAmount.toFixed(2)}</span>
+                <Card className="p-6 bg-slate-900 text-white flex flex-col justify-center space-y-3 shadow-xl">
+                  <div className="flex justify-between items-center pt-2">
+                    <span className="text-lg font-bold">Total Bill:</span>
+                    <span className="text-2xl font-bold">
+                      Rs {totalBillAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center opacity-80 text-sm border-t border-slate-700 pt-2">
+                    <span>Amount Paid:</span>
+                    <span className="text-green-400">
+                      (-) Rs {amountPaid.toFixed(2)}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center pt-2 border-t border-slate-700">
-                    <span className="text-lg font-bold">Balance Payable:</span>
-                    <span className={`text-3xl font-black ${balanceDue > 0 ? "text-red-400" : "text-green-400"}`}>
+                    <span className="text-lg font-bold">Balance Due:</span>
+                    <span
+                      className={`text-3xl font-black ${balanceDue > 0 ? "text-red-400" : "text-green-400"}`}
+                    >
                       Rs {Math.abs(balanceDue).toFixed(2)}
                     </span>
                   </div>
                 </Card>
               </div>
 
-              <Button type="submit" className="w-full py-6 text-xl bg-green-600 hover:bg-green-700 font-bold shadow-xl">
-                Finalize Purchase & Update Batch Costs
+              <Button
+                type="submit"
+                className="w-full py-6 text-xl bg-green-600 hover:bg-green-700 font-bold shadow-xl"
+              >
+                Finalize Purchase & Update Supplier Balance
               </Button>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Main Inventory Display */}
+      {/* Low Stock Alert */}
+      {lowStockItems.length > 0 && (
+        <Card className="p-4 bg-orange-50 border-2 border-orange-300 shadow-md">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-6 w-6 text-orange-600" />
+            <div>
+              <p className="font-bold text-orange-900 text-lg">
+                Low Stock Alert
+              </p>
+              <p className="text-sm text-orange-700">
+                {lowStockItems.length} products need immediate restocking
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Inventory Table */}
       <Card className="shadow-xl overflow-hidden border-0">
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b">
-              <tr>
-                <th className="px-6 py-4 font-bold text-gray-600">Product Name</th>
-                <th className="px-6 py-4 font-bold text-gray-600">Stock Level</th>
-                <th className="px-6 py-4 font-bold text-gray-600">Latest Batch Cost</th>
-                <th className="px-6 py-4 font-bold text-gray-600">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {inventory.map((item) => (
-                <tr key={item._id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
-                  <td className="px-6 py-4">
-                    <span className="text-lg font-bold">{item.stock}</span>
-                    <span className="text-xs text-gray-400 ml-1">units</span>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">Rs {item.buyingRate.toFixed(2)}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
-                      item.stock <= item.lowStockThreshold ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
-                    }`}>
-                      {item.stock <= item.lowStockThreshold ? "Low" : "Healthy"}
-                    </span>
-                  </td>
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+              <p className="mt-4 text-gray-600">Loading inventory...</p>
+            </div>
+          ) : inventory && inventory.length > 0 ? (
+            <table className="w-full text-left">
+              <thead className="bg-slate-50 border-b-2">
+                <tr>
+                  <th className="px-6 py-4 font-bold text-gray-600">Product</th>
+                  <th className="px-6 py-4 font-bold text-gray-600">SKU</th>
+                  <th className="px-6 py-4 font-bold text-gray-600">Stock</th>
+                  <th className="px-6 py-4 font-bold text-gray-600">
+                    Current Batch
+                  </th>
+                  <th className="px-6 py-4 font-bold text-gray-600">
+                    Unit Cost
+                  </th>
+                  <th className="px-6 py-4 font-bold text-gray-600">
+                    Selling Price
+                  </th>
+                  <th className="px-6 py-4 font-bold text-gray-600">
+                    Profit/Unit
+                  </th>
+                  <th className="px-6 py-4 font-bold text-gray-600">Status</th>
+                  <th className="px-6 py-4 font-bold text-gray-600">Batches</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y">
+                {inventory.map((item) => (
+                  <React.Fragment key={item._id}>
+                    <tr className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-gray-900">
+                        {item.name}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">{item.sku}</td>
+                      <td className="px-6 py-4">
+                        <span className="text-lg font-bold">{item.stock}</span>
+                        <span className="text-xs text-gray-400 ml-1">
+                          units
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {item.currentBatch ? (
+                          <div className="text-sm">
+                            <span className="font-semibold text-gray-700">
+                              {item.currentBatch.quantity} units
+                            </span>
+                            <p className="text-xs text-gray-500">
+                              Active batch
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">No active batch</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {item.currentBatch ? (
+                          <div>
+                            <span className="text-lg font-bold text-blue-600">
+                              Rs {item.currentBatch.unitCostWithTax.toFixed(2)}
+                            </span>
+                            <p className="text-xs text-gray-500">
+                              Base + Tax + Freight
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {item.currentBatch ? (
+                          <span className="text-lg font-bold text-green-600">
+                            Rs {item.currentBatch.sellingPrice.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {item.currentBatch ? (
+                          <div>
+                            <span
+                              className={`text-lg font-bold ${item.currentBatch.profitPerUnit >= 0 ? "text-green-600" : "text-red-600"}`}
+                            >
+                              Rs {item.currentBatch.profitPerUnit.toFixed(2)}
+                            </span>
+                            <p className="text-xs text-gray-500">
+                              {(
+                                (item.currentBatch.profitPerUnit /
+                                  item.currentBatch.unitCostWithTax) *
+                                100
+                              ).toFixed(1)}
+                              % margin
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                            item.stock <= item.lowStockThreshold
+                              ? "bg-red-100 text-red-700"
+                              : "bg-green-100 text-green-700"
+                          }`}
+                        >
+                          {item.stock <= item.lowStockThreshold
+                            ? "Low"
+                            : "Healthy"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleRowExpand(item._id)}
+                          className="text-blue-600 hover:bg-blue-50"
+                        >
+                          <Layers className="h-4 w-4 mr-1" />
+                          {expandedRows.has(item._id) ? "Hide" : "View"} (
+                          {item.batches?.length || 0})
+                        </Button>
+                      </td>
+                    </tr>
+
+                    {/* Expanded Batch Details */}
+                    {expandedRows.has(item._id) && (
+                      <tr>
+                        <td colSpan={9} className="px-6 py-4 bg-gray-50">
+                          <div className="space-y-2">
+                            <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                              <TrendingUp className="h-4 w-4" />
+                              FIFO Batch History (Oldest First)
+                            </h4>
+                            {item.batches && item.batches.length > 0 ? (
+                              <div className="grid grid-cols-1 gap-2">
+                                {item.batches.map((batch, idx) => (
+                                  <div
+                                    key={batch._id}
+                                    className={`p-3 rounded-lg border-2 ${
+                                      batch.status === "active"
+                                        ? "bg-green-50 border-green-300"
+                                        : batch.status === "partial"
+                                          ? "bg-yellow-50 border-yellow-300"
+                                          : "bg-gray-100 border-gray-300"
+                                    }`}
+                                  >
+                                    <div className="grid grid-cols-8 gap-4 text-sm">
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Batch #{idx + 1}
+                                        </span>
+                                        <p className="font-semibold">
+                                          {batch.quantity} units
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Base Rate
+                                        </span>
+                                        <p className="font-semibold">
+                                          Rs {batch.buyingRate.toFixed(2)}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Tax
+                                        </span>
+                                        <p className="font-semibold">
+                                          {batch.taxType === "percentage" ||
+                                          batch.taxType === "percent"
+                                            ? `${batch.taxValue}%`
+                                            : `Rs ${batch.taxValue}`}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Freight/Unit
+                                        </span>
+                                        <p className="font-semibold text-purple-600">
+                                          Rs {batch.freightPerUnit.toFixed(2)}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Unit Cost
+                                        </span>
+                                        <p className="font-semibold text-blue-600">
+                                          Rs {batch.unitCostWithTax.toFixed(2)}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Selling
+                                        </span>
+                                        <p className="font-semibold text-green-600">
+                                          Rs {batch.sellingPrice.toFixed(2)}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Profit/Unit
+                                        </span>
+                                        <p
+                                          className={`font-semibold ${batch.profitPerUnit >= 0 ? "text-green-600" : "text-red-600"}`}
+                                        >
+                                          Rs {batch.profitPerUnit.toFixed(2)}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-600">
+                                          Status
+                                        </span>
+                                        <p className="font-semibold capitalize">
+                                          {batch.status}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-gray-500 text-sm">
+                                No batches available
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="text-center py-12">
+              <Package className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 text-lg">No inventory items found</p>
+              <p className="text-gray-400 text-sm mt-2">
+                Create a purchase order to add stock
+              </p>
+            </div>
+          )}
         </div>
       </Card>
     </div>

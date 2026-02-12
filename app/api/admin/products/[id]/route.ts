@@ -77,7 +77,6 @@ export async function PUT(
     }
 
     const { id } = await context.params;
-
     const formData = await req.formData();
 
     const product = await Product.findById(id);
@@ -89,7 +88,9 @@ export async function PUT(
     const name = formData.get("name") as string;
     const sku = formData.get("sku") as string;
     const description = formData.get("description") as string;
-    const basePrice = Number(formData.get("basePrice"));
+    
+    // No basePrice/retailPrice update here as requested
+    
     const discount = Number(formData.get("discount") || 0);
     const discountType = formData.get("discountType") as "percentage" | "fixed";
     const category = formData.get("category") as string;
@@ -107,13 +108,13 @@ export async function PUT(
     // If new image uploaded
     // =============================
     if (imageFile && imageFile.size > 0) {
+      // 1. Upload new image
       const bytes = await imageFile.arrayBuffer();
       const buffer = Buffer.from(bytes);
-
       const uploadRes: any = await uploadToCloudinary(buffer);
       imageUrl = uploadRes.secure_url;
 
-      // delete old image
+      // 2. Delete old image from Cloudinary
       if (product.mainImage) {
         try {
           const publicId = extractPublicId(product.mainImage);
@@ -130,13 +131,16 @@ export async function PUT(
     product.name = name;
     product.sku = sku;
     product.description = description;
-    product.retailPrice = basePrice;
+    // retailPrice remains unchanged or 0
     product.discount = discount;
     product.discountType = discountType;
     product.category = category;
-    product.weight = weight;
-    product.weightUnit = weightUnit;
-    product.isNewArrival = isFlashSale;
+    
+    // Map form fields 'weight'/'weightUnit' to schema fields 'unitSize'/'unitType'
+    product.unitSize = weight; 
+    product.unitType = weightUnit;
+    
+    product.isNewArrival = isFlashSale; // Mapping isFlashSale to isNewArrival based on previous logic
     product.isHot = isHot;
     product.isFeatured = isFeatured;
     product.mainImage = imageUrl;

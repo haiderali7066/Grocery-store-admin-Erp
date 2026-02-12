@@ -1,5 +1,11 @@
 import { connectDB } from "@/lib/db";
-import { POSSale, Product, InventoryBatch } from "@/lib/models/index";
+import {
+  POSSale,
+  Product,
+  InventoryBatch,
+  Transaction,
+  Wallet,
+} from "@/lib/models/index";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
@@ -18,151 +24,227 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const {
-      customerName,
-      items,
-      subtotal,
-      tax,
-      total,
-      amountPaid,
-      change,
-      paymentMethod,
-    } = body;
+    const { customerName, items, paymentMethod, amountPaid } = body;
 
     if (!items || items.length === 0) {
-      return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Cart is empty" },
+        { status: 400 }
+      );
     }
 
     // Generate sale number
-    const saleNumber = `POS-${Date.now()}`;
+    const lastSale = await POSSale.findOne().sort({ createdAt: -1 });
+    const saleNumber = lastSale
+      ? `SALE-${(parseInt(lastSale.saleNumber.split("-")[1]) + 1).toString().padStart(6, "0")}`
+      : "SALE-000001";
 
-    // Process items and update inventory using FIFO
-    const saleItems = [];
-    let totalCost = 0;
+    const processedItems = [];
+    let totalCostOfGoods = 0;
+    let totalProfit = 0;
 
-    for (const item of items) {
-      const { productId, quantity, price, total: itemTotal } = item;
-
-      // Validate product exists
-      const product = await Product.findById(productId);
+    // Process each item with FIFO batch deduction
+    for (const cartItem of items) {
+      const product = await Product.findById(cartItem.productId);
       if (!product) {
         return NextResponse.json(
-          { error: `Product not found: ${productId}` },
-          { status: 404 },
+          { error: `Product not found: ${cartItem.productId}` },
+          { status: 404 }
         );
       }
 
-      // Check stock availability
-      if (product.stock < quantity) {
+      if (product.stock < cartItem.quantity) {
         return NextResponse.json(
-          {
-            error: `Insufficient stock for ${product.name}. Available: ${product.stock}, Required: ${quantity}`,
-          },
-          { status: 400 },
+          { error: `Insufficient stock for ${product.name}` },
+          { status: 400 }
         );
       }
 
-      // Deduct stock using FIFO
-      let remainingQty = quantity;
-      let costOfGoods = 0;
+      // Calculate item pricing with discount and tax
+      const basePrice = cartItem.price * cartItem.quantity;
+      
+      const discountAmount =
+        cartItem.discountType === "percentage"
+          ? basePrice * (cartItem.discountValue / 100)
+          : cartItem.discountValue * cartItem.quantity;
+      
+      const afterDiscount = Math.max(0, basePrice - discountAmount);
+      const taxAmount = afterDiscount * (cartItem.taxRate / 100);
+      const itemTotal = afterDiscount + taxAmount;
 
+      // FIFO: Get batches for this product (oldest first)
       const batches = await InventoryBatch.find({
-        product: productId,
+        product: product._id,
         status: { $in: ["active", "partial"] },
-        quantity: { $gt: 0 },
-      }).sort({ createdAt: 1 }); // FIFO - oldest first
+        remainingQuantity: { $gt: 0 },
+      }).sort({ createdAt: 1 });
 
+      if (batches.length === 0) {
+        return NextResponse.json(
+          { error: `No inventory batches found for ${product.name}` },
+          { status: 400 }
+        );
+      }
+
+      let remainingQty = cartItem.quantity;
+      let totalCost = 0;
+      const usedBatches = [];
+
+      // Deduct from batches (FIFO)
       for (const batch of batches) {
         if (remainingQty <= 0) break;
 
-        const deductQty = Math.min(batch.quantity, remainingQty);
+        const qtyFromBatch = Math.min(remainingQty, batch.remainingQuantity);
+        const batchCost = batch.buyingRate * qtyFromBatch; // buyingRate is the full landed cost
 
-        // Calculate cost for this batch
-        costOfGoods += deductQty * batch.buyingRate;
+        totalCost += batchCost;
+        batch.remainingQuantity -= qtyFromBatch;
+        remainingQty -= qtyFromBatch;
 
-        // Update batch
-        batch.quantity -= deductQty;
-        if (batch.quantity === 0) {
+        // Update batch status
+        if (batch.remainingQuantity === 0) {
           batch.status = "finished";
-        } else if (batch.quantity < batch.quantity + deductQty) {
+        } else if (batch.remainingQuantity < batch.quantity) {
           batch.status = "partial";
         }
-        await batch.save();
 
-        remainingQty -= deductQty;
+        await batch.save();
+        usedBatches.push({
+          batchId: batch._id,
+          quantity: qtyFromBatch,
+          costPrice: batch.buyingRate,
+        });
       }
 
       if (remainingQty > 0) {
         return NextResponse.json(
-          {
-            error: `Unable to fulfill quantity for ${product.name} from inventory batches`,
-          },
-          { status: 400 },
+          { error: `Insufficient inventory batches for ${product.name}` },
+          { status: 400 }
         );
       }
 
       // Update product stock
-      product.stock -= quantity;
+      product.stock -= cartItem.quantity;
       await product.save();
 
-      totalCost += costOfGoods;
+      const itemCostPrice = totalCost / cartItem.quantity; // Average cost per unit from batches
+      const itemProfit = itemTotal - totalCost;
 
-      saleItems.push({
-        product: productId,
-        quantity,
-        weight: `${product.unitSize} ${product.unitType}`,
-        price,
-        gst: tax / items.length, // Distribute tax equally
-        subtotal: itemTotal,
+      totalCostOfGoods += totalCost;
+      totalProfit += itemProfit;
+
+      processedItems.push({
+        product: product._id,
+        name: product.name,
+        quantity: cartItem.quantity,
+        price: cartItem.price,
+        discountType: cartItem.discountType || "percentage",
+        discountValue: cartItem.discountValue || 0,
+        discountAmount: discountAmount,
+        taxRate: cartItem.taxRate,
+        taxAmount: taxAmount,
+        total: itemTotal,
+        costPrice: itemCostPrice,
+        batchId: usedBatches[0]?.batchId, // Primary batch for reference
       });
     }
 
-    // Calculate profit
-    const profit = subtotal - totalCost;
+    // Calculate totals
+    const subtotal = processedItems.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+    const totalDiscount = processedItems.reduce(
+      (sum, item) => sum + item.discountAmount,
+      0
+    );
+    const totalTax = processedItems.reduce(
+      (sum, item) => sum + item.taxAmount,
+      0
+    );
+    const total = processedItems.reduce((sum, item) => sum + item.total, 0);
+    const change = amountPaid - total;
 
-    // Create POS sale record
+    // Create POS Sale
     const posSale = new POSSale({
       saleNumber,
+      customerName: customerName || "Walk-in Customer",
       cashier: payload.userId,
-      items: saleItems,
+      items: processedItems,
       subtotal,
-      gstAmount: tax,
+      discount: totalDiscount,
+      tax: totalTax,
+      gstAmount: totalTax, // Alias
       totalAmount: total,
-      paymentMethod: paymentMethod === "online" ? "manual" : paymentMethod,
+      total: total, // Alias
+      amountPaid,
+      change,
+      paymentMethod,
       paymentStatus: "completed",
-      profit,
-      costOfGoods: totalCost,
+      profit: totalProfit,
+      costOfGoods: totalCostOfGoods,
       isFinal: true,
       receiptPrinted: false,
     });
 
     await posSale.save();
 
+    // Update wallet
+    let wallet = await Wallet.findOne();
+    if (!wallet) {
+      wallet = new Wallet();
+    }
+
+    switch (paymentMethod) {
+      case "cash":
+        wallet.cash = (wallet.cash || 0) + amountPaid;
+        break;
+      case "card":
+        wallet.card = (wallet.card || 0) + amountPaid;
+        break;
+    }
+    wallet.lastUpdated = new Date();
+    await wallet.save();
+
+    // Create transaction
+    const transaction = new Transaction({
+      type: "income",
+      category: "POS Sale",
+      amount: total,
+      source: paymentMethod,
+      reference: posSale._id,
+      referenceModel: "POSSale",
+      description: `POS Sale ${saleNumber} - ${customerName || "Walk-in Customer"}`,
+      createdBy: payload.userId,
+    });
+    await transaction.save();
+
     return NextResponse.json(
       {
-        message: "Bill processed successfully",
-        _id: posSale._id,
-        saleNumber,
-        customerName,
-        items,
+        message: "Sale completed successfully",
+        saleNumber: posSale.saleNumber,
+        customerName: posSale.customerName,
+        items: processedItems,
         subtotal,
-        tax,
+        discount: totalDiscount,
+        tax: totalTax,
         total,
         amountPaid,
         change,
         paymentMethod,
-        profit,
+        profit: totalProfit,
+        costOfGoods: totalCostOfGoods,
         createdAt: posSale.createdAt,
       },
-      { status: 201 },
+      { status: 201 }
     );
   } catch (error) {
-    console.error("POS bill processing error:", error);
+    console.error("POS bill error:", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

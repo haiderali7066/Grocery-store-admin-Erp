@@ -1,8 +1,6 @@
 "use client";
 
-import React from "react";
-
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -26,7 +24,6 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 
-// Fixed interface to match API response
 interface Product {
   _id: string;
   name: string;
@@ -34,7 +31,9 @@ interface Product {
   discount: number;
   discountType: "percentage" | "fixed";
   stock: number;
-  category: string;
+  category: string; // Assuming this is the ID. If populated object, handle accordingly.
+  weight: number;   // Added to interface based on usage
+  weightUnit: string; // Added to interface based on usage
   status: string;
   isNewArrival: boolean;
   isHot: boolean;
@@ -56,12 +55,15 @@ export default function ProductsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  
+  // Track which product is being edited (null = creating new)
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+
   const [formData, setFormData] = useState({
     name: "",
     sku: "",
     description: "",
-    basePrice: "",
     discount: "",
     discountType: "percentage" as const,
     category: "",
@@ -83,7 +85,6 @@ export default function ProductsPage() {
       const response = await fetch("/api/products");
       if (response.ok) {
         const data = await response.json();
-        console.log("Fetched products:", data.products);
         setProducts(data.products || []);
       }
     } catch (error) {
@@ -112,14 +113,12 @@ export default function ProductsPage() {
         alert("Please select an image file");
         return;
       }
-
       if (file.size > 5 * 1024 * 1024) {
         alert("Image size should be less than 5MB");
         return;
       }
 
       setFormData({ ...formData, image: file });
-
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -133,6 +132,45 @@ export default function ProductsPage() {
     setImagePreview(null);
   };
 
+  const resetForm = () => {
+    setEditingId(null);
+    setFormData({
+      name: "",
+      sku: "",
+      description: "",
+      discount: "",
+      discountType: "percentage",
+      category: "",
+      weight: "",
+      weightUnit: "kg",
+      isFlashSale: false,
+      isHot: false,
+      isFeatured: false,
+      image: null,
+    });
+    setImagePreview(null);
+  };
+
+  const handleEdit = (product: Product) => {
+    setEditingId(product._id);
+    setFormData({
+      name: product.name,
+      sku: product.sku || "",
+      description: product.description || "",
+      discount: product.discount?.toString() || "",
+      discountType: product.discountType || "percentage",
+      category: product.category, // Ensure this matches the ID format of your <select>
+      weight: (product as any).unitSize?.toString() || "", // Adjust based on your actual DB field name (unitSize vs weight)
+      weightUnit: (product as any).unitType || "kg",       // Adjust based on your actual DB field name (unitType vs weightUnit)
+      isFlashSale: product.isNewArrival,
+      isHot: product.isHot,
+      isFeatured: product.isFeatured,
+      image: null, // Reset file input
+    });
+    setImagePreview(product.mainImage || null);
+    setIsDialogOpen(true);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsUploading(true);
@@ -142,7 +180,6 @@ export default function ProductsPage() {
       submitData.append("name", formData.name);
       submitData.append("sku", formData.sku);
       submitData.append("description", formData.description);
-      submitData.append("basePrice", formData.basePrice);
       submitData.append("discount", formData.discount);
       submitData.append("discountType", formData.discountType);
       submitData.append("category", formData.category);
@@ -156,40 +193,30 @@ export default function ProductsPage() {
         submitData.append("image", formData.image);
       }
 
-      const response = await fetch("/api/admin/products", {
-        method: "POST",
+      // Determine URL and Method based on editing state
+      const url = editingId 
+        ? `/api/admin/products/${editingId}` 
+        : "/api/admin/products";
+      
+      const method = editingId ? "PUT" : "POST";
+
+      const response = await fetch(url, {
+        method: method,
         body: submitData,
       });
 
       if (response.ok) {
         setIsDialogOpen(false);
-        setFormData({
-          name: "",
-          sku: "",
-          description: "",
-          basePrice: "",
-          discount: "",
-          discountType: "percentage",
-          category: "",
-          weight: "",
-          weightUnit: "kg",
-          isFlashSale: false,
-          isHot: false,
-          isFeatured: false,
-          image: null,
-        });
-        setImagePreview(null);
+        resetForm();
         fetchProducts();
-        alert("Product created successfully!");
+        alert(editingId ? "Product updated successfully!" : "Product created successfully!");
       } else {
         const errorData = await response.json();
-        alert(
-          `Failed to create product: ${errorData.error || "Unknown error"}`,
-        );
+        alert(`Failed to save product: ${errorData.error || "Unknown error"}`);
       }
     } catch (error) {
-      console.error("Failed to create product:", error);
-      alert("Failed to create product. Please try again.");
+      console.error("Failed to save product:", error);
+      alert("Failed to save product. Please try again.");
     } finally {
       setIsUploading(false);
     }
@@ -201,13 +228,11 @@ export default function ProductsPage() {
     }
 
     try {
-      console.log("Deleting product:", productId);
       const response = await fetch(`/api/admin/products/${productId}`, {
         method: "DELETE",
       });
 
       const data = await response.json();
-      console.log("Delete response:", data);
 
       if (response.ok) {
         alert("Product deleted successfully!");
@@ -227,22 +252,30 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600">Manage your store products</p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <Dialog 
+          open={isDialogOpen} 
+          onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) resetForm(); // Reset form when dialog closes
+          }}
+        >
           <DialogTrigger asChild>
-            <Button className="bg-green-700 hover:bg-green-800">
+            <Button 
+              className="bg-green-700 hover:bg-green-800"
+              onClick={resetForm} // Ensure form is clean for "Add"
+            >
               <Plus className="h-4 w-4 mr-2" />
               Add Product
             </Button>
           </DialogTrigger>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add New Product</DialogTitle>
+              <DialogTitle>{editingId ? "Edit Product" : "Add New Product"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
@@ -269,9 +302,6 @@ export default function ProductsPage() {
                   }
                   placeholder="Leave empty to auto-generate"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Optional: Will auto-generate if left blank
-                </p>
               </div>
 
               <div>
@@ -311,9 +341,6 @@ export default function ProductsPage() {
                       <span className="text-sm text-gray-600">
                         Click to upload product image
                       </span>
-                      <span className="text-xs text-gray-500 mt-1">
-                        PNG, JPG up to 5MB
-                      </span>
                     </label>
                   </div>
                 ) : (
@@ -324,6 +351,7 @@ export default function ProductsPage() {
                         alt="Preview"
                         fill
                         className="object-contain"
+                        unoptimized
                       />
                     </div>
                     <button
@@ -356,26 +384,6 @@ export default function ProductsPage() {
                     </option>
                   ))}
                 </select>
-                {categories.length === 0 && (
-                  <p className="text-sm text-orange-600 mt-1">
-                    No categories found. Please create categories first.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Base Price (Rs) *
-                </label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.basePrice}
-                  onChange={(e) =>
-                    setFormData({ ...formData, basePrice: e.target.value })
-                  }
-                  required
-                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -450,15 +458,12 @@ export default function ProductsPage() {
 
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                 <p className="text-sm text-blue-800">
-                  💡 Stock will be added during inventory purchases in the
-                  Inventory section.
+                  💡 Stock will be added during inventory purchases.
                 </p>
               </div>
 
               <div className="space-y-3 border-t pt-4">
-                <p className="text-sm font-medium text-gray-700">
-                  Product Tags
-                </p>
+                <p className="text-sm font-medium text-gray-700">Product Tags</p>
 
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -507,7 +512,7 @@ export default function ProductsPage() {
                 className="w-full bg-green-700 hover:bg-green-800"
                 disabled={categories.length === 0 || isUploading}
               >
-                {isUploading ? "Creating..." : "Create Product"}
+                {isUploading ? (editingId ? "Updating..." : "Creating...") : (editingId ? "Update Product" : "Create Product")}
               </Button>
             </form>
           </DialogContent>
@@ -533,41 +538,16 @@ export default function ProductsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Image
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  SKU
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Name
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Price
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Discount
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Stock
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Tags
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Status
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Actions
-                </th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Image</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Name</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Price</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Tags</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-600">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredProducts.map((product) => (
-                <tr
-                  key={product._id}
-                  className="border-b border-gray-100 hover:bg-gray-50"
-                >
+                <tr key={product._id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="py-3 px-4">
                     {product.mainImage ? (
                       <div className="relative w-12 h-12">
@@ -585,64 +565,31 @@ export default function ProductsPage() {
                       </div>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-sm text-gray-600">
-                    {product.sku || "N/A"}
-                  </td>
-                  <td className="py-3 px-4 font-medium text-gray-900">
-                    {product.name}
-                  </td>
-                  <td className="py-3 px-4 text-sm">
-                    Rs. {product.retailPrice}
-                  </td>
-                  <td className="py-3 px-4 text-sm">
-                    {product.discount ? (
-                      <span className="text-orange-600 font-medium">
-                        {product.discount}{" "}
-                        {product.discountType === "percentage" ? "%" : "Rs"}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-sm">{product.stock}</td>
+                  <td className="py-3 px-4 font-medium text-gray-900">{product.name}</td>
+                  <td className="py-3 px-4 text-sm">Rs. {product.retailPrice}</td>
                   <td className="py-3 px-4">
                     <div className="flex gap-1 flex-wrap">
                       {product.isNewArrival && (
                         <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium">
-                          <Zap className="h-3 w-3" />
-                          Flash
+                          <Zap className="h-3 w-3" /> Flash
                         </span>
                       )}
                       {product.isHot && (
                         <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-medium">
-                          <Fire className="h-3 w-3" />
-                          Hot
+                          <Fire className="h-3 w-3" /> Hot
                         </span>
                       )}
                       {product.isFeatured && (
-                        <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
-                          Featured
-                        </span>
+                        <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">Featured</span>
                       )}
                     </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span
-                      className={`inline-block px-2 py-1 rounded text-xs font-medium ${
-                        product.status === "active"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
-                      {product.status === "active" ? "Active" : "Inactive"}
-                    </span>
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => alert("Edit feature coming soon!")}
+                        onClick={() => handleEdit(product)}
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
