@@ -1,40 +1,54 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Refund } from "@/lib/models/index";
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
+    await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await req.json();
     const { orderNumber, amount, reason, notes } = body;
 
     if (!orderNumber || !amount) {
       return NextResponse.json(
-        { message: 'Missing required fields' },
-        { status: 400 }
+        { error: "Missing required fields" },
+        { status: 400 },
       );
     }
 
-    const manualReturn = {
-      _id: Date.now().toString(),
-      order: {
-        _id: orderNumber,
-        orderNumber: orderNumber,
-        total: parseFloat(amount),
-      },
+    // Create manual POS return
+    const refund = new Refund({
+      orderNumber: orderNumber,
+      returnType: "pos_manual",
       requestedAmount: parseFloat(amount),
-      reason,
-      status: 'pending',
-      notes,
-      createdAt: new Date().toISOString(),
-      returnType: 'manual',
-    };
+      deliveryCost: 0, // No delivery cost for POS
+      reason: reason || "pos_return",
+      notes: notes,
+      status: "pending",
+    });
 
-    console.log('[v0] Manual return created:', manualReturn);
+    await refund.save();
 
-    return NextResponse.json(manualReturn, { status: 201 });
-  } catch (error) {
-    console.error('[v0] Error creating manual return:', error);
     return NextResponse.json(
-      { message: 'Failed to create manual return' },
-      { status: 500 }
+      { success: true, message: "Manual return created", refund },
+      { status: 201 },
+    );
+  } catch (error) {
+    console.error("Manual return error:", error);
+    return NextResponse.json(
+      { error: "Failed to create manual return" },
+      { status: 500 },
     );
   }
 }

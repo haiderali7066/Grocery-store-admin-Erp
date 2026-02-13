@@ -20,6 +20,7 @@ import {
   PackageCheck,
   Building2,
   Smartphone,
+  Banknote,
 } from "lucide-react";
 
 export default function CheckoutPage() {
@@ -28,7 +29,7 @@ export default function CheckoutPage() {
   const router = useRouter();
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("bank");
+  const [paymentMethod, setPaymentMethod] = useState("cod");
   const [formData, setFormData] = useState({
     fullName: user?.name || "",
     email: user?.email || "",
@@ -56,25 +57,35 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return router.push("/login");
-    if (!screenshotFile) return alert("Please upload payment screenshot.");
+
+    // COD doesn't require screenshot
+    if (paymentMethod !== "cod" && !screenshotFile) {
+      return alert("Please upload payment screenshot.");
+    }
 
     setIsProcessing(true);
     try {
-      // Cloudinary Upload
-      const formDataCloud = new FormData();
-      formDataCloud.append("file", screenshotFile);
-      formDataCloud.append(
-        "upload_preset",
-        process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!,
-      );
+      let screenshotUrl = null;
 
-      const cloudRes = await fetch(
-        `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
-        { method: "POST", body: formDataCloud },
-      );
+      // Upload screenshot only for non-COD methods
+      if (paymentMethod !== "cod" && screenshotFile) {
+        const formDataCloud = new FormData();
+        formDataCloud.append("file", screenshotFile);
+        formDataCloud.append(
+          "upload_preset",
+          process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!,
+        );
 
-      const cloudData = await cloudRes.json();
-      if (!cloudData.secure_url) throw new Error("Payment proof upload failed");
+        const cloudRes = await fetch(
+          `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
+          { method: "POST", body: formDataCloud },
+        );
+
+        const cloudData = await cloudRes.json();
+        if (!cloudData.secure_url)
+          throw new Error("Payment proof upload failed");
+        screenshotUrl = cloudData.secure_url;
+      }
 
       // Create Order
       const orderRes = await fetch("/api/orders", {
@@ -88,11 +99,14 @@ export default function CheckoutPage() {
           gstAmount,
           total,
           paymentMethod,
-          screenshot: cloudData.secure_url,
+          screenshot: screenshotUrl,
         }),
       });
 
-      if (!orderRes.ok) throw new Error("Order creation failed");
+      if (!orderRes.ok) {
+        const errorData = await orderRes.json();
+        throw new Error(errorData.message || "Order creation failed");
+      }
 
       const data = await orderRes.json();
       clearCart();
@@ -283,7 +297,13 @@ export default function CheckoutPage() {
                 onValueChange={setPaymentMethod}
                 className="w-full"
               >
-                <TabsList className="grid w-full grid-cols-3 h-14 bg-gray-100 p-1 rounded-2xl mb-8">
+                <TabsList className="grid w-full grid-cols-4 h-14 bg-gray-100 p-1 rounded-2xl mb-8">
+                  <TabsTrigger
+                    value="cod"
+                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
+                  >
+                    <Banknote className="mr-2 h-4 w-4 hidden sm:inline" /> COD
+                  </TabsTrigger>
                   <TabsTrigger
                     value="bank"
                     className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
@@ -306,6 +326,36 @@ export default function CheckoutPage() {
                   </TabsTrigger>
                 </TabsList>
 
+                {/* COD Tab */}
+                <TabsContent value="cod" className="space-y-6">
+                  <div className="bg-green-50/50 border border-green-200 rounded-2xl p-6">
+                    <div className="flex gap-4">
+                      <Banknote className="h-8 w-8 text-green-600 shrink-0" />
+                      <div>
+                        <p className="font-bold text-green-900 mb-2 text-lg">
+                          Cash on Delivery (COD)
+                        </p>
+                        <p className="text-sm text-green-700 leading-relaxed mb-3">
+                          Pay with cash when your order is delivered to your
+                          doorstep. No need to pay online.
+                        </p>
+                        <div className="bg-white rounded-xl p-4 border border-green-200">
+                          <p className="text-xs font-bold text-green-900 mb-2">
+                            ✓ How it works:
+                          </p>
+                          <ul className="text-xs text-green-800 space-y-1">
+                            <li>• Place your order now</li>
+                            <li>• We'll deliver to your address</li>
+                            <li>• Pay the delivery person in cash</li>
+                            <li>• No payment screenshot needed</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                {/* Online Payment Tabs */}
                 {["bank", "easypaisa", "jazzcash"].map((method) => (
                   <TabsContent
                     key={method}
@@ -331,10 +381,10 @@ export default function CheckoutPage() {
                       </div>
                     </div>
 
-                    {/* Styled Upload Area */}
+                    {/* Upload Area */}
                     <div className="relative">
                       <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-4">
-                        Payment Proof (Screenshot)
+                        Payment Proof (Screenshot) *
                       </label>
                       <div
                         className={`border-2 border-dashed rounded-3xl p-8 transition-all flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 cursor-pointer ${previewUrl ? "border-green-300" : "border-gray-200"}`}
@@ -344,7 +394,6 @@ export default function CheckoutPage() {
                           accept="image/*"
                           onChange={handleFileChange}
                           className="absolute inset-0 opacity-0 cursor-pointer"
-                          required
                         />
                         {previewUrl ? (
                           <div className="flex flex-col items-center">
@@ -383,7 +432,13 @@ export default function CheckoutPage() {
               disabled={isProcessing}
               className="w-full h-16 bg-green-700 hover:bg-green-800 rounded-2xl text-xl font-black shadow-xl shadow-green-100 transition-all active:scale-[0.98] disabled:opacity-70"
             >
-              {isProcessing ? "Validating Payment..." : "Place Secure Order"}
+              {isProcessing
+                ? paymentMethod === "cod"
+                  ? "Placing Order..."
+                  : "Validating Payment..."
+                : paymentMethod === "cod"
+                  ? "Place Order (Cash on Delivery)"
+                  : "Place Secure Order"}
             </Button>
           </form>
 
@@ -434,6 +489,15 @@ export default function CheckoutPage() {
                     <span>Shipping</span>
                     <span className="text-green-600 font-bold">Free</span>
                   </div>
+                  {paymentMethod === "cod" && (
+                    <div className="flex justify-between text-orange-600 font-medium bg-orange-50 -mx-2 px-2 py-2 rounded-lg">
+                      <span className="flex items-center gap-2">
+                        <Banknote className="h-4 w-4" />
+                        Pay on Delivery
+                      </span>
+                      <span className="font-bold">COD</span>
+                    </div>
+                  )}
                   <div className="flex justify-between pt-4 border-t border-gray-100">
                     <span className="text-lg font-black text-gray-900">
                       Total
@@ -443,7 +507,9 @@ export default function CheckoutPage() {
                         Rs. {total.toFixed(0)}
                       </p>
                       <p className="text-[10px] text-gray-400 uppercase font-black mt-1">
-                        PKR (Approx)
+                        {paymentMethod === "cod"
+                          ? "PAY ON DELIVERY"
+                          : "PKR (APPROX)"}
                       </p>
                     </div>
                   </div>
@@ -455,10 +521,14 @@ export default function CheckoutPage() {
                 <ShieldCheck className="h-8 w-8 text-green-600" />
                 <div>
                   <p className="text-sm font-bold text-green-900">
-                    Secure Checkout
+                    {paymentMethod === "cod"
+                      ? "100% Secure Delivery"
+                      : "Secure Checkout"}
                   </p>
                   <p className="text-xs text-green-700">
-                    Your data is encrypted and protected
+                    {paymentMethod === "cod"
+                      ? "Pay only after receiving your order"
+                      : "Your data is encrypted and protected"}
                   </p>
                 </div>
               </div>

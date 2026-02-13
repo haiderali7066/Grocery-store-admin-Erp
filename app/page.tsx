@@ -208,6 +208,10 @@ export default function Home() {
           <HeroCarousel />
         </section>
 
+          {/* ── Featured Products ── */}
+          <FeaturedProducts />
+
+
         {/* ── Features Strip ── */}
         <section className="border-y border-green-100 bg-green-50/50 py-6 md:py-8">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -378,8 +382,6 @@ export default function Home() {
           )}
         </section>
 
-        {/* ── Featured Products ── */}
-        <FeaturedProducts />
 
         {/* ── Stats Strip ── */}
         <section className="stats-strip py-10">

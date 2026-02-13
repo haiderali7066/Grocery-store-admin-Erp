@@ -3,43 +3,6 @@ import { connectDB } from "@/lib/db";
 import { Refund, Order } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
-// GET - Fetch all refunds
-export async function GET(req: NextRequest) {
-  try {
-    await connectDB();
-
-    const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const refunds = await Refund.find()
-      .populate({
-        path: "order",
-        select: "orderNumber total items",
-      })
-      .populate({
-        path: "approvedBy",
-        select: "name",
-      })
-      .sort({ createdAt: -1 })
-      .lean(); // Use lean() for better performance
-
-    // Ensure we always return an array
-    return NextResponse.json(refunds || [], { status: 200 });
-  } catch (error) {
-    console.error("[Refunds GET] Error:", error);
-    // Return empty array on error to prevent parsing issues
-    return NextResponse.json([], { status: 200 });
-  }
-}
-
-// POST - Customer creates refund request
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -59,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     if (!orderId || !reason) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Order ID and reason are required" },
         { status: 400 }
       );
     }
@@ -75,20 +38,29 @@ export async function POST(req: NextRequest) {
       order.user.toString() !== payload.userId &&
       payload.role !== "admin"
     ) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "You can only request refunds for your own orders" },
+        { status: 403 }
+      );
     }
 
     // Prevent refunds for POS sales
     if (order.isPOS) {
       return NextResponse.json(
-        {
-          error: "POS sales cannot be refunded online. Please visit store.",
-        },
+        { error: "Walk-in/POS sales cannot be refunded online. Please visit the store." },
         { status: 400 }
       );
     }
 
-    // Check for existing pending/approved refund
+    // Check order status - only delivered/shipped orders can be refunded
+    if (!["delivered", "shipped"].includes(order.orderStatus)) {
+      return NextResponse.json(
+        { error: `Cannot request refund for orders with status: ${order.orderStatus}` },
+        { status: 400 }
+      );
+    }
+
+    // Check if already has pending/approved refund
     const existingRefund = await Refund.findOne({
       order: orderId,
       status: { $in: ["pending", "approved", "completed"] },
@@ -119,19 +91,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        message: "Refund request created successfully",
-        refund,
+        message:
+          "Refund request submitted successfully. We will review and respond within 24 hours.",
+        refund: {
+          _id: refund._id,
+          orderNumber: order.orderNumber,
+          requestedAmount: refund.requestedAmount,
+          deliveryCost: refund.deliveryCost,
+          status: refund.status,
+        },
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error("[Refunds POST] Error:", error);
+    console.error("[Refund Request] Error:", error);
     return NextResponse.json(
       {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to create refund request",
+            : "Failed to submit refund request",
       },
       { status: 500 }
     );

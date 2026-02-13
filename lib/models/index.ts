@@ -297,9 +297,9 @@ export const POSSaleSchema = new Schema(
 );
 
 // =========================
-// Order Schema
+// Order Schema (UPDATED - Add COD)
 // =========================
-export  const OrderSchema = new Schema(
+export const OrderSchema = new Schema(
   {
     orderNumber: { type: String, required: true, unique: true },
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
@@ -328,7 +328,7 @@ export  const OrderSchema = new Schema(
     total: { type: Number, required: true },
     paymentMethod: {
       type: String,
-      enum: ["bank", "easypaisa", "jazzcash", "walkin"],
+      enum: ["cod", "bank", "easypaisa", "jazzcash", "walkin"], // ← Added "cod"
       required: true,
     },
     paymentStatus: {
@@ -336,7 +336,7 @@ export  const OrderSchema = new Schema(
       enum: ["pending", "verified", "failed"],
       default: "pending",
     },
-    screenshot: String,
+    screenshot: String, // Optional for COD
     invoiceNumber: String,
     orderStatus: {
       type: String,
@@ -353,7 +353,7 @@ export  const OrderSchema = new Schema(
     profit: { type: Number, default: 0 },
     isPOS: { type: Boolean, default: false },
 
-    // ✅ Updated tracking fields
+    // Tracking fields
     trackingNumber: String,
     trackingProvider: String,
     shippedDate: Date,
@@ -361,7 +361,6 @@ export  const OrderSchema = new Schema(
   },
   { timestamps: true },
 );
-
 
 // =========================
 // Payment Schema
@@ -385,12 +384,20 @@ export const PaymentSchema = new Schema(
 );
 
 // =========================
-// Refund Schema
+// Refund Schema (UPDATED)
 // =========================
 export const RefundSchema = new Schema(
   {
-    order: { type: Schema.Types.ObjectId, ref: "Order", required: true },
-    amount: { type: Number, required: true },
+    order: { type: Schema.Types.ObjectId, ref: "Order" },
+    orderNumber: String, // For manual POS returns
+    returnType: {
+      type: String,
+      enum: ["online", "pos_manual"],
+      default: "online",
+    },
+    requestedAmount: { type: Number, required: true },
+    refundedAmount: { type: Number }, // Actual amount refunded (may deduct delivery)
+    deliveryCost: { type: Number, default: 0 }, // Rs 300 for online orders
     reason: String,
     status: {
       type: String,
@@ -399,6 +406,7 @@ export const RefundSchema = new Schema(
     },
     approvedBy: { type: Schema.Types.ObjectId, ref: "User" },
     approvedAt: Date,
+    notes: String,
   },
   { timestamps: true },
 );

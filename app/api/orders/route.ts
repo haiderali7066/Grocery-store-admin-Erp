@@ -56,15 +56,41 @@ export async function POST(req: NextRequest) {
       screenshot,
     } = await req.json();
 
+    // Validate payment method
+    const validPaymentMethods = [
+      "cod",
+      "bank",
+      "easypaisa",
+      "jazzcash",
+      "walkin",
+    ];
+    if (!validPaymentMethods.includes(paymentMethod)) {
+      return NextResponse.json(
+        { message: "Invalid payment method" },
+        { status: 400 },
+      );
+    }
+
+    // Screenshot required for online payments, not for COD
+    if (paymentMethod !== "cod" && paymentMethod !== "walkin" && !screenshot) {
+      return NextResponse.json(
+        { message: "Payment screenshot is required for online payments" },
+        { status: 400 },
+      );
+    }
+
+    // Check stock availability
     const stockCheck = await checkStockAvailability(
       items.map((i: any) => ({ productId: i.id, quantity: i.quantity })),
     );
-    if (!stockCheck.available)
+    if (!stockCheck.available) {
       return NextResponse.json(
-        { message: "Insufficient stock" },
+        { message: "Insufficient stock for one or more items" },
         { status: 400 },
       );
+    }
 
+    // Create order
     const order = new Order({
       orderNumber: generateOrderNumber(),
       user: payload.userId,
@@ -79,20 +105,30 @@ export async function POST(req: NextRequest) {
       gstAmount,
       total,
       paymentMethod,
-      paymentStatus: "pending",
-      orderStatus: "pending",
-      screenshot: screenshot, // ✅ FIXED
+      paymentStatus: paymentMethod === "cod" ? "pending" : "pending",
+      orderStatus: paymentMethod === "cod" ? "confirmed" : "pending", // COD orders auto-confirmed
+      screenshot: screenshot || null, // Optional for COD
     });
 
     await order.save();
 
+    // Deduct stock
     await deductStock(
       items.map((i: any) => ({ productId: i.id, quantity: i.quantity })),
     );
 
-    return NextResponse.json({ order }, { status: 201 });
+    return NextResponse.json(
+      {
+        message: "Order placed successfully",
+        order,
+      },
+      { status: 201 },
+    );
   } catch (err) {
-    console.error(err);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
+    console.error("Order creation error:", err);
+    return NextResponse.json(
+      { message: "Server error. Please try again." },
+      { status: 500 },
+    );
   }
 }
