@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db";
-import { Order } from "@/lib/models";
+import { Order, StoreSettings } from "@/lib/models";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import {
@@ -23,7 +23,6 @@ export async function GET(req: NextRequest) {
     if (!payload)
       return NextResponse.json({ message: "Invalid token" }, { status: 401 });
 
-    // Fetch orders for the user (or all if admin)
     const query = payload.role === "admin" ? {} : { user: payload.userId };
     const orders = await Order.find(query).sort({ createdAt: -1 }).lean();
 
@@ -38,6 +37,7 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
+    // ── Auth ────────────────────────────────────────────────────────────────
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
     if (!token)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -46,32 +46,48 @@ export async function POST(req: NextRequest) {
     if (!payload)
       return NextResponse.json({ message: "Invalid token" }, { status: 401 });
 
+    // ── Parse body ──────────────────────────────────────────────────────────
     const {
       items,
       shippingAddress,
       subtotal,
-      gstAmount,
+      gstAmount, // legacy alias from older checkout
+      taxAmount, // new field
+      taxRate,
+      taxName,
+      taxEnabled,
+      shippingCost: clientShipping,
       total,
       paymentMethod,
       screenshot,
     } = await req.json();
 
-    // Validate payment method
-    const validPaymentMethods = [
-      "cod",
-      "bank",
-      "easypaisa",
-      "jazzcash",
-      "walkin",
-    ];
-    if (!validPaymentMethods.includes(paymentMethod)) {
+    // ── Load store settings to validate server-side ─────────────────────────
+    const settings = (await StoreSettings.findOne().lean()) as any;
+
+    // Validate payment method is actually enabled in settings
+    const knownMethods = ["cod", "bank", "easypaisa", "jazzcash", "walkin"];
+    if (!knownMethods.includes(paymentMethod)) {
       return NextResponse.json(
         { message: "Invalid payment method" },
         { status: 400 },
       );
     }
 
-    // Screenshot required for online payments, not for COD
+    // walkin is an internal POS method — skip settings check
+    if (paymentMethod !== "walkin" && settings?.paymentMethods) {
+      const methodConfig = settings.paymentMethods[paymentMethod];
+      if (!methodConfig?.enabled) {
+        return NextResponse.json(
+          {
+            message: `Payment method "${paymentMethod}" is not currently available. Please choose another.`,
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Screenshot required for all non-COD, non-walkin methods
     if (paymentMethod !== "cod" && paymentMethod !== "walkin" && !screenshot) {
       return NextResponse.json(
         { message: "Payment screenshot is required for online payments" },
@@ -79,7 +95,39 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check stock availability
+    // ── Recalculate tax server-side from settings ────────────────────────────
+    // This prevents clients from sending manipulated totals.
+    const storeTaxEnabled: boolean = settings?.taxEnabled ?? true;
+    const storeTaxRate: number = settings?.taxRate ?? 17;
+    const storeTaxName: string = settings?.taxName || "GST";
+    const storeShippingCost: number = settings?.shippingCost ?? 0;
+    const storeFreeShippingThreshold: number =
+      settings?.freeShippingThreshold ?? 0;
+
+    // Recompute subtotal from items (source of truth)
+    const serverSubtotal: number = items.reduce(
+      (sum: number, i: any) => sum + i.price * i.quantity,
+      0,
+    );
+
+    const serverTaxAmount: number = storeTaxEnabled
+      ? items.reduce((sum: number, i: any) => {
+          // Use per-product GST if provided, else store rate
+          const rate = i.gst != null ? i.gst : storeTaxRate;
+          return sum + (i.price * i.quantity * rate) / 100;
+        }, 0)
+      : 0;
+
+    const serverShipping: number =
+      storeFreeShippingThreshold > 0 &&
+      serverSubtotal >= storeFreeShippingThreshold
+        ? 0
+        : storeShippingCost;
+
+    const serverTotal: number =
+      serverSubtotal + serverTaxAmount + serverShipping;
+
+    // ── Stock check ─────────────────────────────────────────────────────────
     const stockCheck = await checkStockAvailability(
       items.map((i: any) => ({ productId: i.id, quantity: i.quantity })),
     );
@@ -90,7 +138,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create order
+    // ── Create order ────────────────────────────────────────────────────────
     const order = new Order({
       orderNumber: generateOrderNumber(),
       user: payload.userId,
@@ -101,27 +149,26 @@ export async function POST(req: NextRequest) {
         subtotal: item.price * item.quantity,
       })),
       shippingAddress,
-      subtotal,
-      gstAmount,
-      total,
+      subtotal: serverSubtotal,
+      gstAmount: serverTaxAmount, // stored as gstAmount in schema
+      discount: 0,
+      total: serverTotal,
       paymentMethod,
-      paymentStatus: paymentMethod === "cod" ? "pending" : "pending",
-      orderStatus: paymentMethod === "cod" ? "confirmed" : "pending", // COD orders auto-confirmed
-      screenshot: screenshot || null, // Optional for COD
+      paymentStatus: "pending",
+      // COD orders are auto-confirmed; others wait for payment verification
+      orderStatus: paymentMethod === "cod" ? "confirmed" : "pending",
+      screenshot: screenshot || null,
     });
 
     await order.save();
 
-    // Deduct stock
+    // ── Deduct stock ────────────────────────────────────────────────────────
     await deductStock(
       items.map((i: any) => ({ productId: i.id, quantity: i.quantity })),
     );
 
     return NextResponse.json(
-      {
-        message: "Order placed successfully",
-        order,
-      },
+      { message: "Order placed successfully", order },
       { status: 201 },
     );
   } catch (err) {

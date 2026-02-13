@@ -25,6 +25,7 @@ export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
+    // Auth check
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
     if (!token) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
@@ -37,12 +38,26 @@ export async function POST(req: NextRequest) {
 
     const data = await req.json();
 
+    // Strip internal Mongoose/Next fields that should not be written back
+    const { _id, __v, createdAt, updatedAt, ...safeData } = data as any;
+
+    // Sanitise heroBanners — strip any _id added by Mongoose on subdocs
+    if (Array.isArray(safeData.heroBanners)) {
+      safeData.heroBanners = safeData.heroBanners.map(
+        ({ _id: _bid, ...rest }: any) => rest,
+      );
+    }
+
     let settings = await StoreSettings.findOne();
 
     if (!settings) {
-      settings = await StoreSettings.create(data);
+      settings = await StoreSettings.create(safeData);
     } else {
-      await StoreSettings.findByIdAndUpdate(settings._id, data, { new: true });
+      settings = await StoreSettings.findByIdAndUpdate(
+        settings._id,
+        { $set: safeData },
+        { new: true, runValidators: false },
+      );
     }
 
     return NextResponse.json(

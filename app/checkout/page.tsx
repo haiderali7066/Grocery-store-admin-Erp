@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Navbar } from "@/components/store/Navbar";
@@ -9,7 +9,6 @@ import { useCart } from "@/components/cart/CartProvider";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertCircle,
   Truck,
@@ -21,15 +20,68 @@ import {
   Building2,
   Smartphone,
   Banknote,
+  Loader2,
 } from "lucide-react";
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface PaymentMethodConfig {
+  enabled: boolean;
+  displayName: string;
+  description?: string;
+  accountName?: string;
+  accountNumber?: string;
+  bankName?: string;
+  iban?: string;
+}
+
+interface StoreSettings {
+  taxEnabled: boolean;
+  taxRate: number;
+  taxName: string;
+  shippingCost: number;
+  freeShippingThreshold: number;
+  paymentMethods: {
+    cod: PaymentMethodConfig;
+    bank: PaymentMethodConfig;
+    easypaisa: PaymentMethodConfig;
+    jazzcash: PaymentMethodConfig;
+  };
+}
+
+type PaymentKey = "cod" | "bank" | "easypaisa" | "jazzcash";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const PAYMENT_ICONS: Record<PaymentKey, React.ReactNode> = {
+  cod: <Banknote className="h-4 w-4" />,
+  bank: <Building2 className="h-4 w-4" />,
+  easypaisa: <Smartphone className="h-4 w-4" />,
+  jazzcash: <Smartphone className="h-4 w-4" />,
+};
+
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function CheckoutPage() {
-  const { items, subtotal, gstAmount, total, clearCart } = useCart();
+  const {
+    items,
+    subtotal,
+    taxAmount,
+    taxRate,
+    taxName,
+    taxEnabled,
+    shippingCost,
+    total,
+    clearCart,
+  } = useCart();
   const { user } = useAuth();
   const router = useRouter();
 
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+
   const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState("cod");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentKey>("cod");
   const [formData, setFormData] = useState({
     fullName: user?.name || "",
     email: user?.email || "",
@@ -41,10 +93,37 @@ export default function CheckoutPage() {
   });
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Fetch settings (payment methods, tax, shipping)
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        const s: StoreSettings = data.settings;
+        setSettings(s);
+        // Auto-select first enabled payment method
+        const order: PaymentKey[] = ["cod", "bank", "easypaisa", "jazzcash"];
+        const first = order.find((k) => s?.paymentMethods?.[k]?.enabled);
+        if (first) setPaymentMethod(first);
+      })
+      .catch(console.error)
+      .finally(() => setIsLoadingSettings(false));
+  }, []);
+
+  // Sync user data into form when user loads
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        fullName: user.name || prev.fullName,
+        email: user.email || prev.email,
+      }));
+    }
+  }, [user]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
@@ -56,47 +135,54 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     if (!user) return router.push("/login");
 
-    // COD doesn't require screenshot
     if (paymentMethod !== "cod" && !screenshotFile) {
-      return alert("Please upload payment screenshot.");
+      setError("Please upload a payment screenshot before placing your order.");
+      return;
     }
 
     setIsProcessing(true);
     try {
-      let screenshotUrl = null;
+      let screenshotUrl: string | null = null;
 
-      // Upload screenshot only for non-COD methods
       if (paymentMethod !== "cod" && screenshotFile) {
-        const formDataCloud = new FormData();
-        formDataCloud.append("file", screenshotFile);
-        formDataCloud.append(
+        const fd = new FormData();
+        fd.append("file", screenshotFile);
+        fd.append(
           "upload_preset",
           process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!,
         );
-
         const cloudRes = await fetch(
           `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
-          { method: "POST", body: formDataCloud },
+          { method: "POST", body: fd },
         );
-
         const cloudData = await cloudRes.json();
         if (!cloudData.secure_url)
           throw new Error("Payment proof upload failed");
         screenshotUrl = cloudData.secure_url;
       }
 
-      // Create Order
       const orderRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
           items,
-          shippingAddress: formData,
+          shippingAddress: {
+            street: formData.street,
+            city: formData.city,
+            province: formData.province,
+            zipCode: formData.zipCode,
+            country: "Pakistan",
+          },
           subtotal,
-          gstAmount,
+          gstAmount: taxAmount,
+          taxRate,
+          taxName,
+          taxEnabled,
+          shippingCost,
           total,
           paymentMethod,
           screenshot: screenshotUrl,
@@ -104,19 +190,21 @@ export default function CheckoutPage() {
       });
 
       if (!orderRes.ok) {
-        const errorData = await orderRes.json();
-        throw new Error(errorData.message || "Order creation failed");
+        const err = await orderRes.json();
+        throw new Error(err.message || "Order creation failed");
       }
 
       const data = await orderRes.json();
       clearCart();
       router.push(`/orders/${data.order._id}`);
-    } catch (error: any) {
-      alert(error.message || "Checkout failed. Please try again.");
+    } catch (err: any) {
+      setError(err.message || "Checkout failed. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
+
+  // ── Empty / unauthenticated state ─────────────────────────────────────────
 
   if (!user || items.length === 0) {
     return (
@@ -130,15 +218,15 @@ export default function CheckoutPage() {
           </h2>
           <p className="text-gray-500 mb-8">
             {!user
-              ? "Please sign in to your account to complete your purchase securely."
-              : "Looks like you haven't added anything to your basket yet."}
+              ? "Please sign in to complete your purchase."
+              : "Looks like you haven't added anything yet."}
           </p>
           <Button
             asChild
             className="w-full bg-green-700 hover:bg-green-800 h-12 rounded-xl text-lg font-bold"
           >
             <a href={!user ? "/login" : "/products"}>
-              {!user ? "Secure Login" : "Start Shopping"}
+              {!user ? "Login" : "Start Shopping"}
             </a>
           </Button>
         </div>
@@ -146,12 +234,20 @@ export default function CheckoutPage() {
     );
   }
 
+  // Which payment methods are enabled in settings
+  const enabledMethods = (
+    ["cod", "bank", "easypaisa", "jazzcash"] as PaymentKey[]
+  ).filter((k) => settings?.paymentMethods?.[k]?.enabled);
+
+  const activePayment = settings?.paymentMethods?.[paymentMethod];
+  const isCOD = paymentMethod === "cod";
+
   return (
     <div className="min-h-screen bg-gray-50/50 flex flex-col">
       <Navbar />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-        {/* Checkout Header / Stepper */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
           <div>
             <h1 className="text-3xl font-black text-gray-900 tracking-tight">
@@ -172,10 +268,18 @@ export default function CheckoutPage() {
           </div>
         </div>
 
+        {/* Error banner */}
+        {error && (
+          <div className="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-2xl px-5 py-4">
+            <AlertCircle className="h-5 w-5 shrink-0" />
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          {/* Main Form Area */}
+          {/* ── Form ── */}
           <form onSubmit={handleSubmit} className="lg:col-span-8 space-y-8">
-            {/* 1. Shipping Section */}
+            {/* 1. Shipping */}
             <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4 mb-8">
                 <div className="bg-amber-100 p-3 rounded-2xl">
@@ -241,47 +345,34 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-4 md:col-span-2">
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">
-                      City
-                    </label>
-                    <Input
-                      name="city"
-                      value={formData.city}
-                      onChange={handleChange}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">
-                      Province
-                    </label>
-                    <Input
-                      name="province"
-                      value={formData.province}
-                      onChange={handleChange}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-gray-700">
-                      Zip
-                    </label>
-                    <Input
-                      name="zipCode"
-                      value={formData.zipCode}
-                      onChange={handleChange}
-                      required
-                      className="h-12 rounded-xl"
-                    />
-                  </div>
+                  {[
+                    { name: "city", label: "City", placeholder: "Lahore" },
+                    {
+                      name: "province",
+                      label: "Province",
+                      placeholder: "Punjab",
+                    },
+                    { name: "zipCode", label: "Zip", placeholder: "54000" },
+                  ].map(({ name, label, placeholder }) => (
+                    <div key={name} className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">
+                        {label}
+                      </label>
+                      <Input
+                        name={name}
+                        placeholder={placeholder}
+                        value={(formData as any)[name]}
+                        onChange={handleChange}
+                        required
+                        className="h-12 rounded-xl"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
 
-            {/* 2. Payment Section */}
+            {/* 2. Payment */}
             <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4 mb-8">
                 <div className="bg-blue-100 p-3 rounded-2xl">
@@ -292,157 +383,208 @@ export default function CheckoutPage() {
                 </h2>
               </div>
 
-              <Tabs
-                value={paymentMethod}
-                onValueChange={setPaymentMethod}
-                className="w-full"
-              >
-                <TabsList className="grid w-full grid-cols-4 h-14 bg-gray-100 p-1 rounded-2xl mb-8">
-                  <TabsTrigger
-                    value="cod"
-                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
+              {isLoadingSettings ? (
+                <div className="flex items-center justify-center py-10 text-gray-400 gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-sm">Loading payment options…</span>
+                </div>
+              ) : enabledMethods.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">
+                  <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  <p className="text-sm">
+                    No payment methods are currently available.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Method selector tabs */}
+                  <div
+                    className={`grid gap-2 mb-8`}
+                    style={{
+                      gridTemplateColumns: `repeat(${enabledMethods.length}, minmax(0, 1fr))`,
+                    }}
                   >
-                    <Banknote className="mr-2 h-4 w-4 hidden sm:inline" /> COD
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="bank"
-                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
-                  >
-                    <Building2 className="mr-2 h-4 w-4 hidden sm:inline" /> Bank
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="easypaisa"
-                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
-                  >
-                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" />{" "}
-                    EasyPaisa
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="jazzcash"
-                    className="rounded-xl data-[state=active]:bg-white data-[state=active]:shadow-sm font-bold"
-                  >
-                    <Smartphone className="mr-2 h-4 w-4 hidden sm:inline" />{" "}
-                    JazzCash
-                  </TabsTrigger>
-                </TabsList>
-
-                {/* COD Tab */}
-                <TabsContent value="cod" className="space-y-6">
-                  <div className="bg-green-50/50 border border-green-200 rounded-2xl p-6">
-                    <div className="flex gap-4">
-                      <Banknote className="h-8 w-8 text-green-600 shrink-0" />
-                      <div>
-                        <p className="font-bold text-green-900 mb-2 text-lg">
-                          Cash on Delivery (COD)
-                        </p>
-                        <p className="text-sm text-green-700 leading-relaxed mb-3">
-                          Pay with cash when your order is delivered to your
-                          doorstep. No need to pay online.
-                        </p>
-                        <div className="bg-white rounded-xl p-4 border border-green-200">
-                          <p className="text-xs font-bold text-green-900 mb-2">
-                            ✓ How it works:
-                          </p>
-                          <ul className="text-xs text-green-800 space-y-1">
-                            <li>• Place your order now</li>
-                            <li>• We'll deliver to your address</li>
-                            <li>• Pay the delivery person in cash</li>
-                            <li>• No payment screenshot needed</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
+                    {enabledMethods.map((key) => {
+                      const cfg = settings!.paymentMethods[key];
+                      const isActive = paymentMethod === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setPaymentMethod(key);
+                            setScreenshotFile(null);
+                            setPreviewUrl(null);
+                          }}
+                          className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 font-bold text-sm transition-all ${
+                            isActive
+                              ? "border-green-600 bg-green-50 text-green-800"
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                          }`}
+                        >
+                          {PAYMENT_ICONS[key]}
+                          <span className="hidden sm:inline">
+                            {cfg.displayName || key.toUpperCase()}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                </TabsContent>
 
-                {/* Online Payment Tabs */}
-                {["bank", "easypaisa", "jazzcash"].map((method) => (
-                  <TabsContent
-                    key={method}
-                    value={method}
-                    className="space-y-6"
-                  >
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
+                  {/* Active method details */}
+                  {isCOD ? (
+                    <div className="bg-green-50/50 border border-green-200 rounded-2xl p-6">
                       <div className="flex gap-4">
-                        <AlertCircle className="h-6 w-6 text-blue-600 shrink-0" />
+                        <Banknote className="h-8 w-8 text-green-600 shrink-0 mt-1" />
                         <div>
-                          <p className="font-bold text-blue-900 mb-1">
-                            Payment Instructions
+                          <p className="font-bold text-green-900 mb-2 text-lg">
+                            {activePayment?.displayName || "Cash on Delivery"}
                           </p>
-                          <p className="text-sm text-blue-700 leading-relaxed">
-                            {method === "bank" &&
-                              "Bank Alfalah: 0123-456789-01 (Account: MyStore Pvt Ltd)"}
-                            {method === "easypaisa" &&
-                              "EasyPaisa: 0300-1234567 (Account: Admin Name)"}
-                            {method === "jazzcash" &&
-                              "JazzCash: 0300-9876543 (Account: Admin Name)"}
+                          <p className="text-sm text-green-700 leading-relaxed mb-3">
+                            {activePayment?.description ||
+                              "Pay with cash when your order is delivered to your doorstep."}
                           </p>
+                          <div className="bg-white rounded-xl p-4 border border-green-200">
+                            <p className="text-xs font-bold text-green-900 mb-2">
+                              ✓ How it works:
+                            </p>
+                            <ul className="text-xs text-green-800 space-y-1">
+                              <li>• Place your order now</li>
+                              <li>• We'll deliver to your address</li>
+                              <li>• Pay the delivery person in cash</li>
+                              <li>• No payment screenshot needed</li>
+                            </ul>
+                          </div>
                         </div>
                       </div>
                     </div>
-
-                    {/* Upload Area */}
-                    <div className="relative">
-                      <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-4">
-                        Payment Proof (Screenshot) *
-                      </label>
-                      <div
-                        className={`border-2 border-dashed rounded-3xl p-8 transition-all flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 cursor-pointer ${previewUrl ? "border-green-300" : "border-gray-200"}`}
-                      >
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileChange}
-                          className="absolute inset-0 opacity-0 cursor-pointer"
-                        />
-                        {previewUrl ? (
-                          <div className="flex flex-col items-center">
-                            <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border-2 border-white shadow-md">
-                              <Image
-                                src={previewUrl}
-                                alt="Preview"
-                                fill
-                                className="object-cover"
-                              />
-                            </div>
-                            <span className="text-sm font-bold text-green-700">
-                              Image Uploaded Successfully
-                            </span>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Account details card */}
+                      <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
+                        <div className="flex gap-4">
+                          <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
+                          <div className="space-y-1.5 text-sm">
+                            <p className="font-bold text-blue-900 text-base">
+                              {activePayment?.displayName ||
+                                paymentMethod.toUpperCase()}{" "}
+                              — Payment Details
+                            </p>
+                            {activePayment?.bankName && (
+                              <p className="text-blue-700">
+                                <span className="font-semibold">Bank:</span>{" "}
+                                {activePayment.bankName}
+                              </p>
+                            )}
+                            {activePayment?.accountName && (
+                              <p className="text-blue-700">
+                                <span className="font-semibold">
+                                  Account Name:
+                                </span>{" "}
+                                {activePayment.accountName}
+                              </p>
+                            )}
+                            {activePayment?.accountNumber && (
+                              <p className="text-blue-700">
+                                <span className="font-semibold">
+                                  Account Number:
+                                </span>{" "}
+                                <span className="font-mono bg-white px-2 py-0.5 rounded border border-blue-200 select-all">
+                                  {activePayment.accountNumber}
+                                </span>
+                              </p>
+                            )}
+                            {activePayment?.iban && (
+                              <p className="text-blue-700">
+                                <span className="font-semibold">IBAN:</span>{" "}
+                                <span className="font-mono bg-white px-2 py-0.5 rounded border border-blue-200 select-all">
+                                  {activePayment.iban}
+                                </span>
+                              </p>
+                            )}
+                            <p className="text-blue-600 pt-1">
+                              Transfer the exact amount and upload your
+                              screenshot below.
+                            </p>
                           </div>
-                        ) : (
-                          <>
-                            <UploadCloud className="h-10 w-10 text-gray-400 mb-2" />
-                            <p className="text-gray-500 font-medium">
-                              Click or drag receipt to upload
-                            </p>
-                            <p className="text-xs text-gray-400 mt-1">
-                              PNG, JPG or PDF (Max 5MB)
-                            </p>
-                          </>
-                        )}
+                        </div>
+                      </div>
+
+                      {/* Screenshot upload */}
+                      <div className="relative">
+                        <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-4">
+                          Payment Proof (Screenshot){" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        <label
+                          htmlFor="screenshot-upload"
+                          className={`flex flex-col items-center justify-center border-2 border-dashed rounded-3xl p-8 transition-all bg-gray-50 hover:bg-gray-100 cursor-pointer ${
+                            previewUrl
+                              ? "border-green-300"
+                              : "border-gray-200 hover:border-gray-300"
+                          }`}
+                        >
+                          <input
+                            id="screenshot-upload"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleFileChange}
+                            className="sr-only"
+                          />
+                          {previewUrl ? (
+                            <div className="flex flex-col items-center">
+                              <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border-2 border-white shadow-md">
+                                <Image
+                                  src={previewUrl}
+                                  alt="Preview"
+                                  fill
+                                  className="object-cover"
+                                />
+                              </div>
+                              <span className="text-sm font-bold text-green-700">
+                                ✓ Screenshot uploaded — click to change
+                              </span>
+                            </div>
+                          ) : (
+                            <>
+                              <UploadCloud className="h-10 w-10 text-gray-400 mb-2" />
+                              <p className="text-gray-500 font-medium">
+                                Click or drag screenshot here
+                              </p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                PNG, JPG (Max 5 MB)
+                              </p>
+                            </>
+                          )}
+                        </label>
                       </div>
                     </div>
-                  </TabsContent>
-                ))}
-              </Tabs>
+                  )}
+                </>
+              )}
             </section>
 
             <Button
               type="submit"
-              disabled={isProcessing}
+              disabled={
+                isProcessing || isLoadingSettings || enabledMethods.length === 0
+              }
               className="w-full h-16 bg-green-700 hover:bg-green-800 rounded-2xl text-xl font-black shadow-xl shadow-green-100 transition-all active:scale-[0.98] disabled:opacity-70"
             >
-              {isProcessing
-                ? paymentMethod === "cod"
-                  ? "Placing Order..."
-                  : "Validating Payment..."
-                : paymentMethod === "cod"
-                  ? "Place Order (Cash on Delivery)"
-                  : "Place Secure Order"}
+              {isProcessing ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  {isCOD ? "Placing Order…" : "Validating Payment…"}
+                </span>
+              ) : isCOD ? (
+                "Place Order — Pay on Delivery"
+              ) : (
+                "Place Secure Order"
+              )}
             </Button>
           </form>
 
-          {/* Sidebar / Summary Area */}
+          {/* ── Sidebar ── */}
           <aside className="lg:col-span-4">
             <div className="sticky top-24 space-y-6">
               <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100">
@@ -450,7 +592,8 @@ export default function CheckoutPage() {
                   Order Summary
                 </h2>
 
-                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar mb-6">
+                {/* Items */}
+                <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 mb-6">
                   {items.map((item) => (
                     <div key={item.id} className="flex gap-4">
                       <div className="relative h-16 w-16 bg-gray-50 rounded-xl overflow-hidden shrink-0 border border-gray-100">
@@ -466,9 +609,10 @@ export default function CheckoutPage() {
                           {item.name}
                         </p>
                         <p className="text-xs text-gray-400 font-medium">
-                          {item.quantity} units • {item.weight}
+                          {item.quantity} × Rs. {item.price.toFixed(0)}
+                          {item.weight && ` • ${item.weight}`}
                         </p>
-                        <p className="text-sm font-bold text-gray-900 mt-1">
+                        <p className="text-sm font-bold text-gray-900 mt-0.5">
                           Rs. {(item.price * item.quantity).toFixed(0)}
                         </p>
                       </div>
@@ -476,28 +620,42 @@ export default function CheckoutPage() {
                   ))}
                 </div>
 
+                {/* Totals */}
                 <div className="space-y-3 pt-6 border-t border-gray-100">
                   <div className="flex justify-between text-gray-500 font-medium">
                     <span>Subtotal</span>
                     <span>Rs. {subtotal.toFixed(0)}</span>
                   </div>
+
+                  {taxEnabled && (
+                    <div className="flex justify-between text-gray-500 font-medium">
+                      <span>
+                        {taxName} ({taxRate}%)
+                      </span>
+                      <span>Rs. {taxAmount.toFixed(0)}</span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between text-gray-500 font-medium">
-                    <span>GST (17%)</span>
-                    <span>Rs. {gstAmount.toFixed(0)}</span>
+                    <span className="flex items-center gap-1">
+                      <Truck className="h-4 w-4" /> Shipping
+                    </span>
+                    {shippingCost === 0 ? (
+                      <span className="text-green-600 font-bold">Free</span>
+                    ) : (
+                      <span>Rs. {shippingCost.toFixed(0)}</span>
+                    )}
                   </div>
-                  <div className="flex justify-between text-gray-500 font-medium">
-                    <span>Shipping</span>
-                    <span className="text-green-600 font-bold">Free</span>
-                  </div>
-                  {paymentMethod === "cod" && (
+
+                  {isCOD && (
                     <div className="flex justify-between text-orange-600 font-medium bg-orange-50 -mx-2 px-2 py-2 rounded-lg">
                       <span className="flex items-center gap-2">
-                        <Banknote className="h-4 w-4" />
-                        Pay on Delivery
+                        <Banknote className="h-4 w-4" /> Pay on Delivery
                       </span>
                       <span className="font-bold">COD</span>
                     </div>
                   )}
+
                   <div className="flex justify-between pt-4 border-t border-gray-100">
                     <span className="text-lg font-black text-gray-900">
                       Total
@@ -507,26 +665,22 @@ export default function CheckoutPage() {
                         Rs. {total.toFixed(0)}
                       </p>
                       <p className="text-[10px] text-gray-400 uppercase font-black mt-1">
-                        {paymentMethod === "cod"
-                          ? "PAY ON DELIVERY"
-                          : "PKR (APPROX)"}
+                        {isCOD ? "PAY ON DELIVERY" : "PKR"}
                       </p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Trust Badge */}
+              {/* Trust badge */}
               <div className="bg-green-50 rounded-2xl p-6 border border-green-100 flex items-center gap-4">
-                <ShieldCheck className="h-8 w-8 text-green-600" />
+                <ShieldCheck className="h-8 w-8 text-green-600 shrink-0" />
                 <div>
                   <p className="text-sm font-bold text-green-900">
-                    {paymentMethod === "cod"
-                      ? "100% Secure Delivery"
-                      : "Secure Checkout"}
+                    {isCOD ? "100% Secure Delivery" : "Secure Checkout"}
                   </p>
                   <p className="text-xs text-green-700">
-                    {paymentMethod === "cod"
+                    {isCOD
                       ? "Pay only after receiving your order"
                       : "Your data is encrypted and protected"}
                   </p>
@@ -536,6 +690,7 @@ export default function CheckoutPage() {
           </aside>
         </div>
       </main>
+
       <Footer />
     </div>
   );

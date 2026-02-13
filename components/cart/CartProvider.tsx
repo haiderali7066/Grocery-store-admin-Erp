@@ -1,125 +1,180 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 export interface CartItem {
   id: string;
   name: string;
   price: number;
   quantity: number;
+  image?: string;
   weight?: string;
-  image?: string; // ✅ make sure image is stored
-  discount?: number;
-  gst?: number;
-  isBundle?: boolean;
+  gst?: number; // per-product GST rate (optional, falls back to store rate)
 }
 
-interface CartContextType {
+interface TaxSettings {
+  taxEnabled: boolean;
+  taxRate: number; // e.g. 17
+  taxName: string; // e.g. "GST"
+  shippingCost: number;
+  freeShippingThreshold: number;
+}
+
+interface CartContextValue {
   items: CartItem[];
   addItem: (item: CartItem) => void;
   removeItem: (id: string) => void;
   updateQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
   subtotal: number;
-  gstAmount: number;
+  taxAmount: number;
+  taxRate: number;
+  taxName: string;
+  taxEnabled: boolean;
+  shippingCost: number;
   total: number;
+  // legacy aliases so existing pages don't break
+  gstAmount: number;
 }
 
-const CartContext = createContext<CartContextType | undefined>(undefined);
+// ── Context ──────────────────────────────────────────────────────────────────
+
+const CartContext = createContext<CartContextValue | undefined>(undefined);
+
+// ── Provider ─────────────────────────────────────────────────────────────────
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
-  const [isHydrated, setIsHydrated] = useState(false);
+  const [tax, setTax] = useState<TaxSettings>({
+    taxEnabled: true,
+    taxRate: 17,
+    taxName: "GST",
+    shippingCost: 0,
+    freeShippingThreshold: 0,
+  });
 
-  // Load cart from localStorage
+  // Load cart from localStorage on mount
   useEffect(() => {
-    if (typeof window === "undefined") return;
     try {
-      const savedCart = localStorage.getItem("cart");
-      if (savedCart) setItems(JSON.parse(savedCart));
-    } catch (err) {
-      console.error("[Cart] Failed to load cart:", err);
-    } finally {
-      setIsHydrated(true);
+      const stored = localStorage.getItem("cart");
+      if (stored) setItems(JSON.parse(stored));
+    } catch {
+      // ignore parse errors
     }
   }, []);
 
-  // Save cart to localStorage
+  // Persist cart to localStorage whenever it changes
   useEffect(() => {
-    if (!isHydrated || typeof window === "undefined") return;
-    try {
-      localStorage.setItem("cart", JSON.stringify(items));
-    } catch (err) {
-      console.error("[Cart] Failed to save cart:", err);
-    }
-  }, [items, isHydrated]);
+    localStorage.setItem("cart", JSON.stringify(items));
+  }, [items]);
 
-  // Add item to cart (ensures image is passed)
-  const addItem = (newItem: CartItem) => {
+  // Fetch tax + shipping settings once on mount
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        const s = data.settings;
+        if (!s) return;
+        setTax({
+          taxEnabled: s.taxEnabled ?? true,
+          taxRate: s.taxRate ?? 17,
+          taxName: s.taxName || "GST",
+          shippingCost: s.shippingCost ?? 0,
+          freeShippingThreshold: s.freeShippingThreshold ?? 0,
+        });
+      })
+      .catch(() => {
+        // keep defaults on error — store still functions
+      });
+  }, []);
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+
+  const addItem = useCallback((newItem: CartItem) => {
     setItems((prev) => {
-      const existing = prev.find((item) => item.id === newItem.id);
+      const existing = prev.find((i) => i.id === newItem.id);
       if (existing) {
-        return prev.map((item) =>
-          item.id === newItem.id
-            ? { ...item, quantity: item.quantity + newItem.quantity }
-            : item,
+        return prev.map((i) =>
+          i.id === newItem.id
+            ? { ...i, quantity: i.quantity + newItem.quantity }
+            : i,
         );
       }
-      // Ensure image is set if missing
-      const itemWithImage = {
-        ...newItem,
-        image: newItem.image || "/placeholder.svg",
-      };
-      return [...prev, itemWithImage];
+      return [...prev, newItem];
     });
-  };
+  }, []);
 
-  const removeItem = (id: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== id));
-  };
+  const removeItem = useCallback((id: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  }, []);
 
-  const updateQuantity = (id: string, quantity: number) => {
+  const updateQuantity = useCallback((id: string, quantity: number) => {
     if (quantity <= 0) {
-      removeItem(id);
-      return;
+      setItems((prev) => prev.filter((i) => i.id !== id));
+    } else {
+      setItems((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, quantity } : i)),
+      );
     }
-    setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, quantity } : item)),
-    );
+  }, []);
+
+  const clearCart = useCallback(() => {
+    setItems([]);
+    localStorage.removeItem("cart");
+  }, []);
+
+  // ── Computed values ────────────────────────────────────────────────────────
+
+  const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+  // Tax: use store-level rate; if a product has its own gst field that takes priority
+  const taxAmount = tax.taxEnabled
+    ? items.reduce((sum, i) => {
+        const rate = i.gst != null ? i.gst : tax.taxRate;
+        return sum + (i.price * i.quantity * rate) / 100;
+      }, 0)
+    : 0;
+
+  // Shipping: free if threshold met and threshold > 0
+  const shippingCost =
+    tax.freeShippingThreshold > 0 && subtotal >= tax.freeShippingThreshold
+      ? 0
+      : tax.shippingCost;
+
+  const total = subtotal + taxAmount + shippingCost;
+
+  const value: CartContextValue = {
+    items,
+    addItem,
+    removeItem,
+    updateQuantity,
+    clearCart,
+    subtotal,
+    taxAmount,
+    taxRate: tax.taxRate,
+    taxName: tax.taxName,
+    taxEnabled: tax.taxEnabled,
+    shippingCost,
+    total,
+    // legacy alias
+    gstAmount: taxAmount,
   };
 
-  const clearCart = () => setItems([]);
-
-  const subtotal = items.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0,
-  );
-  const gstAmount = items.reduce((sum, item) => {
-    const itemGst = item.gst ?? 17;
-    return sum + (item.price * item.quantity * itemGst) / 100;
-  }, 0);
-  const total = subtotal + gstAmount;
-
-  return (
-    <CartContext.Provider
-      value={{
-        items,
-        addItem,
-        removeItem,
-        updateQuantity,
-        clearCart,
-        subtotal,
-        gstAmount,
-        total,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
-  );
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
-export function useCart() {
-  const context = useContext(CartContext);
-  if (!context) throw new Error("useCart must be used within CartProvider");
-  return context;
+// ── Hook ──────────────────────────────────────────────────────────────────────
+
+export function useCart(): CartContextValue {
+  const ctx = useContext(CartContext);
+  if (!ctx) throw new Error("useCart must be used inside <CartProvider>");
+  return ctx;
 }

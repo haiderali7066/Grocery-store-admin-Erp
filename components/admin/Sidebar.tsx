@@ -7,37 +7,39 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { Button } from '@/components/ui/button';
 
 const menuItems = [
-  { label: 'Dashboard', icon: LayoutDashboard, href: '/admin' },
-  
+  { label: "Dashboard", icon: LayoutDashboard, href: "/admin" },
+
   // Financial Management
-  { label: 'Wallet & Finance', icon: DollarSign, href: '/admin/wallet' },
-  { label: 'Investment', icon: TrendingUp, href: '/admin/investment' },
-  { label: 'Expenses', icon: Receipt, href: '/admin/expenses' },
-  
+  { label: "Wallet & Finance", icon: DollarSign, href: "/admin/wallet" },
+  { label: "Investment", icon: TrendingUp, href: "/admin/investment" },
+  { label: "Expenses", icon: Receipt, href: "/admin/expenses" },
+
   // Operations
-  { label: 'Staff', icon: Users, href: '/admin/staff' },
-  { label: 'Products', icon: Package, href: '/admin/products' },
-  { label: 'Categories', icon: Tags, href: '/admin/categories' },
-  { label: 'Suppliers', icon: Users, href: '/admin/suppliers' },
-  
+  { label: "Staff", icon: Users, href: "/admin/staff" },
+  { label: "Products", icon: Package, href: "/admin/products" },
+  { label: "Categories", icon: Tags, href: "/admin/categories" },
+  { label: "Suppliers", icon: Users, href: "/admin/suppliers" },
+
   // Inventory & Orders
-  { label: 'Inventory', icon: BarChart3, href: '/admin/inventory' },
-  { label: 'Orders', icon: ShoppingCart, href: '/admin/orders' },
-  { label: 'Returns & Refunds', icon: RefreshCw, href: '/admin/refunds' },
-  
+  { label: "Inventory", icon: BarChart3, href: "/admin/inventory" },
+  { label: "Orders", icon: ShoppingCart, href: "/admin/orders" },
+  { label: "Returns & Refunds", icon: RefreshCw, href: "/admin/refunds" },
+
   // Sales
-  { label: 'POS Billing', icon: Zap, href: '/admin/pos' },
+  { label: "POS Billing", icon: Zap, href: "/admin/pos" },
+  { label: "POS Reports", icon: FileText, href: "/admin/pos-reports" },
   
+  { label: "Sale Page", icon: Zap, href: "/admin/sale" },
+
   // Customer Management
-  { label: 'Reviews', icon: MessageCircle, href: '/admin/reviews' },
-  
+  { label: "Reviews", icon: MessageCircle, href: "/admin/reviews" },
+
   // Reports & Analysis
-  { label: 'Reports', icon: FileText, href: '/admin/reports' },
-  { label: 'POS Reports', icon: FileText, href: '/admin/pos-reports' },
-  
+  { label: "Reports", icon: FileText, href: "/admin/reports" },
+
   // System
-  { label: 'FBR Settings', icon: WifiSettings, href: '/admin/fbr-settings' },
-  { label: 'Settings', icon: Settings, href: '/admin/settings' },
+  { label: "FBR Settings", icon: WifiSettings, href: "/admin/fbr-settings" },
+  { label: "Settings", icon: Settings, href: "/admin/settings" },
 ];
 
 export function AdminSidebar() {

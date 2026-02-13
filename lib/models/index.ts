@@ -585,6 +585,20 @@ export const TransactionSchema = new Schema(
 );
 
 // =========================
+// SaleConfig Schema
+// =========================
+export const SaleConfigSchema = new Schema(
+  {
+    isActive: { type: Boolean, default: false },
+    title: { type: String, default: "Flash Sale" },
+    subtitle: { type: String, default: "" },
+    badgeText: { type: String, default: "Flash Sale" },
+    endsAt: { type: Date, default: null },
+  },
+  { timestamps: true },
+);
+
+// =========================
 // Investment Schema
 // =========================
 export const InvestmentSchema = new Schema(
@@ -660,3 +674,6 @@ export const Investment =
   mongoose.models.Investment || mongoose.model("Investment", InvestmentSchema);
 
 export const RefundRequest = Refund;
+
+export const SaleConfig =
+  mongoose.models.SaleConfig || mongoose.model("SaleConfig", SaleConfigSchema);

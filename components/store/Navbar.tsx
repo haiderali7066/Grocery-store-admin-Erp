@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useCart } from "@/components/cart/CartProvider";
 import { Button } from "@/components/ui/button";
@@ -24,22 +26,82 @@ import {
   MapPin,
   Clock,
 } from "lucide-react";
-import { useEffect } from "react";
+
+interface StoreSettings {
+  storeName?: string;
+  storeLogoUrl?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  businessHours?: string;
+  whatsappNumber?: string;
+}
+
+// Ensure you match this to your actual category structure from the DB
+interface Category {
+  _id: string; // or id: string
+  name: string;
+  slug: string;
+}
+
 export function Navbar() {
-  const [settings, setSettings] = useState<any>(null);
-
-  useEffect(() => {
-    fetch("/api/admin/settings")
-      .then((res) => res.json())
-      .then((data) => setSettings(data.settings));
-  }, []);
-
+  const router = useRouter();
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const { user, logout, isAuthenticated } = useAuth();
   const { items } = useCart();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
+  useEffect(() => {
+    // Fetch Settings
+    fetch("/api/admin/settings")
+      .then((res) => res.json())
+      .then((data) => setSettings(data.settings ?? null))
+      .catch(console.error);
+
+    // Fetch Categories (Adjust the endpoint if your API path is different)
+    fetch("/api/categories")
+      .then((res) => res.json())
+      .then((data) => {
+        // Checks if API returns an array directly, or an object like { categories: [...] }
+        if (Array.isArray(data)) {
+          setCategories(data);
+        } else if (data.categories) {
+          setCategories(data.categories);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      setIsMenuOpen(false); // Close mobile menu if open
+      setSearchQuery(""); // Optional: clear search after submitting
+    }
+  };
+
   const cartItemCount = items.reduce((total, item) => total + item.quantity, 0);
+
+  const phoneHref = settings?.contactPhone
+    ? `tel:${settings.contactPhone.replace(/\s/g, "")}`
+    : "tel:+923001234567";
+  const phoneDisplay = settings?.contactPhone ?? "+92 300 1234567";
+
+  const emailHref = settings?.contactEmail
+    ? `mailto:${settings.contactEmail}`
+    : "mailto:info@khaspurefood.com";
+  const emailDisplay = settings?.contactEmail ?? "info@khaspurefood.com";
+
+  const locationDisplay =
+    [settings?.city, settings?.country].filter(Boolean).join(", ") ||
+    "Lahore, Pakistan";
+
+  const hoursDisplay = settings?.businessHours ?? "Mon-Sat: 8AM - 10PM";
 
   return (
     <nav className="sticky top-0 z-50 w-full bg-background shadow-sm">
@@ -50,31 +112,35 @@ export function Navbar() {
             {/* Left side - Contact Info */}
             <div className="flex flex-wrap items-center gap-3 md:gap-6">
               <a
-                href="tel:+923001234567"
+                href={phoneHref}
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
               >
                 <Phone className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                <span className="hidden sm:inline">+92 300 1234567</span>
+                <span className="hidden sm:inline">{phoneDisplay}</span>
               </a>
               <a
-                href="mailto:info@khaspurefood.com"
+                href={emailHref}
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
               >
                 <Mail className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                <span className="hidden md:inline">info@khaspurefood.com</span>
+                <span className="hidden md:inline">{emailDisplay}</span>
               </a>
-              <div className="hidden lg:flex items-center gap-1.5">
-                <Clock className="h-4 w-4" />
-                <span>Mon-Sat: 8AM - 10PM</span>
-              </div>
+              {hoursDisplay && (
+                <div className="hidden lg:flex items-center gap-1.5">
+                  <Clock className="h-4 w-4" />
+                  <span>{hoursDisplay}</span>
+                </div>
+              )}
             </div>
 
-            {/* Right side - Location/Links */}
+            {/* Right side - Location / Links */}
             <div className="flex items-center gap-3 md:gap-4">
-              <div className="hidden md:flex items-center gap-1.5">
-                <MapPin className="h-4 w-4" />
-                <span>Lahore, Pakistan</span>
-              </div>
+              {locationDisplay && (
+                <div className="hidden md:flex items-center gap-1.5">
+                  <MapPin className="h-4 w-4" />
+                  <span>{locationDisplay}</span>
+                </div>
+              )}
               <Link
                 href="/track-order"
                 className="hover:opacity-80 transition-opacity"
@@ -101,15 +167,33 @@ export function Navbar() {
               href="/"
               className="flex items-center gap-2 text-lg md:text-xl font-bold text-primary"
             >
-              <div className="w-9 h-9 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-bold">
-                KPF
-              </div>
-              <span className="hidden sm:inline">Khas Pure Food</span>
+              {settings?.storeLogoUrl ? (
+                <div className="relative w-9 h-9 rounded-full overflow-hidden">
+                  <Image
+                    src={settings.storeLogoUrl}
+                    alt={settings?.storeName ?? "Store logo"}
+                    fill
+                    className="object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-9 h-9 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-bold">
+                  {(settings?.storeName ?? "Khas Pure Food")
+                    .split(" ")
+                    .map((w) => w[0])
+                    .join("")
+                    .slice(0, 3)
+                    .toUpperCase()}
+                </div>
+              )}
+              <span className="hidden sm:inline">
+                {settings?.storeName ?? "Khas Pure Food"}
+              </span>
             </Link>
 
-            {/* Search Bar - Hidden on mobile */}
+            {/* Desktop Search Bar */}
             <div className="hidden md:flex flex-1 max-w-md mx-8">
-              <div className="relative w-full">
+              <form onSubmit={handleSearch} className="relative w-full">
                 <Input
                   type="search"
                   placeholder="Search products..."
@@ -117,8 +201,13 @@ export function Navbar() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full rounded-full bg-secondary border-0 pl-4 pr-10"
                 />
-                <Search className="absolute right-3 top-3 h-5 w-5 text-muted-foreground" />
-              </div>
+                <button
+                  type="submit"
+                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-primary transition-colors"
+                >
+                  <Search className="h-5 w-5" />
+                </button>
+              </form>
             </div>
 
             {/* Desktop Menu */}
@@ -137,18 +226,21 @@ export function Navbar() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48 rounded-2xl">
-                  <DropdownMenuItem asChild>
-                    <Link href="/products?category=vegetables">Vegetables</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/products?category=fruits">Fruits</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/products?category=dairy">Dairy</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/products?category=grains">Grains</Link>
-                  </DropdownMenuItem>
+                  {categories.length > 0 ? (
+                    categories.map((cat) => (
+                      <DropdownMenuItem key={cat._id || cat.slug} asChild>
+                        <Link
+                          href={`/products?category=${cat.slug || cat.name.toLowerCase()}`}
+                        >
+                          {cat.name}
+                        </Link>
+                      </DropdownMenuItem>
+                    ))
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      No categories found
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -218,22 +310,57 @@ export function Navbar() {
           {/* Mobile Menu */}
           {isMenuOpen && (
             <div className="md:hidden pb-4 border-t border-secondary">
-              <div className="py-3">
+              <form onSubmit={handleSearch} className="py-3 relative">
                 <Input
                   type="search"
                   placeholder="Search products..."
-                  className="mb-3 rounded-full bg-secondary border-0"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="mb-3 rounded-full bg-secondary border-0 pr-10"
                 />
-              </div>
+                <button
+                  type="submit"
+                  className="absolute right-3 top-5 text-muted-foreground"
+                >
+                  <Search className="h-5 w-5" />
+                </button>
+              </form>
               <Link
                 href="/products"
                 className="block py-2 text-foreground hover:text-primary transition-colors"
+                onClick={() => setIsMenuOpen(false)}
               >
                 Products
               </Link>
+
+              <div className="py-2">
+                <span className="block font-medium mb-1 text-muted-foreground text-sm">
+                  Categories
+                </span>
+                <div className="pl-4 space-y-2">
+                  {categories.length > 0 ? (
+                    categories.map((cat) => (
+                      <Link
+                        key={cat._id || cat.slug}
+                        href={`/products?category=${cat.slug || cat.name.toLowerCase()}`}
+                        className="block text-foreground hover:text-primary transition-colors"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        {cat.name}
+                      </Link>
+                    ))
+                  ) : (
+                    <span className="text-sm text-muted-foreground">
+                      Loading...
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <Link
                 href="/cart"
                 className="block py-2 text-foreground hover:text-primary transition-colors relative"
+                onClick={() => setIsMenuOpen(false)}
               >
                 Cart{" "}
                 {cartItemCount > 0 && (
@@ -247,12 +374,14 @@ export function Navbar() {
                   <Link
                     href="/account"
                     className="block py-2 text-foreground hover:text-primary transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
                   >
                     My Account
                   </Link>
                   <Link
                     href="/orders"
                     className="block py-2 text-foreground hover:text-primary transition-colors"
+                    onClick={() => setIsMenuOpen(false)}
                   >
                     My Orders
                   </Link>
@@ -260,12 +389,16 @@ export function Navbar() {
                     <Link
                       href="/admin"
                       className="block py-2 text-foreground hover:text-primary transition-colors"
+                      onClick={() => setIsMenuOpen(false)}
                     >
                       Admin Panel
                     </Link>
                   )}
                   <button
-                    onClick={logout}
+                    onClick={() => {
+                      logout();
+                      setIsMenuOpen(false);
+                    }}
                     className="block w-full text-left py-2 text-foreground hover:text-primary transition-colors"
                   >
                     Logout
@@ -274,10 +407,14 @@ export function Navbar() {
               ) : (
                 <>
                   <button className="w-full mb-2 py-2 rounded-full border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-all font-medium text-sm">
-                    <Link href="/login">Login</Link>
+                    <Link href="/login" onClick={() => setIsMenuOpen(false)}>
+                      Login
+                    </Link>
                   </button>
                   <button className="w-full py-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-all font-medium text-sm">
-                    <Link href="/signup">Sign Up</Link>
+                    <Link href="/signup" onClick={() => setIsMenuOpen(false)}>
+                      Sign Up
+                    </Link>
                   </button>
                 </>
               )}

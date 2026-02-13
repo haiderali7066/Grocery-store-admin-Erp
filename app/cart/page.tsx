@@ -7,11 +7,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import Link from "next/link";
-import { Trash2, Plus, Minus } from "lucide-react";
+import { Trash2, Plus, Minus, Truck } from "lucide-react";
 
 function CartContent() {
-  const { items, removeItem, updateQuantity, subtotal, gstAmount, total } =
-    useCart();
+  const {
+    items,
+    removeItem,
+    updateQuantity,
+    subtotal,
+    taxAmount,
+    taxRate,
+    taxName,
+    taxEnabled,
+    shippingCost,
+    total,
+  } = useCart();
 
   if (items.length === 0) {
     return (
@@ -104,7 +114,7 @@ function CartContent() {
                   </div>
                 </div>
 
-                {/* Subtotal */}
+                {/* Line total */}
                 <div className="flex flex-col justify-between text-right">
                   <p className="font-semibold text-gray-800 text-lg">
                     Rs. {(item.price * item.quantity).toFixed(0)}
@@ -128,11 +138,31 @@ function CartContent() {
                     Rs. {subtotal.toFixed(0)}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">GST (17%)</span>
-                  <span className="font-semibold">
-                    Rs. {gstAmount.toFixed(0)}
+
+                {/* Tax — only show when enabled */}
+                {taxEnabled && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">
+                      {taxName} ({taxRate}%)
+                    </span>
+                    <span className="font-semibold">
+                      Rs. {taxAmount.toFixed(0)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Shipping */}
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600 flex items-center gap-1">
+                    <Truck className="h-4 w-4" /> Shipping
                   </span>
+                  {shippingCost === 0 ? (
+                    <span className="font-semibold text-green-600">Free</span>
+                  ) : (
+                    <span className="font-semibold">
+                      Rs. {shippingCost.toFixed(0)}
+                    </span>
+                  )}
                 </div>
               </div>
 
