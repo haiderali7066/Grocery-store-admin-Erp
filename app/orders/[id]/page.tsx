@@ -110,7 +110,7 @@ export default function OrderDetailPage() {
         alert(
           "✅ Refund request submitted successfully!\n\n" +
             "We will review your request and respond within 24 hours.\n" +
-            "Note: Rs 300 delivery charges will be deducted from your refund amount."
+            "Note: Rs 300 delivery charges will be deducted from your refund amount.",
         );
         setShowRefundDialog(false);
         setRefundReason("defective");
@@ -131,13 +131,13 @@ export default function OrderDetailPage() {
     if (!order) return false;
     if (order.isPOS) return false; // No refunds for walk-in sales
     if (order.orderStatus === "cancelled") return false;
-    
+
     // Allow refunds for delivered orders
     if (order.orderStatus === "delivered") return true;
-    
+
     // Also allow for shipped orders (in transit)
     if (order.orderStatus === "shipped") return true;
-    
+
     return false;
   };
 
@@ -311,7 +311,9 @@ export default function OrderDetailPage() {
                         <ul className="text-xs text-blue-700 mt-2 space-y-1 list-disc list-inside">
                           <li>Rs 300 delivery charges will be deducted</li>
                           <li>Refund processed within 24-48 hours</li>
-                          <li>Product must be returned in original condition</li>
+                          <li>
+                            Product must be returned in original condition
+                          </li>
                         </ul>
                       </Card>
 

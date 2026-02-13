@@ -5,7 +5,7 @@ import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
@@ -28,14 +28,14 @@ export async function POST(
     if (!refund) {
       return NextResponse.json(
         { error: "Refund request not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     if (refund.status !== "pending") {
       return NextResponse.json(
         { error: "Refund already processed" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -52,13 +52,13 @@ export async function POST(
         message: "Refund rejected",
         refund,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Refund rejection error:", error);
     return NextResponse.json(
       { error: "Failed to reject refund" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

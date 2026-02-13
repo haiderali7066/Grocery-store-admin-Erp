@@ -328,7 +328,7 @@ export const OrderSchema = new Schema(
     total: { type: Number, required: true },
     paymentMethod: {
       type: String,
-      enum: ["cod", "bank", "easypaisa", "jazzcash", "walkin"], // ← Added "cod"
+      enum: ["cod", "bank", "easypaisa", "jazzcash", "walkin"],
       required: true,
     },
     paymentStatus: {
@@ -422,6 +422,85 @@ export const HeroBannerSchema = new Schema(
     link: String,
     isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+
+// =========================
+// Store Settings Schema (NEW)
+// =========================
+export const StoreSettingsSchema = new Schema(
+  {
+    // Store Info
+    storeName: { type: String, default: "Khas Pure Food" },
+    storeLogoUrl: String,
+    storeDescription: String,
+
+    // Contact Info
+    contactEmail: String,
+    contactPhone: String,
+    address: String,
+    city: String,
+    country: { type: String, default: "Pakistan" },
+
+    // Social Media
+    facebookUrl: String,
+    instagramUrl: String,
+    twitterUrl: String,
+    whatsappNumber: String,
+
+    // Tax Settings
+    taxRate: { type: Number, default: 17 },
+    taxName: { type: String, default: "GST" },
+    taxEnabled: { type: Boolean, default: true },
+
+    // Payment Methods
+    paymentMethods: {
+      cod: {
+        enabled: { type: Boolean, default: true },
+        displayName: { type: String, default: "Cash on Delivery" },
+        description: String,
+      },
+      bank: {
+        enabled: { type: Boolean, default: true },
+        displayName: { type: String, default: "Bank Transfer" },
+        accountName: String,
+        accountNumber: String,
+        bankName: String,
+        iban: String,
+      },
+      easypaisa: {
+        enabled: { type: Boolean, default: true },
+        displayName: { type: String, default: "EasyPaisa" },
+        accountNumber: String,
+        accountName: String,
+      },
+      jazzcash: {
+        enabled: { type: Boolean, default: true },
+        displayName: { type: String, default: "JazzCash" },
+        accountNumber: String,
+        accountName: String,
+      },
+    },
+
+    // Hero Banners
+    heroBanners: [
+      {
+        title: String,
+        subtitle: String,
+        imageUrl: String,
+        link: String,
+        isActive: { type: Boolean, default: true },
+        sortOrder: { type: Number, default: 0 },
+      },
+    ],
+
+    // Business Hours
+    businessHours: String,
+
+    // Shipping
+    freeShippingThreshold: { type: Number, default: 0 },
+    shippingCost: { type: Number, default: 0 },
   },
   { timestamps: true },
 );
@@ -565,6 +644,9 @@ export const Refund =
   mongoose.models.Refund || mongoose.model("Refund", RefundSchema);
 export const HeroBanner =
   mongoose.models.HeroBanner || mongoose.model("HeroBanner", HeroBannerSchema);
+export const StoreSettings =
+  mongoose.models.StoreSettings ||
+  mongoose.model("StoreSettings", StoreSettingsSchema);
 export const FBRConfig =
   mongoose.models.FBRConfig || mongoose.model("FBRConfig", FBRConfigSchema);
 export const Expense =

@@ -24,8 +24,16 @@ import {
   MapPin,
   Clock,
 } from "lucide-react";
-
+import { useEffect } from "react";
 export function Navbar() {
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((res) => res.json())
+      .then((data) => setSettings(data.settings));
+  }, []);
+
   const { user, logout, isAuthenticated } = useAuth();
   const { items } = useCart();
   const [isMenuOpen, setIsMenuOpen] = useState(false);

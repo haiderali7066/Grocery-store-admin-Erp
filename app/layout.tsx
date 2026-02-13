@@ -4,6 +4,8 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/components/auth/AuthProvider'
 import { CartProvider } from '@/components/cart/CartProvider'
+import WhatsAppButton from "@/components/store/WhatsAppButton";
+
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -43,6 +45,7 @@ export default function RootLayout({
         <AuthProvider>
           <CartProvider>
             {children}
+            <WhatsAppButton />
           </CartProvider>
         </AuthProvider>
         <Analytics />

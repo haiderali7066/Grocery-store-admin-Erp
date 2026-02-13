@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     if (!orderId || !reason) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -71,10 +71,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Check ownership (unless admin)
-    if (
-      order.user.toString() !== payload.userId &&
-      payload.role !== "admin"
-    ) {
+    if (order.user.toString() !== payload.userId && payload.role !== "admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -84,7 +81,7 @@ export async function POST(req: NextRequest) {
         {
           error: "POS sales cannot be refunded online. Please visit store.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -97,10 +94,9 @@ export async function POST(req: NextRequest) {
     if (existingRefund) {
       return NextResponse.json(
         {
-          error:
-            "This order already has a pending or approved refund request",
+          error: "This order already has a pending or approved refund request",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -122,7 +118,7 @@ export async function POST(req: NextRequest) {
         message: "Refund request created successfully",
         refund,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("[Refunds POST] Error:", error);
@@ -133,7 +129,7 @@ export async function POST(req: NextRequest) {
             ? error.message
             : "Failed to create refund request",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
