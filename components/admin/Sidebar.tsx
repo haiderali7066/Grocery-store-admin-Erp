@@ -29,7 +29,7 @@ const menuItems = [
   { label: "POS Billing", icon: Zap, href: "/admin/pos" },
   { label: "POS Reports", icon: FileText, href: "/admin/pos-reports" },
   
-  { label: "Sale Page", icon: Zap, href: "/admin/sale" },
+  { label: "Flash Sale ", icon: Zap, href: "/admin/sale" },
 
   // Customer Management
   { label: "Reviews", icon: MessageCircle, href: "/admin/reviews" },
