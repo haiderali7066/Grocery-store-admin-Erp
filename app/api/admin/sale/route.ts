@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
 
     // Fetch ALL products — admin needs to see everything to tag/untag
     const products = await Product.find()
-      .select("name retailPrice discount discountType mainImage unitSize unitType stock isNewArrival status")
+      .select(
+        "name retailPrice discount discountType mainImage unitSize unitType stock isNewArrival status",
+      )
       .sort({ name: 1 })
       .lean();
 
@@ -93,7 +95,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ message: "Sale settings saved", sale }, { status: 200 });
+    return NextResponse.json(
+      { message: "Sale settings saved", sale },
+      { status: 200 },
+    );
   } catch (err) {
     console.error("POST /api/admin/sale error:", err);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
@@ -119,7 +124,10 @@ export async function PATCH(req: NextRequest) {
     const { productId, isNewArrival } = await req.json();
 
     if (!productId)
-      return NextResponse.json({ message: "productId is required" }, { status: 400 });
+      return NextResponse.json(
+        { message: "productId is required" },
+        { status: 400 },
+      );
 
     const product = await Product.findByIdAndUpdate(
       productId,
@@ -128,9 +136,15 @@ export async function PATCH(req: NextRequest) {
     ).lean();
 
     if (!product)
-      return NextResponse.json({ message: "Product not found" }, { status: 404 });
+      return NextResponse.json(
+        { message: "Product not found" },
+        { status: 404 },
+      );
 
-    return NextResponse.json({ message: "Product updated", product }, { status: 200 });
+    return NextResponse.json(
+      { message: "Product updated", product },
+      { status: 200 },
+    );
   } catch (err) {
     console.error("PATCH /api/admin/sale error:", err);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
