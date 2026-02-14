@@ -38,7 +38,7 @@ export function Footer() {
       .catch(console.error);
   }, []);
 
-  const storeName = settings?.storeName ?? "Khas Pure Food";
+  const storeName = settings?.storeName ?? "";
   const storeDescription =
     settings?.storeDescription ??
     "Khas Pure Food delivers fresh, quality groceries to your doorstep.";
@@ -153,33 +153,33 @@ export function Footer() {
                   </a>
                 </li>
               )}
+              {/* Social Icons */}
+              {socialLinks.length > 0 && (
+                <div className="flex gap-4">
+                  {socialLinks.map((social) => (
+                    <a
+                      key={social.label}
+                      href={social.href!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-gray-400 hover:text-green-400 transition-colors"
+                      aria-label={social.label}
+                    >
+                      {social.icon}
+                    </a>
+                  ))}
+                </div>
+              )}
             </ul>
           </div>
         </div>
 
         <div className="border-t border-gray-800 pt-8">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex flex-col md:flex-row justify-center items-center gap-4 ">
             <p className="text-gray-400 text-sm">
               © {new Date().getFullYear()} {storeName}. All rights reserved.
+              Developed by Devntom Solutions
             </p>
-
-            {/* Social Icons */}
-            {socialLinks.length > 0 && (
-              <div className="flex gap-4">
-                {socialLinks.map((social) => (
-                  <a
-                    key={social.label}
-                    href={social.href!}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-green-400 transition-colors"
-                    aria-label={social.label}
-                  >
-                    {social.icon}
-                  </a>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@ import { connectDB } from "@/lib/db";
 import { Category } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
-// GET all categories
+// GET all categories (admin)
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
@@ -16,7 +16,11 @@ export async function GET(req: NextRequest) {
     if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
 
-    const categories = await Category.find().sort({ sortOrder: 1, name: 1 });
+    const categories = await Category.find()
+      .select("_id name icon isVisible sortOrder")
+      .sort({ sortOrder: 1, name: 1 })
+      .lean();
+
     return NextResponse.json({ categories }, { status: 200 });
   } catch (error) {
     console.error("Error fetching categories:", error);
@@ -40,29 +44,43 @@ export async function POST(req: NextRequest) {
     if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
 
-    const { name, icon } = await req.json();
-    if (!name)
+    const { name, icon, isVisible = true } = await req.json();
+
+    if (!name || name.trim() === "")
       return NextResponse.json(
         { error: "Category name is required" },
         { status: 400 },
       );
 
-    // Check if category exists
+    // Check if category exists (case-insensitive)
     const existing = await Category.findOne({
-      name: { $regex: new RegExp(`^${name}$`, "i") },
+      name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
     });
+
     if (existing)
       return NextResponse.json(
         { error: "Category already exists" },
         { status: 400 },
       );
 
-    // Create category with optional icon
-    const category = new Category({ name, icon: icon || "" });
+    // Get the highest sortOrder and increment
+    const highestSort = await Category.findOne()
+      .sort({ sortOrder: -1 })
+      .select("sortOrder");
+    const nextSortOrder = highestSort ? highestSort.sortOrder + 1 : 0;
+
+    // Create category with icon
+    const category = new Category({
+      name: name.trim(),
+      icon: icon?.trim() || "",
+      isVisible,
+      sortOrder: nextSortOrder,
+    });
+
     await category.save();
 
     return NextResponse.json(
-      { message: "Category created", category },
+      { message: "Category created successfully", category },
       { status: 201 },
     );
   } catch (error) {

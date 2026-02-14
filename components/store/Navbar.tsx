@@ -90,18 +90,18 @@ export function Navbar() {
   const phoneHref = settings?.contactPhone
     ? `tel:${settings.contactPhone.replace(/\s/g, "")}`
     : "tel:+923001234567";
-  const phoneDisplay = settings?.contactPhone ?? "+92 300 1234567";
+  const phoneDisplay = settings?.contactPhone ?? "";
 
   const emailHref = settings?.contactEmail
     ? `mailto:${settings.contactEmail}`
     : "mailto:info@khaspurefood.com";
-  const emailDisplay = settings?.contactEmail ?? "info@khaspurefood.com";
+  const emailDisplay = settings?.contactEmail ?? "";
 
   const locationDisplay =
     [settings?.city, settings?.country].filter(Boolean).join(", ") ||
-    "Lahore, Pakistan";
+    "";
 
-  const hoursDisplay = settings?.businessHours ?? "Mon-Sat: 8AM - 10PM";
+  const hoursDisplay = settings?.businessHours ?? "";
 
   return (
     <nav className="sticky top-0 z-50 w-full bg-background shadow-sm">
@@ -178,7 +178,7 @@ export function Navbar() {
                 </div>
               ) : (
                 <div className="w-9 h-9 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-bold">
-                  {(settings?.storeName ?? "Khas Pure Food")
+                  {(settings?.storeName ?? "")
                     .split(" ")
                     .map((w) => w[0])
                     .join("")
@@ -187,7 +187,7 @@ export function Navbar() {
                 </div>
               )}
               <span className="hidden sm:inline">
-                {settings?.storeName ?? "Khas Pure Food"}
+                {settings?.storeName ?? ""}
               </span>
             </Link>
 
