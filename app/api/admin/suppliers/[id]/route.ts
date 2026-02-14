@@ -1,59 +1,140 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Supplier, Purchase } from "@/lib/models";
+import { Supplier, Purchase } from "@/lib/models/index";
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { id } = await params;
 
-    // 1. Find the supplier
     const supplier = await Supplier.findById(id).lean();
-    if (!supplier)
+    if (!supplier) {
       return NextResponse.json(
         { error: "Supplier not found" },
-        { status: 404 },
+        { status: 404 }
       );
+    }
 
-    // 2. Fetch all purchases for this supplier to show history
     const purchases = await Purchase.find({ supplier: id })
-      .sort({ createdAt: -1 }) // Newest first
+      .sort({ createdAt: -1 })
       .select(
-        "createdAt supplierInvoiceNo totalAmount amountPaid balanceDue paymentMethod",
+        "createdAt supplierInvoiceNo totalAmount amountPaid balanceDue paymentMethod"
       )
       .lean();
 
-    return NextResponse.json({
-      supplier: { ...supplier, purchases },
-    });
+    return NextResponse.json(
+      { supplier: { ...supplier, purchases } },
+      { status: 200 }
+    );
   } catch (error) {
-    return NextResponse.json({ error: "Server Error" }, { status: 500 });
+    console.error("Supplier fetch error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch supplier" },
+      { status: 500 }
+    );
   }
 }
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  await connectDB();
-  const { id } = await params;
-  const data = await req.json();
-  const supplier = await Supplier.findByIdAndUpdate(id, data, { new: true });
-  return NextResponse.json({ supplier });
+  try {
+    await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { id } = await params;
+    const { name, email, phone, address, city, contact } = await req.json();
+
+    const supplier = await Supplier.findByIdAndUpdate(
+      id,
+      { name, email, phone, address, city, contact },
+      { new: true }
+    );
+
+    if (!supplier) {
+      return NextResponse.json(
+        { error: "Supplier not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      { message: "Supplier updated successfully", supplier },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Supplier update error:", error);
+    return NextResponse.json(
+      { error: "Failed to update supplier" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  await connectDB();
-  const { id } = await params;
-  // Soft delete or hard delete based on your preference
-  await Supplier.findByIdAndDelete(id);
-  // Optionally delete purchase history too
-  await Purchase.deleteMany({ supplier: id });
-  return NextResponse.json({ message: "Supplier and records deleted" });
+  try {
+    await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { id } = await params;
+
+    const supplier = await Supplier.findByIdAndDelete(id);
+    if (!supplier) {
+      return NextResponse.json(
+        { error: "Supplier not found" },
+        { status: 404 }
+      );
+    }
+
+    // Optionally delete purchase history
+    await Purchase.deleteMany({ supplier: id });
+
+    return NextResponse.json(
+      { message: "Supplier and purchase history deleted successfully" },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Supplier deletion error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete supplier" },
+      { status: 500 }
+    );
+  }
 }

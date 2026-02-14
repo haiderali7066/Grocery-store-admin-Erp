@@ -427,7 +427,7 @@ export const HeroBannerSchema = new Schema(
 );
 
 // =========================
-// Store Settings Schema (NEW)
+// Store Settings Schema (UPDATED - Added YouTube & TikTok)
 // =========================
 export const StoreSettingsSchema = new Schema(
   {
@@ -443,10 +443,12 @@ export const StoreSettingsSchema = new Schema(
     city: String,
     country: { type: String, default: "Pakistan" },
 
-    // Social Media
+    // Social Media (UPDATED)
     facebookUrl: String,
     instagramUrl: String,
     twitterUrl: String,
+    youtubeUrl: String, // NEW
+    tiktokUrl: String, // NEW
     whatsappNumber: String,
 
     // Tax Settings

@@ -21,13 +21,22 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 
-interface HeroBanner {
-  title: string;
-  subtitle: string;
-  imageUrl: string;
-  link: string;
-  isActive: boolean;
-  sortOrder: number;
+interface Settings {
+  storeName: string;
+  storeLogoUrl: string;
+  storeDescription: string;
+  contactEmail: string;
+  contactPhone: string;
+  address: string;
+  city: string;
+  country: string;
+  facebookUrl: string;
+  instagramUrl: string;
+  twitterUrl: string;
+  youtubeUrl: string; // ADD
+  tiktokUrl: string; // ADD
+  whatsappNumber: string;
+  // ... rest
 }
 
 interface Settings {
@@ -87,32 +96,14 @@ const DEFAULT_SETTINGS: Settings = {
   facebookUrl: "",
   instagramUrl: "",
   twitterUrl: "",
+  youtubeUrl: "", // ADD
+  tiktokUrl: "", // ADD
   whatsappNumber: "",
   taxRate: 0,
   taxName: "",
   taxEnabled: false,
   paymentMethods: {
-    cod: { enabled: false, displayName: "", description: "" },
-    bank: {
-      enabled: false,
-      displayName: "",
-      accountName: "",
-      accountNumber: "",
-      bankName: "",
-      iban: "",
-    },
-    easypaisa: {
-      enabled: false,
-      displayName: "",
-      accountNumber: "",
-      accountName: "",
-    },
-    jazzcash: {
-      enabled: false,
-      displayName: "",
-      accountNumber: "",
-      accountName: "",
-    },
+    // ... rest stays the same
   },
   heroBanners: [],
   businessHours: "",
@@ -591,7 +582,7 @@ export default function SettingsPage() {
               Social Media Links
             </h2>
             <p className="text-sm text-gray-500 mb-5">
-              These appear in the footer and navbar.
+              These appear in the footer and about page.
             </p>
 
             <div className="space-y-4">
@@ -612,6 +603,16 @@ export default function SettingsPage() {
                   placeholder: "https://twitter.com/yourpage",
                 },
                 {
+                  key: "youtubeUrl",
+                  label: "YouTube Channel URL",
+                  placeholder: "https://youtube.com/@yourchannel",
+                },
+                {
+                  key: "tiktokUrl",
+                  label: "TikTok URL",
+                  placeholder: "https://tiktok.com/@yourusername",
+                },
+                {
                   key: "whatsappNumber",
                   label: "WhatsApp Number",
                   placeholder: "+923001234567 (no spaces)",
@@ -622,7 +623,7 @@ export default function SettingsPage() {
                     {label}
                   </label>
                   <Input
-                    value={(settings as any)[key]}
+                    value={(settings as any)[key] || ""}
                     onChange={(e) =>
                       setSettings({ ...settings, [key]: e.target.value })
                     }
@@ -633,7 +634,6 @@ export default function SettingsPage() {
             </div>
           </Card>
         </TabsContent>
-
         {/* ── HERO BANNERS ── */}
         <TabsContent value="banners" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">

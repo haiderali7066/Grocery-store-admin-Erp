@@ -1,7 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Phone, Mail, MapPin } from "lucide-react";
+import {
+  Phone,
+  Mail,
+  MapPin,
+  Facebook,
+  Instagram,
+  Youtube,
+  MessageCircle,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface StoreSettings {
@@ -15,6 +23,8 @@ interface StoreSettings {
   facebookUrl?: string;
   instagramUrl?: string;
   twitterUrl?: string;
+  youtubeUrl?: string;
+  tiktokUrl?: string;
   whatsappNumber?: string;
 }
 
@@ -31,7 +41,7 @@ export function Footer() {
   const storeName = settings?.storeName ?? "Khas Pure Food";
   const storeDescription =
     settings?.storeDescription ??
-    "Khas Pure Food delivers fresh, quality groceries to your doorstep. We're committed to providing the best products at competitive prices.";
+    "Khas Pure Food delivers fresh, quality groceries to your doorstep.";
 
   const phoneDisplay = settings?.contactPhone ?? "+92 300 1234567";
   const emailDisplay = settings?.contactEmail ?? "info@khaspurefood.com";
@@ -42,42 +52,40 @@ export function Footer() {
       .join(", ") || "Lahore, Pakistan";
 
   const socialLinks = [
-    settings?.facebookUrl
-      ? { label: "Facebook", href: settings.facebookUrl }
-      : null,
-    settings?.instagramUrl
-      ? { label: "Instagram", href: settings.instagramUrl }
-      : null,
-    settings?.twitterUrl
-      ? { label: "Twitter", href: settings.twitterUrl }
-      : null,
-    settings?.whatsappNumber
-      ? {
-          label: "WhatsApp",
-          href: `https://wa.me/${settings.whatsappNumber.replace(/\D/g, "")}`,
-        }
-      : null,
-  ].filter((x): x is { label: string; href: string } => x !== null && !!x.href);
-
-  // Default social links if none configured
-  const displayedSocials =
-    socialLinks.length > 0
-      ? socialLinks
-      : [
-          { label: "Facebook", href: "#" },
-          { label: "Instagram", href: "#" },
-          { label: "Twitter", href: "#" },
-        ];
+    {
+      label: "Facebook",
+      href: settings?.facebookUrl,
+      icon: <Facebook className="h-5 w-5" />,
+    },
+    {
+      label: "Instagram",
+      href: settings?.instagramUrl,
+      icon: <Instagram className="h-5 w-5" />,
+    },
+    {
+      label: "YouTube",
+      href: settings?.youtubeUrl,
+      icon: <Youtube className="h-5 w-5" />,
+    },
+    {
+      label: "WhatsApp",
+      href: settings?.whatsappNumber
+        ? `https://wa.me/${settings.whatsappNumber.replace(/\D/g, "")}`
+        : null,
+      icon: <MessageCircle className="h-5 w-5" />,
+    },
+  ].filter((x) => x.href);
 
   return (
     <footer className="bg-gray-900 text-white mt-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Changed grid-cols-4 to grid-cols-3 since we removed one section */}
+      <div className="max-w-7xl mx-auto px-4 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
           {/* About */}
           <div>
             <h3 className="text-lg font-bold mb-4 text-green-400">About Us</h3>
-            <p className="text-gray-400 text-sm">{storeDescription}</p>
+            <p className="text-gray-400 text-sm leading-relaxed">
+              {storeDescription}
+            </p>
           </div>
 
           {/* Quick Links */}
@@ -121,6 +129,7 @@ export function Footer() {
                   <span>{locationDisplay}</span>
                 </li>
               )}
+
               {phoneDisplay && (
                 <li className="flex items-center gap-2">
                   <Phone className="h-5 w-5 text-green-400 shrink-0" />
@@ -132,6 +141,7 @@ export function Footer() {
                   </a>
                 </li>
               )}
+
               {emailDisplay && (
                 <li className="flex items-center gap-2">
                   <Mail className="h-5 w-5 text-green-400 shrink-0" />
@@ -152,19 +162,24 @@ export function Footer() {
             <p className="text-gray-400 text-sm">
               © {new Date().getFullYear()} {storeName}. All rights reserved.
             </p>
-            <div className="flex gap-4">
-              {displayedSocials.map((s) => (
-                <a
-                  key={s.label}
-                  href={s.href}
-                  target={s.href !== "#" ? "_blank" : undefined}
-                  rel="noopener noreferrer"
-                  className="text-gray-400 hover:text-white transition"
-                >
-                  {s.label}
-                </a>
-              ))}
-            </div>
+
+            {/* Social Icons */}
+            {socialLinks.length > 0 && (
+              <div className="flex gap-4">
+                {socialLinks.map((social) => (
+                  <a
+                    key={social.label}
+                    href={social.href!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-gray-400 hover:text-green-400 transition-colors"
+                    aria-label={social.label}
+                  >
+                    {social.icon}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -142,13 +142,13 @@ export function Navbar() {
                 </div>
               )}
               <Link
-                href="/track-order"
+                href="/orders"
                 className="hover:opacity-80 transition-opacity"
               >
                 Track Order
               </Link>
               <Link
-                href="/help"
+                href="/about"
                 className="hover:opacity-80 transition-opacity hidden sm:inline"
               >
                 Help
