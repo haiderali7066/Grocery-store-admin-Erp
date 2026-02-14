@@ -22,15 +22,14 @@ import {
   TrendingUp,
   AlertTriangle,
   RefreshCw,
-  ArrowUpRight,
-  ArrowDownRight,
   Clock,
   CheckCircle,
   XCircle,
   Truck,
   BarChart2,
-  Activity,
   Users,
+  ShoppingBag,
+  Monitor,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -43,19 +42,20 @@ interface LowStockProduct {
 interface DashboardStats {
   totalSales: number | null;
   totalOrders: number | null;
-  totalProfit: number | null;
+  approvedOrders: number | null;
+  deliveredOrders: number | null;
   pendingOrders: number | null;
   lowStockProducts: LowStockProduct[];
-  monthlyData: Array<{ month: string; sales: number; profit: number }>;
-  dailyData: Array<{ date: string; sales: number; profit: number }>;
+  monthlyData: Array<{ month: string; sales: number; orders: number }>;
+  dailyData: Array<{ date: string; sales: number; orders: number }>;
   gstCollected: number | null;
-  gstLiability: number | null;
   posRevenue: number | null;
+  posOrders: number | null;
   onlineRevenue: number | null;
+  onlineOrders: number | null;
   pendingPayments: number | null;
   fbrStatus: string;
   totalCustomers?: number | null;
-  completedOrders?: number | null;
   cancelledOrders?: number | null;
 }
 
@@ -63,12 +63,12 @@ interface DashboardStats {
 const GREEN = "#16A34A";
 const GREEN2 = "#22C55E";
 const ORANGE = "#EA580C";
-const ORANGE2 = "#F97316";
-const AMBER = "#D97706";
-const RED = "#DC2626";
 const BLUE = "#2563EB";
 const TEAL = "#0D9488";
-const PIE_COLORS = [GREEN, ORANGE, BLUE, AMBER, TEAL];
+const PURPLE = "#9333EA";
+const AMBER = "#D97706";
+const RED = "#DC2626";
+const PIE_COLORS = [GREEN, BLUE, TEAL, PURPLE];
 
 /* ─── Helpers ────────────────────────────────────────── */
 const n = (v: number | null | undefined) => v ?? 0;
@@ -79,26 +79,27 @@ const fmtRs = (v: number | null | undefined) => `Rs. ${fmt(v)}`;
 const FALLBACK: DashboardStats = {
   totalSales: 0,
   totalOrders: 0,
-  totalProfit: 0,
+  approvedOrders: 0,
+  deliveredOrders: 0,
   pendingOrders: 0,
   lowStockProducts: [],
   monthlyData: [
-    { month: "Aug", sales: 0, profit: 0 },
-    { month: "Sep", sales: 0, profit: 0 },
-    { month: "Oct", sales: 0, profit: 0 },
-    { month: "Nov", sales: 0, profit: 0 },
-    { month: "Dec", sales: 0, profit: 0 },
-    { month: "Jan", sales: 0, profit: 0 },
+    { month: "Aug", sales: 0, orders: 0 },
+    { month: "Sep", sales: 0, orders: 0 },
+    { month: "Oct", sales: 0, orders: 0 },
+    { month: "Nov", sales: 0, orders: 0 },
+    { month: "Dec", sales: 0, orders: 0 },
+    { month: "Jan", sales: 0, orders: 0 },
   ],
   dailyData: [],
   gstCollected: 0,
-  gstLiability: 0,
   posRevenue: 0,
+  posOrders: 0,
   onlineRevenue: 0,
+  onlineOrders: 0,
   pendingPayments: 0,
   fbrStatus: "unknown",
   totalCustomers: 0,
-  completedOrders: 0,
   cancelledOrders: 0,
 };
 
@@ -110,7 +111,7 @@ const ChartTooltip = ({ active, payload, label }: any) => {
       <p className="font-bold text-gray-700 mb-2">{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} style={{ color: p.color }} className="font-semibold">
-          {p.name}: Rs. {(p.value ?? 0).toLocaleString()}
+          {p.name}: {p.dataKey === "orders" ? p.value : `Rs. ${(p.value ?? 0).toLocaleString()}`}
         </p>
       ))}
     </div>
@@ -198,8 +199,14 @@ export default function AdminDashboard() {
     { name: "Online", value: n(d.onlineRevenue) },
   ].filter((x) => x.value > 0);
 
-  const orderPieData = [
-    { name: "Completed", value: n(d.completedOrders) },
+  const ordersPieData = [
+    { name: "POS Orders", value: n(d.posOrders) },
+    { name: "Online Orders", value: n(d.onlineOrders) },
+  ].filter((x) => x.value > 0);
+
+  const orderStatusData = [
+    { name: "Delivered", value: n(d.deliveredOrders) },
+    { name: "Approved", value: n(d.approvedOrders) },
     { name: "Pending", value: n(d.pendingOrders) },
     { name: "Cancelled", value: n(d.cancelledOrders) },
   ].filter((x) => x.value > 0);
@@ -336,7 +343,7 @@ export default function AdminDashboard() {
             {/* ══ ROW 1 — Primary KPIs ══ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               <StatCard
-                label="Total Sales"
+                label="Total Revenue"
                 value={fmtRs(d.totalSales)}
                 icon={DollarSign}
                 iconColor="text-green-700"
@@ -354,9 +361,9 @@ export default function AdminDashboard() {
                 delay={60}
               />
               <StatCard
-                label="Total Profit"
-                value={fmtRs(d.totalProfit)}
-                icon={TrendingUp}
+                label="Delivered Orders"
+                value={fmt(d.deliveredOrders)}
+                icon={CheckCircle}
                 iconColor="text-emerald-700"
                 iconBg="bg-emerald-100"
                 accent={GREEN2}
@@ -376,18 +383,18 @@ export default function AdminDashboard() {
             {/* ══ ROW 2 — Secondary KPIs ══ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               <StatCard
-                label="GST Collected"
-                value={fmtRs(d.gstCollected)}
-                icon={BarChart2}
+                label="Approved Orders"
+                value={fmt(d.approvedOrders)}
+                icon={CheckCircle}
                 iconColor="text-teal-700"
                 iconBg="bg-teal-100"
                 accent={TEAL}
                 delay={0}
               />
               <StatCard
-                label="GST Liability"
-                value={fmtRs(d.gstLiability)}
-                icon={AlertTriangle}
+                label="Cancelled Orders"
+                value={fmt(d.cancelledOrders)}
+                icon={XCircle}
                 iconColor="text-red-700"
                 iconBg="bg-red-100"
                 accent={RED}
@@ -396,7 +403,7 @@ export default function AdminDashboard() {
               <StatCard
                 label="Pending Payments"
                 value={fmt(d.pendingPayments)}
-                icon={Activity}
+                icon={Clock}
                 iconColor="text-amber-700"
                 iconBg="bg-amber-100"
                 accent={AMBER}
@@ -413,13 +420,14 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* ══ ROW 3 — Revenue Split bars ══ */}
+            {/* ══ ROW 3 — POS vs Online Split ══ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               {[
                 {
                   label: "POS Revenue",
                   value: d.posRevenue,
-                  icon: DollarSign,
+                  orders: d.posOrders,
+                  icon: Monitor,
                   iconBg: "bg-green-100",
                   iconColor: "text-green-700",
                   barFrom: "from-green-500",
@@ -429,12 +437,13 @@ export default function AdminDashboard() {
                 {
                   label: "Online Revenue",
                   value: d.onlineRevenue,
-                  icon: Truck,
-                  iconBg: "bg-orange-100",
-                  iconColor: "text-orange-700",
-                  barFrom: "from-orange-500",
-                  barTo: "to-amber-400",
-                  barBg: "bg-orange-100",
+                  orders: d.onlineOrders,
+                  icon: ShoppingBag,
+                  iconBg: "bg-blue-100",
+                  iconColor: "text-blue-700",
+                  barFrom: "from-blue-500",
+                  barTo: "to-cyan-400",
+                  barBg: "bg-blue-100",
                 },
               ].map((row, i) => {
                 const pct = n(d.totalSales)
@@ -458,6 +467,9 @@ export default function AdminDashboard() {
                         <p className="text-xl font-bold text-gray-900">
                           {fmtRs(row.value)}
                         </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {fmt(row.orders)} orders
+                        </p>
                       </div>
                     </div>
                     <div
@@ -469,20 +481,20 @@ export default function AdminDashboard() {
                       />
                     </div>
                     <p className="text-xs text-gray-400 mt-1">
-                      {pct}% of total sales
+                      {pct}% of total revenue
                     </p>
                   </div>
                 );
               })}
             </div>
 
-            {/* ══ ROW 4 — Area Chart + Revenue Pie ══ */}
+            {/* ══ ROW 4 — Sales & Orders Chart + Revenue Pie ══ */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 section-fade">
               <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
                     <h3 className="font-bold text-gray-900 text-base">
-                      Sales & Profit
+                      Revenue & Orders Overview
                     </h3>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {dateRange === "today"
@@ -493,11 +505,11 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-3 text-xs font-semibold">
                     <span className="flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
-                      Sales
+                      Revenue
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />
-                      Profit
+                      <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+                      Orders
                     </span>
                   </div>
                 </div>
@@ -527,7 +539,7 @@ export default function AdminDashboard() {
                           />
                         </linearGradient>
                         <linearGradient
-                          id="profitGrad"
+                          id="ordersGrad"
                           x1="0"
                           y1="0"
                           x2="0"
@@ -535,12 +547,12 @@ export default function AdminDashboard() {
                         >
                           <stop
                             offset="5%"
-                            stopColor={ORANGE}
+                            stopColor={BLUE}
                             stopOpacity={0.18}
                           />
                           <stop
                             offset="95%"
-                            stopColor={ORANGE}
+                            stopColor={BLUE}
                             stopOpacity={0.01}
                           />
                         </linearGradient>
@@ -553,30 +565,41 @@ export default function AdminDashboard() {
                         tickLine={false}
                       />
                       <YAxis
+                        yAxisId="left"
                         tick={{ fontSize: 11, fill: "#9CA3AF" }}
                         axisLine={false}
                         tickLine={false}
                         width={60}
                         tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
                       />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fontSize: 11, fill: "#9CA3AF" }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={40}
+                      />
                       <Tooltip content={<ChartTooltip />} />
                       <Area
+                        yAxisId="left"
                         type="monotone"
                         dataKey="sales"
                         stroke={GREEN}
                         strokeWidth={2.5}
                         fill="url(#salesGrad)"
                         dot={false}
-                        name="Sales"
+                        name="Revenue"
                       />
                       <Area
+                        yAxisId="right"
                         type="monotone"
-                        dataKey="profit"
-                        stroke={ORANGE}
+                        dataKey="orders"
+                        stroke={BLUE}
                         strokeWidth={2.5}
-                        fill="url(#profitGrad)"
+                        fill="url(#ordersGrad)"
                         dot={false}
-                        name="Profit"
+                        name="Orders"
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -653,11 +676,11 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* ══ ROW 5 — Bar Chart + Order Status Pie ══ */}
+            {/* ══ ROW 5 — Bar Chart + Order Distribution Pies ══ */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 section-fade">
               <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
                 <h3 className="font-bold text-gray-900 text-base mb-1">
-                  Monthly Sales Bar
+                  Monthly Revenue Bar
                 </h3>
                 <p className="text-xs text-gray-400 mb-5">Revenue by month</p>
                 {d.monthlyData.length > 0 ? (
@@ -684,14 +707,8 @@ export default function AdminDashboard() {
                       <Tooltip content={<ChartTooltip />} />
                       <Bar
                         dataKey="sales"
-                        name="Sales"
+                        name="Revenue"
                         fill={GREEN}
-                        radius={[6, 6, 0, 0]}
-                      />
-                      <Bar
-                        dataKey="profit"
-                        name="Profit"
-                        fill={ORANGE}
                         radius={[6, 6, 0, 0]}
                       />
                     </BarChart>
@@ -704,78 +721,123 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col">
-                <h3 className="font-bold text-gray-900 text-base mb-1">
-                  Order Status
-                </h3>
-                <p className="text-xs text-gray-400 mb-4">Breakdown</p>
-                {orderPieData.length > 0 ? (
-                  <>
-                    <ResponsiveContainer width="100%" height={160}>
-                      <PieChart>
-                        <Pie
-                          data={orderPieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={44}
-                          outerRadius={68}
-                          paddingAngle={4}
-                          dataKey="value"
-                        >
-                          <Cell fill={GREEN} stroke="none" />
-                          <Cell fill={ORANGE} stroke="none" />
-                          <Cell fill={RED} stroke="none" />
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="mt-auto space-y-2">
-                      {[
-                        {
-                          label: "Completed",
-                          val: n(d.completedOrders),
-                          color: GREEN,
-                        },
-                        {
-                          label: "Pending",
-                          val: n(d.pendingOrders),
-                          color: ORANGE,
-                        },
-                        {
-                          label: "Cancelled",
-                          val: n(d.cancelledOrders),
-                          color: RED,
-                        },
-                      ].map((row, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between text-sm"
-                        >
-                          <span className="flex items-center gap-2 text-gray-600">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full"
-                              style={{
-                                background: row.color,
-                                display: "inline-block",
-                              }}
-                            />
-                            {row.label}
-                          </span>
-                          <span className="font-bold text-gray-900">
-                            {row.val.toLocaleString()}
-                          </span>
-                        </div>
-                      ))}
+              <div className="space-y-4">
+                {/* Orders Distribution Pie */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <h3 className="font-bold text-gray-900 text-sm mb-1">
+                    Orders Distribution
+                  </h3>
+                  <p className="text-xs text-gray-400 mb-3">POS vs Online</p>
+                  {ordersPieData.length > 0 ? (
+                    <>
+                      <ResponsiveContainer width="100%" height={120}>
+                        <PieChart>
+                          <Pie
+                            data={ordersPieData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={35}
+                            outerRadius={55}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            <Cell fill={GREEN} stroke="none" />
+                            <Cell fill={BLUE} stroke="none" />
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-1.5">
+                        {ordersPieData.map((item, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between text-xs"
+                          >
+                            <span className="flex items-center gap-2 text-gray-600">
+                              <span
+                                className="w-2 h-2 rounded-full"
+                                style={{
+                                  background: i === 0 ? GREEN : BLUE,
+                                  display: "inline-block",
+                                }}
+                              />
+                              {item.name}
+                            </span>
+                            <span className="font-bold text-gray-900">
+                              {item.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center py-4">
+                      <p className="text-xs text-gray-300">No data</p>
                     </div>
-                  </>
-                ) : (
-                  <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center text-gray-300">
-                      <ShoppingCart className="w-8 h-8 mb-2 mx-auto" />
-                      <p className="text-xs">No orders yet</p>
+                  )}
+                </div>
+
+                {/* Order Status Pie */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <h3 className="font-bold text-gray-900 text-sm mb-1">
+                    Order Status
+                  </h3>
+                  <p className="text-xs text-gray-400 mb-3">Breakdown</p>
+                  {orderStatusData.length > 0 ? (
+                    <>
+                      <ResponsiveContainer width="100%" height={120}>
+                        <PieChart>
+                          <Pie
+                            data={orderStatusData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={35}
+                            outerRadius={55}
+                            paddingAngle={4}
+                            dataKey="value"
+                          >
+                            <Cell fill={GREEN} stroke="none" />
+                            <Cell fill={TEAL} stroke="none" />
+                            <Cell fill={ORANGE} stroke="none" />
+                            <Cell fill={RED} stroke="none" />
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-1.5">
+                        {[
+                          { label: "Delivered", val: n(d.deliveredOrders), color: GREEN },
+                          { label: "Approved", val: n(d.approvedOrders), color: TEAL },
+                          { label: "Pending", val: n(d.pendingOrders), color: ORANGE },
+                          { label: "Cancelled", val: n(d.cancelledOrders), color: RED },
+                        ].map((row, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between text-xs"
+                          >
+                            <span className="flex items-center gap-2 text-gray-600">
+                              <span
+                                className="w-2 h-2 rounded-full"
+                                style={{
+                                  background: row.color,
+                                  display: "inline-block",
+                                }}
+                              />
+                              {row.label}
+                            </span>
+                            <span className="font-bold text-gray-900">
+                              {row.val}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center py-4">
+                      <p className="text-xs text-gray-300">No data</p>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
@@ -875,7 +937,7 @@ export default function AdminDashboard() {
               <h3 className="font-bold text-green-900 text-sm mb-4 uppercase tracking-wide">
                 GST Summary
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
                   {
                     label: "GST Collected",
@@ -883,17 +945,9 @@ export default function AdminDashboard() {
                     color: "text-green-700",
                   },
                   {
-                    label: "GST Liability",
-                    value: fmtRs(d.gstLiability),
-                    color: "text-red-600",
-                  },
-                  {
-                    label: "Net GST",
-                    value: fmtRs(n(d.gstCollected) - n(d.gstLiability)),
-                    color:
-                      n(d.gstCollected) - n(d.gstLiability) >= 0
-                        ? "text-green-700"
-                        : "text-red-600",
+                    label: "Total Revenue (incl. GST)",
+                    value: fmtRs(d.totalSales),
+                    color: "text-blue-700",
                   },
                 ].map((g, i) => (
                   <div

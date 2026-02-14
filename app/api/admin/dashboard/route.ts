@@ -1,5 +1,5 @@
 import { connectDB } from "@/lib/db";
-import { Order, Product, POSSale, FBRConfig } from "@/lib/models/index";
+import { Order, Product, POSSale, FBRConfig, User } from "@/lib/models/index";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
@@ -43,13 +43,8 @@ export async function GET(req: NextRequest) {
     ]);
 
     // ── Online order stats ───────────────────────────────────
-    // Schema: total = final amount, gstAmount = tax, profit = profit field
     const onlineRevenue = onlineOrders.reduce(
       (sum, o) => sum + (o.total ?? 0),
-      0,
-    );
-    const onlineProfit = onlineOrders.reduce(
-      (sum, o) => sum + (o.profit ?? 0),
       0,
     );
     const onlineGst = onlineOrders.reduce(
@@ -58,12 +53,10 @@ export async function GET(req: NextRequest) {
     );
 
     // ── POS sale stats ───────────────────────────────────────
-    // Schema: totalAmount (or total alias), profit, tax (gst amount)
     const posRevenue = posSales.reduce(
       (sum, s) => sum + (s.totalAmount ?? s.total ?? 0),
       0,
     );
-    const posProfit = posSales.reduce((sum, s) => sum + (s.profit ?? 0), 0);
     const posGst = posSales.reduce(
       (sum, s) => sum + (s.gstAmount ?? s.tax ?? 0),
       0,
@@ -71,21 +64,28 @@ export async function GET(req: NextRequest) {
 
     // ── Combined totals ──────────────────────────────────────
     const totalSales = onlineRevenue + posRevenue;
-    const totalProfit = onlineProfit + posProfit;
     const gstCollected = onlineGst + posGst;
-    // GST liability = what you owe to FBR = gstCollected (it IS the liability)
-    // gstLiability here means net payable after input tax adjustments — simplified as collected
-    const gstLiability = gstCollected;
 
     // ── Order counts ─────────────────────────────────────────
-    // Online orders: orderStatus field
     const totalOrders = onlineOrders.length + posSales.length;
-    const pendingOrders = onlineOrders.filter(
-      (o) => o.orderStatus === "pending" || o.orderStatus === "confirmed",
+    const posOrders = posSales.length;
+    const onlineOrders_count = onlineOrders.length;
+
+    // Online order status breakdown
+    const approvedOrders = onlineOrders.filter(
+      (o) => o.paymentStatus === "verified" && o.orderStatus === "processing",
     ).length;
-    const completedOrders =
-      onlineOrders.filter((o) => o.orderStatus === "delivered").length +
-      posSales.length; // All POS sales = completed
+
+    const deliveredOrders = onlineOrders.filter(
+      (o) => o.orderStatus === "delivered",
+    ).length;
+
+    const pendingOrders = onlineOrders.filter(
+      (o) =>
+        o.orderStatus === "pending" ||
+        (o.paymentStatus === "pending" && o.orderStatus !== "cancelled"),
+    ).length;
+
     const cancelledOrders = onlineOrders.filter(
       (o) => o.orderStatus === "cancelled",
     ).length;
@@ -103,19 +103,17 @@ export async function GET(req: NextRequest) {
         stock: p.stock ?? 0,
         threshold: p.lowStockThreshold ?? 10,
       }))
-      .sort((a, b) => a.stock - b.stock); // Most critical first
+      .sort((a, b) => a.stock - b.stock);
 
     // ── Monthly data (last 6 months) ─────────────────────────
-    // Fetch all-time for monthly chart regardless of range filter
     const [allOrders, allPosSales] = await Promise.all([
       Order.find().lean(),
       POSSale.find().lean(),
     ]);
 
-    // FIX: Added '<' after Record
     const monthlyMap: Record<
       string,
-      { month: string; sales: number; profit: number; index: number }
+      { month: string; sales: number; orders: number; index: number }
     > = {};
 
     for (let i = 5; i >= 0; i--) {
@@ -124,39 +122,34 @@ export async function GET(req: NextRequest) {
       monthlyMap[key] = {
         month: d.toLocaleString("default", { month: "short" }),
         sales: 0,
-        profit: 0,
+        orders: 0,
         index: 5 - i,
       };
     }
 
-    const addToMonth = (date: Date, sales: number, profit: number) => {
+    const addToMonth = (date: Date, sales: number) => {
       const key = `${date.getFullYear()}-${date.getMonth()}`;
       if (monthlyMap[key]) {
         monthlyMap[key].sales += sales;
-        monthlyMap[key].profit += profit;
+        monthlyMap[key].orders += 1;
       }
     };
 
     allOrders.forEach((o) => {
-      addToMonth(new Date(o.createdAt), o.total ?? 0, o.profit ?? 0);
+      addToMonth(new Date(o.createdAt), o.total ?? 0);
     });
     allPosSales.forEach((s) => {
-      addToMonth(
-        new Date(s.createdAt),
-        s.totalAmount ?? s.total ?? 0,
-        s.profit ?? 0,
-      );
+      addToMonth(new Date(s.createdAt), s.totalAmount ?? s.total ?? 0);
     });
 
     const monthlyData = Object.values(monthlyMap)
       .sort((a, b) => a.index - b.index)
-      .map(({ month, sales, profit }) => ({ month, sales, profit }));
+      .map(({ month, sales, orders }) => ({ month, sales, orders }));
 
-    // ── Daily data (last 7 days, for "today/week" range) ─────
-    // FIX: Added '<' after Record
+    // ── Daily data (last 7 days) ─────────────────────────────
     const dailyMap: Record<
       string,
-      { date: string; sales: number; profit: number }
+      { date: string; sales: number; orders: number }
     > = {};
 
     for (let i = 6; i >= 0; i--) {
@@ -169,22 +162,18 @@ export async function GET(req: NextRequest) {
           day: "numeric",
         }),
         sales: 0,
-        profit: 0,
+        orders: 0,
       };
     }
 
-    // Note: iterating over 'allOrders' again for daily map.
-    // If you only want daily data for the selected range, use onlineOrders/posSales instead.
-    // Assuming you want "last 7 days" relative to TODAY regardless of filter:
     [...allOrders, ...allPosSales].forEach((entry) => {
       const d = new Date(entry.createdAt);
       const key = d.toISOString().slice(0, 10);
 
-      // Only add if this date exists in our last-7-days map
       if (dailyMap[key]) {
         dailyMap[key].sales +=
           (entry as any).total ?? (entry as any).totalAmount ?? 0;
-        dailyMap[key].profit += (entry as any).profit ?? 0;
+        dailyMap[key].orders += 1;
       }
     });
 
@@ -204,17 +193,18 @@ export async function GET(req: NextRequest) {
         stats: {
           totalSales,
           totalOrders,
-          totalProfit,
+          approvedOrders,
+          deliveredOrders,
           pendingOrders,
-          completedOrders,
           cancelledOrders,
           lowStockProducts,
           monthlyData,
           dailyData,
           gstCollected,
-          gstLiability,
           posRevenue,
+          posOrders,
           onlineRevenue,
+          onlineOrders: onlineOrders_count,
           pendingPayments,
           fbrStatus,
           totalCustomers,

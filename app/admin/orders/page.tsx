@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, X, Printer, Eye } from "lucide-react";
+import { Check, X, Printer, Eye, Trash2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface OrderItem {
@@ -31,7 +31,7 @@ interface Order {
   orderStatus: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
   paymentMethod: string;
   createdAt: string;
-  Screenshot?: string;
+  screenshot?: string;
   trackingNumber?: string;
   trackingProvider?: string;
   items: OrderItem[];
@@ -46,6 +46,7 @@ export default function OrdersPage() {
     Record<string, { code: string; courier: string }>
   >({});
   const [updatedOrderId, setUpdatedOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
 
   const [storeInfo, setStoreInfo] = useState({
     name: "Khas pure foods",
@@ -93,6 +94,40 @@ export default function OrdersPage() {
       setTimeout(() => setUpdatedOrderId(null), 1500);
     } catch (err: any) {
       alert("Update failed: " + err.message);
+    }
+  };
+
+  const handleDelete = async (orderId: string) => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this order? This action cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    setDeletingOrderId(orderId);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Delete failed");
+      }
+
+      // Remove order from state
+      setOrders(orders.filter((order) => order._id !== orderId));
+
+      // Close the order panel if it was open
+      if (openOrderId === orderId) {
+        setOpenOrderId(null);
+      }
+    } catch (err: any) {
+      alert("Delete failed: " + err.message);
+    } finally {
+      setDeletingOrderId(null);
     }
   };
 
@@ -152,6 +187,13 @@ export default function OrdersPage() {
     if (!w) return;
     w.document.write(`
       <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            table { border-collapse: collapse; }
+            th, td { padding: 8px; text-align: left; }
+          </style>
+        </head>
         <body>
           <h2>${storeInfo.name}</h2>
           <p>${storeInfo.address}</p>
@@ -160,6 +202,7 @@ export default function OrdersPage() {
           <hr/>
           <h3>Order #${order.orderNumber}</h3>
           <p>Order Date: ${new Date(order.createdAt).toLocaleDateString()}</p>
+          <p>Payment Method: ${order.paymentMethod || "-"}</p>
 
           <h4>Customer Details:</h4>
           <p>Name: ${user.name || "-"}</p>
@@ -265,6 +308,16 @@ export default function OrdersPage() {
                           Rs. {(order.total ?? 0).toLocaleString()} •{" "}
                           {new Date(order.createdAt).toLocaleDateString()}
                         </p>
+                        <p className="text-sm text-slate-600 mt-1">
+                          <span className="font-medium">Payment:</span>{" "}
+                          {order.paymentMethod || "N/A"}
+                        </p>
+                        {order.user?.phone && (
+                          <p className="text-sm text-slate-600">
+                            <span className="font-medium">Phone:</span>{" "}
+                            {order.user.phone}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
@@ -290,6 +343,18 @@ export default function OrdersPage() {
                         >
                           <Printer className="w-4 h-4 mr-1" /> Print
                         </Button>
+
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDelete(order._id)}
+                          disabled={deletingOrderId === order._id}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          {deletingOrderId === order._id
+                            ? "Deleting..."
+                            : "Delete"}
+                        </Button>
                       </div>
                     </div>
 
@@ -314,6 +379,9 @@ export default function OrdersPage() {
                                 {order.user.address}
                               </p>
                             )}
+                            <p className="text-sm font-medium mt-2 text-slate-700">
+                              Payment Method: {order.paymentMethod || "N/A"}
+                            </p>
                           </section>
 
                           <section>
