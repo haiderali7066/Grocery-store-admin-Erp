@@ -88,7 +88,6 @@ export function FeaturedProducts() {
 
       {/* Main Container - Expanded for ultra-wide screens */}
       <div className="w-full max-w-[2560px] mx-auto px-4 sm:px-6 lg:px-12 2xl:px-24 relative z-20">
-        
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-10 md:mb-16 2xl:mb-20">
           <div className="text-left w-full md:w-auto">
@@ -137,8 +136,8 @@ export function FeaturedProducts() {
                   If the screen is massive, we need enough duplicate items to fill the view.
                 */}
                 {[...Array(2)].map((_, arrayIndex) => (
-                  <div 
-                    key={`set-${arrayIndex}`} 
+                  <div
+                    key={`set-${arrayIndex}`}
                     className="flex gap-4 sm:gap-6 md:gap-8 2xl:gap-12 flex-shrink-0"
                   >
                     {products.map((product) => (
@@ -197,9 +196,21 @@ export function FeaturedProducts() {
           animation: marquee 40s linear infinite;
         }
 
-        @media (min-width: 640px) { .animate-marquee { --marquee-gap: 1.5rem; } }
-        @media (min-width: 768px) { .animate-marquee { --marquee-gap: 2rem; } }
-        @media (min-width: 1536px) { .animate-marquee { --marquee-gap: 3rem; } }
+        @media (min-width: 640px) {
+          .animate-marquee {
+            --marquee-gap: 1.5rem;
+          }
+        }
+        @media (min-width: 768px) {
+          .animate-marquee {
+            --marquee-gap: 2rem;
+          }
+        }
+        @media (min-width: 1536px) {
+          .animate-marquee {
+            --marquee-gap: 3rem;
+          }
+        }
 
         @media (max-width: 768px) {
           .animate-marquee {

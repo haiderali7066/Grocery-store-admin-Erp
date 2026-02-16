@@ -18,6 +18,8 @@ export interface CartItem {
   image?: string;
   weight?: string;
   gst?: number; // per-product GST rate (optional, falls back to store rate)
+  discount?: number;
+  isBundle?: boolean;
 }
 
 interface TaxSettings {
@@ -83,6 +85,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       .then((data) => {
         const s = data.settings;
         if (!s) return;
+
+        // 🔍 DEBUG LOG - Remove this after fixing
+        console.log("🛒 Cart Settings Loaded:", {
+          taxEnabled: s.taxEnabled,
+          taxRate: s.taxRate,
+          taxName: s.taxName,
+          shippingCost: s.shippingCost,
+          freeShippingThreshold: s.freeShippingThreshold,
+        });
+
         setTax({
           taxEnabled: s.taxEnabled ?? true,
           taxRate: s.taxRate ?? 17,
@@ -91,10 +103,27 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           freeShippingThreshold: s.freeShippingThreshold ?? 0,
         });
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("❌ Failed to load cart settings:", err);
         // keep defaults on error — store still functions
       });
   }, []);
+
+  // Debug log for computed values
+  useEffect(() => {
+    if (items.length > 0) {
+      console.log("💰 Cart Totals:", {
+        itemCount: items.length,
+        subtotal,
+        taxEnabled: tax.taxEnabled,
+        taxRate: tax.taxRate,
+        taxName: tax.taxName,
+        taxAmount,
+        shippingCost,
+        total,
+      });
+    }
+  }, [items.length, tax]);
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 

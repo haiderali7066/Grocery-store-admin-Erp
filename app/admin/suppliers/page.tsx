@@ -48,7 +48,7 @@ export default function SuppliersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
-    null
+    null,
   );
   const [formData, setFormData] = useState({
     name: "",
@@ -103,7 +103,7 @@ export default function SuppliersPage() {
 
   const handleCreateSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       alert("Supplier name is required");
       return;
@@ -406,7 +406,8 @@ export default function SuppliersPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6">
-              {selectedSupplier.purchases && selectedSupplier.purchases.length > 0 ? (
+              {selectedSupplier.purchases &&
+              selectedSupplier.purchases.length > 0 ? (
                 <table className="w-full">
                   <thead className="text-left text-xs uppercase text-gray-400 font-bold border-b">
                     <tr>

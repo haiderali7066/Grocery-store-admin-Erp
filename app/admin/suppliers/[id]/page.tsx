@@ -67,7 +67,7 @@ export default function EditSupplierPage() {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       alert("Supplier name is required");
       return;
@@ -124,9 +124,7 @@ export default function EditSupplierPage() {
       </Button>
 
       <Card className="p-8 shadow-lg">
-        <h2 className="text-3xl font-bold mb-6 text-gray-900">
-          Edit Supplier
-        </h2>
+        <h2 className="text-3xl font-bold mb-6 text-gray-900">Edit Supplier</h2>
         <form onSubmit={handleUpdate} className="space-y-5">
           <div>
             <label className="block text-sm font-medium mb-2">

@@ -208,9 +208,8 @@ export default function Home() {
           <HeroCarousel />
         </section>
 
-          {/* ── Featured Products ── */}
-          <FeaturedProducts />
-
+        {/* ── Featured Products ── */}
+        <FeaturedProducts />
 
         {/* ── Features Strip ── */}
         <section className="border-y border-green-100 bg-green-50/50 py-6 md:py-8">
@@ -382,7 +381,6 @@ export default function Home() {
           )}
         </section>
 
-
         {/* ── Stats Strip ── */}
         <section className="stats-strip py-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -402,6 +400,45 @@ export default function Home() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── CTA ── */}
+        <section className="pb-16 mt-20 md:pb-20 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            <div className="cta-bg rounded-3xl p-8 md:p-14 text-center text-white relative">
+              <div className="relative z-10">
+                <span className="inline-block bg-white/20 text-white text-xs font-bold tracking-widest uppercase px-4 py-2 rounded-full mb-6">
+                  🛒 Start Shopping
+                </span>
+                <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+                  Ready to Start Shopping?
+                </h2>
+                <p className="text-white/80 text-base md:text-lg mb-8 max-w-md mx-auto">
+                  Explore thousands of fresh products — from farm to your
+                  doorstep
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-base px-8 py-6 rounded-full shadow-lg hover:shadow-xl transition-all border-0"
+                  >
+                    <Link href="/products" className="flex items-center gap-2">
+                      Browse All Products <ArrowRight className="w-4 h-4" />
+                    </Link>
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="lg"
+                    className="border-white/40 text-white hover:bg-white/10 font-semibold text-base px-8 py-6 rounded-full bg-transparent"
+                  >
+                    <Link href="/products?featured=true">View Deals</Link>
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -473,45 +510,6 @@ export default function Home() {
                 </p>
               </div>
             ))}
-          </div>
-        </section>
-
-        {/* ── CTA ── */}
-        <section className="pb-16 md:pb-20 px-4 sm:px-6 lg:px-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="cta-bg rounded-3xl p-8 md:p-14 text-center text-white relative">
-              <div className="relative z-10">
-                <span className="inline-block bg-white/20 text-white text-xs font-bold tracking-widest uppercase px-4 py-2 rounded-full mb-6">
-                  🛒 Start Shopping
-                </span>
-                <h2 className="font-display text-3xl md:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
-                  Ready to Start Shopping?
-                </h2>
-                <p className="text-white/80 text-base md:text-lg mb-8 max-w-md mx-auto">
-                  Explore thousands of fresh products — from farm to your
-                  doorstep
-                </p>
-                <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-base px-8 py-6 rounded-full shadow-lg hover:shadow-xl transition-all border-0"
-                  >
-                    <Link href="/products" className="flex items-center gap-2">
-                      Browse All Products <ArrowRight className="w-4 h-4" />
-                    </Link>
-                  </Button>
-                  <Button
-                    asChild
-                    variant="outline"
-                    size="lg"
-                    className="border-white/40 text-white hover:bg-white/10 font-semibold text-base px-8 py-6 rounded-full bg-transparent"
-                  >
-                    <Link href="/products?featured=true">View Deals</Link>
-                  </Button>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
       </main>

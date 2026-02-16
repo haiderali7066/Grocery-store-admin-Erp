@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import Link from "next/link";
-import { Trash2, Plus, Minus, Truck } from "lucide-react";
+import { Trash2, Plus, Minus, Truck, Tag } from "lucide-react";
 
 function CartContent() {
   const {
@@ -132,6 +132,7 @@ function CartContent() {
               </h2>
 
               <div className="space-y-3 mb-5 border-b border-gray-200 pb-5">
+                {/* Subtotal */}
                 <div className="flex justify-between">
                   <span className="text-gray-600">Subtotal</span>
                   <span className="font-semibold">
@@ -139,17 +140,29 @@ function CartContent() {
                   </span>
                 </div>
 
-                {/* Tax — only show when enabled */}
-                {taxEnabled && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">
-                      {taxName} ({taxRate}%)
-                    </span>
-                    <span className="font-semibold">
-                      Rs. {taxAmount.toFixed(0)}
-                    </span>
-                  </div>
-                )}
+                {/* Tax - Always show with status */}
+                <div className="flex justify-between">
+                  <span className="text-gray-600">
+                    {taxEnabled ? (
+                      <>
+                        {taxName} ({taxRate}%)
+                      </>
+                    ) : (
+                      <span className="text-gray-400 line-through">Tax</span>
+                    )}
+                  </span>
+                  <span
+                    className={`font-semibold ${!taxEnabled ? "text-gray-400" : ""}`}
+                  >
+                    {taxEnabled ? (
+                      `Rs. ${taxAmount.toFixed(0)}`
+                    ) : (
+                      <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                        Disabled
+                      </span>
+                    )}
+                  </span>
+                </div>
 
                 {/* Shipping */}
                 <div className="flex justify-between items-center">
@@ -166,11 +179,13 @@ function CartContent() {
                 </div>
               </div>
 
+              {/* Total */}
               <div className="flex justify-between mb-6 text-xl font-bold text-gray-900">
                 <span>Total</span>
                 <span className="text-green-700">Rs. {total.toFixed(0)}</span>
               </div>
 
+              {/* Action Buttons */}
               <Button
                 asChild
                 className="w-full bg-green-700 hover:bg-green-800 text-white mb-3 rounded-lg py-3"
@@ -189,7 +204,8 @@ function CartContent() {
 
             {/* Promo Code */}
             <div className="mt-6 bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                <Tag className="h-4 w-4" />
                 Promo Code
               </label>
               <div className="flex gap-2">

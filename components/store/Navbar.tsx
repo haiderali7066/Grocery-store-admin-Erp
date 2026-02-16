@@ -168,7 +168,7 @@ export function Navbar() {
               className="flex items-center gap-2 text-lg md:text-xl font-bold text-primary"
             >
               {settings?.storeLogoUrl ? (
-                <div className="relative w-9 h-9 rounded-full overflow-hidden">
+                <div className="relative w-12 h-12 rounded-full overflow-hidden">
                   <Image
                     src={settings.storeLogoUrl}
                     alt={settings?.storeName ?? "Store logo"}
@@ -213,10 +213,22 @@ export function Navbar() {
             {/* Desktop Menu */}
             <div className="hidden md:flex items-center gap-4 lg:gap-6">
               <Link
+                href="/"
+                className="text-foreground hover:text-primary font-medium text-sm transition-colors"
+              >
+                Home
+              </Link>
+              <Link
                 href="/products"
                 className="text-foreground hover:text-primary font-medium text-sm transition-colors"
               >
                 Products
+              </Link>
+              <Link
+                href="/sale"
+                className="text-foreground hover:text-primary font-medium text-sm transition-colors"
+              >
+                Sale
               </Link>
 
               <DropdownMenu>
@@ -326,12 +338,27 @@ export function Navbar() {
                 </button>
               </form>
               <Link
+                href="/"
+                className="block py-2 text-foreground hover:text-primary transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Home
+              </Link>
+              <Link
                 href="/products"
                 className="block py-2 text-foreground hover:text-primary transition-colors"
                 onClick={() => setIsMenuOpen(false)}
               >
                 Products
               </Link>
+              <Link
+                href="/sale"
+                className="block py-2 text-foreground hover:text-primary transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Sale
+              </Link>
+             
 
               <div className="py-2">
                 <span className="block font-medium mb-1 text-muted-foreground text-sm">

@@ -5,7 +5,7 @@ import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
@@ -26,33 +26,33 @@ export async function GET(
     if (!supplier) {
       return NextResponse.json(
         { error: "Supplier not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     const purchases = await Purchase.find({ supplier: id })
       .sort({ createdAt: -1 })
       .select(
-        "createdAt supplierInvoiceNo totalAmount amountPaid balanceDue paymentMethod"
+        "createdAt supplierInvoiceNo totalAmount amountPaid balanceDue paymentMethod",
       )
       .lean();
 
     return NextResponse.json(
       { supplier: { ...supplier, purchases } },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Supplier fetch error:", error);
     return NextResponse.json(
       { error: "Failed to fetch supplier" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
@@ -73,32 +73,32 @@ export async function PUT(
     const supplier = await Supplier.findByIdAndUpdate(
       id,
       { name, email, phone, address, city, contact },
-      { new: true }
+      { new: true },
     );
 
     if (!supplier) {
       return NextResponse.json(
         { error: "Supplier not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     return NextResponse.json(
       { message: "Supplier updated successfully", supplier },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Supplier update error:", error);
     return NextResponse.json(
       { error: "Failed to update supplier" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
@@ -119,7 +119,7 @@ export async function DELETE(
     if (!supplier) {
       return NextResponse.json(
         { error: "Supplier not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -128,13 +128,14 @@ export async function DELETE(
 
     return NextResponse.json(
       { message: "Supplier and purchase history deleted successfully" },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error) {
     console.error("Supplier deletion error:", error);
     return NextResponse.json(
       { error: "Failed to delete supplier" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
+

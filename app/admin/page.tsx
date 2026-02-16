@@ -111,7 +111,10 @@ const ChartTooltip = ({ active, payload, label }: any) => {
       <p className="font-bold text-gray-700 mb-2">{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} style={{ color: p.color }} className="font-semibold">
-          {p.name}: {p.dataKey === "orders" ? p.value : `Rs. ${(p.value ?? 0).toLocaleString()}`}
+          {p.name}:{" "}
+          {p.dataKey === "orders"
+            ? p.value
+            : `Rs. ${(p.value ?? 0).toLocaleString()}`}
         </p>
       ))}
     </div>
@@ -806,10 +809,26 @@ export default function AdminDashboard() {
                       </ResponsiveContainer>
                       <div className="space-y-1.5">
                         {[
-                          { label: "Delivered", val: n(d.deliveredOrders), color: GREEN },
-                          { label: "Approved", val: n(d.approvedOrders), color: TEAL },
-                          { label: "Pending", val: n(d.pendingOrders), color: ORANGE },
-                          { label: "Cancelled", val: n(d.cancelledOrders), color: RED },
+                          {
+                            label: "Delivered",
+                            val: n(d.deliveredOrders),
+                            color: GREEN,
+                          },
+                          {
+                            label: "Approved",
+                            val: n(d.approvedOrders),
+                            color: TEAL,
+                          },
+                          {
+                            label: "Pending",
+                            val: n(d.pendingOrders),
+                            color: ORANGE,
+                          },
+                          {
+                            label: "Cancelled",
+                            val: n(d.cancelledOrders),
+                            color: RED,
+                          },
                         ].map((row, i) => (
                           <div
                             key={i}

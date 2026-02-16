@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/store/Navbar";
 import { Footer } from "@/components/store/Footer";
 import { useCart } from "@/components/cart/CartProvider";
@@ -110,8 +111,7 @@ function CountUnit({ value, label }: { value: number; label: string }) {
     </div>
   );
 }
-
-// ── FlashCard ─────────────────────────────────────────────────────────────────
+// ── FlashCard (Updated to match reference) ───────────────────────────────────
 
 function FlashCard({
   product,
@@ -120,94 +120,164 @@ function FlashCard({
   product: SaleProduct;
   index: number;
 }) {
+  const router = useRouter();
   const { addItem } = useCart();
+  const [isAdding, setIsAdding] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
   const salePrice = getSalePrice(product);
   const label = getDiscountLabel(product);
   const outOfStock = product.stock <= 0;
   const lowStock = product.stock > 0 && product.stock <= 15;
   const stockPct = Math.min((product.stock / 15) * 100, 100);
 
+  const imageUrl = product.mainImage || "/placeholder.svg";
+
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsAdding(true);
+
+    addItem({
+      id: product._id,
+      name: product.name,
+      price: salePrice,
+      quantity: 1,
+      image: imageUrl,
+      weight: `${product.unitSize} ${product.unitType}`,
+    });
+
+    setShowSuccess(true);
+    setTimeout(() => {
+      setIsAdding(false);
+      setShowSuccess(false);
+    }, 1000);
+  };
+
+  const handleBuyNow = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    addItem({
+      id: product._id,
+      name: product.name,
+      price: salePrice,
+      quantity: 1,
+      image: imageUrl,
+      weight: `${product.unitSize} ${product.unitType}`,
+    });
+    router.push("/cart");
+  };
+
   return (
     <div
-      className="group relative bg-white rounded-2xl overflow-hidden border border-gray-100 hover:border-yellow-300 hover:shadow-[0_8px_40px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1 flex flex-col"
+      className="group relative bg-white rounded-xl overflow-hidden border border-gray-100 hover:shadow-lg hover:border-gray-200 transition-all duration-300 flex flex-col h-full"
       style={{ animationDelay: `${index * 60}ms` }}
     >
-      {label && (
-        <div className="absolute top-0 left-0 z-10">
-          <div className="bg-yellow-400 text-gray-900 text-[10px] font-black px-3 py-1 rounded-br-xl tracking-widest uppercase shadow-sm">
-            {label}
-          </div>
-        </div>
-      )}
-      <div className="absolute top-2.5 right-2.5 z-10 w-7 h-7 bg-green-700 rounded-full flex items-center justify-center shadow-md">
-        <Zap className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400" />
-      </div>
-      {outOfStock && (
-        <div className="absolute inset-0 z-20 bg-white/80 backdrop-blur-sm flex items-center justify-center">
-          <span className="bg-gray-900 text-white text-xs font-black px-5 py-2 rounded-full tracking-widest uppercase">
-            Sold Out
-          </span>
-        </div>
-      )}
-      <div className="relative h-44 bg-gradient-to-br from-gray-50 to-gray-100 overflow-hidden">
+      {/* 1. IMAGE SECTION - Fixed to square covering the box */}
+      <div className="relative aspect-square w-full overflow-hidden bg-gray-50">
         <Image
-          src={product.mainImage || "/placeholder.svg"}
+          src={imageUrl}
           alt={product.name}
           fill
-          className="object-contain p-5 group-hover:scale-[1.06] transition-transform duration-500"
+          className="object-cover object-center group-hover:scale-105 transition-transform duration-500"
+          sizes="(max-width: 768px) 50vw, 33vw"
         />
-      </div>
-      <div className="p-4 flex flex-col flex-1">
-        <p className="text-[10px] font-black text-green-700 uppercase tracking-widest mb-1">
-          Flash Deal
-        </p>
-        <h3 className="font-bold text-gray-900 text-sm leading-snug mb-1 line-clamp-2 flex-1">
-          {product.name}
-        </h3>
-        <p className="text-xs text-gray-400 mb-3">
-          {product.unitSize} {product.unitType}
-        </p>
-        {lowStock && (
-          <div className="mb-3">
-            <span className="text-[10px] font-bold text-orange-500 uppercase tracking-wide">
-              🔥 Only {product.stock} left
-            </span>
-            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1">
-              <div
-                className="h-full bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full"
-                style={{ width: `${stockPct}%` }}
-              />
-            </div>
-          </div>
-        )}
-        <div className="flex items-baseline gap-2 mb-4">
-          <span className="text-xl font-black text-green-700">
-            Rs. {salePrice.toFixed(0)}
-          </span>
-          {product.discount > 0 && (
-            <span className="text-xs text-gray-400 line-through">
-              Rs. {product.retailPrice.toFixed(0)}
+
+        {/* Badges */}
+        <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
+          {label && (
+            <span className="bg-red-600 text-white text-[10px] sm:text-xs font-bold px-2 py-1 rounded shadow-sm">
+              {label}
             </span>
           )}
+          <span className="bg-amber-400 text-black text-[10px] sm:text-xs font-bold px-2 py-1 rounded shadow-sm flex items-center gap-1">
+            <Zap className="h-2 w-2 fill-black" /> FLASH
+          </span>
         </div>
-        <button
-          onClick={() =>
-            !outOfStock &&
-            addItem({
-              id: product._id,
-              name: product.name,
-              price: salePrice,
-              quantity: 1,
-              image: product.mainImage,
-              weight: `${product.unitSize}${product.unitType}`,
-            })
-          }
-          disabled={outOfStock}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-[0.97] bg-green-700 hover:bg-green-800 text-white disabled:bg-gray-100 disabled:text-gray-400"
-        >
-          <ShoppingCart className="h-4 w-4" />
-          {outOfStock ? "Out of Stock" : "Add to Cart"}
-        </button>
+
+        {outOfStock && (
+          <div className="absolute inset-0 z-20 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+            <span className="bg-gray-900 text-white text-[10px] font-black px-4 py-2 rounded-full tracking-widest uppercase">
+              Sold Out
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 2. CONTENT SECTION */}
+      <div className="flex flex-col flex-grow p-3 sm:p-4">
+        <div className="flex-grow">
+          <p className="text-[10px] sm:text-xs text-gray-500 mb-1 uppercase tracking-wider font-medium">
+            {product.unitSize} {product.unitType}
+          </p>
+
+          <h3 className="font-medium text-gray-900 text-sm sm:text-base line-clamp-2 mb-2 group-hover:text-green-700 transition-colors">
+            {product.name}
+          </h3>
+
+          {lowStock && !outOfStock && (
+            <div className="mb-3">
+              <div className="flex justify-between mb-1">
+                <span className="text-[10px] font-bold text-orange-600 uppercase">
+                  🔥 Low Stock
+                </span>
+                <span className="text-[10px] font-bold text-gray-500">
+                  {product.stock} left
+                </span>
+              </div>
+              <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-orange-500"
+                  style={{ width: `${stockPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-baseline gap-2 mb-4">
+            <span className="text-lg sm:text-xl font-bold text-green-700">
+              Rs. {salePrice.toLocaleString()}
+            </span>
+            {product.discount > 0 && (
+              <span className="text-xs text-gray-400 line-through">
+                Rs. {product.retailPrice.toLocaleString()}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 3. BUTTON SECTION */}
+        <div className="grid grid-cols-2 gap-2 mt-auto">
+          <button
+            onClick={handleAddToCart}
+            disabled={isAdding || outOfStock}
+            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 border
+              ${
+                showSuccess
+                  ? "bg-green-100 border-green-200 text-green-700"
+                  : "bg-white border-gray-200 text-gray-900 hover:border-gray-900 hover:bg-gray-50"
+              } disabled:opacity-50`}
+          >
+            {showSuccess ? (
+              <>
+                <Check className="w-3 h-3 sm:w-4 sm:h-4" /> Added
+              </>
+            ) : (
+              <>
+                <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" /> Add
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleBuyNow}
+            disabled={outOfStock}
+            className="flex items-center justify-center py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold text-white bg-green-700 hover:bg-green-800 transition-colors shadow-sm disabled:bg-gray-200 disabled:text-gray-400"
+          >
+            Buy Now
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -223,9 +293,6 @@ export default function SalePage() {
   const countdown = useCountdown(config?.endsAt ?? null);
 
   useEffect(() => {
-    // Two separate public endpoints:
-    // /api/sale          → sale config (isActive, title, endsAt, etc.)
-    // /api/sale/products → products where isNewArrival=true & status=active
     Promise.all([
       fetch("/api/sale").then((r) => r.json()),
       fetch("/api/sale/products").then((r) => r.json()),
