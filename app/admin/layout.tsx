@@ -1,26 +1,29 @@
-'use client';
+// app/admin/layout.tsx
+"use client";
 
-import React from "react"
-import { AuthProvider } from '@/components/auth/AuthProvider'; // Import AuthProvider here
-import { AdminSidebar } from '@/components/admin/Sidebar';
-import { useAuth } from '@/components/auth/AuthProvider';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import React from "react";
+import { AuthProvider } from "@/components/auth/AuthProvider";
+import { AdminSidebar } from "@/components/admin/Sidebar";
+import { useAuth } from "@/components/auth/AuthProvider";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 function AdminLayoutContent({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, isStaff } = useAuth();
   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
     if (!isLoading) {
-      if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
-        router.push('/');
+      if (!user) {
+        router.push("/login");
+      } else if (!isStaff) {
+        router.push("/");
       } else {
         setIsReady(true);
       }
     }
-  }, [user, isLoading, router]);
+  }, [user, isLoading, isStaff, router]);
 
   if (isLoading || !isReady) {
     return (
@@ -43,7 +46,11 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <AuthProvider>
       <AdminLayoutContent>{children}</AdminLayoutContent>

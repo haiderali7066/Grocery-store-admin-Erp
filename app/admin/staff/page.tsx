@@ -1,48 +1,65 @@
-'use client';
+// app/admin/staff/page.tsx
+"use client";
 
-import React from "react"
-
-import { useEffect, useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Plus, Edit, Trash2, Users, Lock, CheckCircle } from 'lucide-react';
+import React, { useEffect, useState } from "react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Plus, Edit, Trash2, Users, CheckCircle } from "lucide-react";
+import PermissionGuard from "@/components/admin/PermissionGuard";
 
 interface Staff {
   _id: string;
   name: string;
   email: string;
   phone: string;
-  role: 'admin' | 'manager' | 'accountant' | 'staff';
-  permissions: string[];
+  role: "admin" | "manager" | "accountant" | "staff";
   isActive: boolean;
   createdAt: string;
 }
 
 const rolePermissions: Record<string, string[]> = {
-  admin: ['all'],
-  manager: ['pos', 'orders', 'inventory', 'staff-management'],
-  accountant: ['reports', 'suppliers', 'purchases', 'tax-reports'],
-  staff: ['pos', 'basic-inventory'],
+  admin: ["all"],
+  manager: [
+    "pos",
+    "orders",
+    "inventory",
+    "staff-management",
+    "reports",
+    "customers",
+    "suppliers",
+    "purchases",
+  ],
+  accountant: [
+    "reports",
+    "suppliers",
+    "purchases",
+    "tax-reports",
+    "expenses",
+    "wallet",
+    "investment",
+  ],
+  staff: ["pos", "basic-inventory", "orders"],
 };
 
 const roleDescriptions: Record<string, string> = {
-  admin: 'Full access to all features',
-  manager: 'Can manage POS, Orders, Inventory',
-  accountant: 'Can access Reports, Suppliers, Accounting',
-  staff: 'Limited access - POS and basic inventory',
+  admin: "Full access to all features",
+  manager: "Can manage POS, Orders, Inventory, Customers, Suppliers",
+  accountant:
+    "Can access Reports, Suppliers, Accounting, Expenses, Investments",
+  staff: "Limited access - POS, basic inventory, and orders",
 };
 
-export default function StaffPage() {
+function StaffContent() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    role: 'staff' as const,
-    password: '',
+    name: "",
+    email: "",
+    phone: "",
+    role: "staff" as const,
+    password: "",
   });
 
   useEffect(() => {
@@ -51,13 +68,13 @@ export default function StaffPage() {
 
   const fetchStaff = async () => {
     try {
-      const res = await fetch('/api/admin/staff');
+      const res = await fetch("/api/admin/staff");
       if (res.ok) {
         const data = await res.json();
         setStaff(data.staff);
       }
     } catch (error) {
-      console.error('[Staff] Error:', error);
+      console.error("[Staff] Error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -66,12 +83,14 @@ export default function StaffPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const url = editingId ? `/api/admin/staff/${editingId}` : '/api/admin/staff';
-      const method = editingId ? 'PUT' : 'POST';
+      const url = editingId
+        ? `/api/admin/staff/${editingId}`
+        : "/api/admin/staff";
+      const method = editingId ? "PUT" : "POST";
 
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
 
@@ -79,26 +98,33 @@ export default function StaffPage() {
         await fetchStaff();
         setShowForm(false);
         setEditingId(null);
-        setFormData({ name: '', email: '', phone: '', role: 'staff', password: '' });
+        setFormData({
+          name: "",
+          email: "",
+          phone: "",
+          role: "staff",
+          password: "",
+        });
       } else {
-        alert('Failed to save staff member');
+        const error = await res.json();
+        alert(error.message || "Failed to save staff member");
       }
     } catch (error) {
-      console.error('[Staff] Submit error:', error);
-      alert('Error saving staff member');
+      console.error("[Staff] Submit error:", error);
+      alert("Error saving staff member");
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this staff member?')) return;
+    if (!confirm("Are you sure you want to delete this staff member?")) return;
 
     try {
-      const res = await fetch(`/api/admin/staff/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/staff/${id}`, { method: "DELETE" });
       if (res.ok) {
         await fetchStaff();
       }
     } catch (error) {
-      console.error('[Staff] Delete error:', error);
+      console.error("[Staff] Delete error:", error);
     }
   };
 
@@ -109,13 +135,17 @@ export default function StaffPage() {
       email: s.email,
       phone: s.phone,
       role: s.role,
-      password: '',
+      password: "",
     });
     setShowForm(true);
   };
 
   if (isLoading) {
-    return <div className="text-center py-12">Loading staff...</div>;
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700" />
+      </div>
+    );
   }
 
   return (
@@ -123,12 +153,20 @@ export default function StaffPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-4xl font-bold text-gray-900">Staff Management</h1>
-          <p className="text-gray-600 mt-2">Manage team members and their permissions</p>
+          <p className="text-gray-600 mt-2">
+            Manage team members and their permissions
+          </p>
         </div>
         <Button
           onClick={() => {
             setEditingId(null);
-            setFormData({ name: '', email: '', phone: '', role: 'staff', password: '' });
+            setFormData({
+              name: "",
+              email: "",
+              phone: "",
+              role: "staff",
+              password: "",
+            });
             setShowForm(!showForm);
           }}
           className="bg-green-600 hover:bg-green-700"
@@ -141,7 +179,7 @@ export default function StaffPage() {
       {showForm && (
         <Card className="p-6 border-0 shadow-md">
           <h2 className="text-xl font-bold mb-4">
-            {editingId ? 'Edit Staff Member' : 'Add New Staff Member'}
+            {editingId ? "Edit Staff Member" : "Add New Staff Member"}
           </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -149,7 +187,9 @@ export default function StaffPage() {
                 type="text"
                 placeholder="Full Name"
                 value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
                 required
                 className="border rounded-lg px-4 py-2"
               />
@@ -157,7 +197,9 @@ export default function StaffPage() {
                 type="email"
                 placeholder="Email"
                 value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
                 required
                 className="border rounded-lg px-4 py-2"
               />
@@ -165,12 +207,16 @@ export default function StaffPage() {
                 type="tel"
                 placeholder="Phone"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, phone: e.target.value })
+                }
                 className="border rounded-lg px-4 py-2"
               />
               <select
                 value={formData.role}
-                onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                onChange={(e) =>
+                  setFormData({ ...formData, role: e.target.value as any })
+                }
                 className="border rounded-lg px-4 py-2"
               >
                 <option value="staff">Staff</option>
@@ -184,7 +230,9 @@ export default function StaffPage() {
                 type="password"
                 placeholder="Password (for new account)"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
                 required
                 className="w-full border rounded-lg px-4 py-2"
               />
@@ -198,7 +246,7 @@ export default function StaffPage() {
               </p>
               <div className="mt-2 text-xs text-blue-700">
                 <p className="font-medium">Permissions:</p>
-                <p>{rolePermissions[formData.role].join(', ')}</p>
+                <p>{rolePermissions[formData.role].join(", ")}</p>
               </div>
             </div>
             <div className="flex gap-3">
@@ -210,7 +258,7 @@ export default function StaffPage() {
                 Cancel
               </Button>
               <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                {editingId ? 'Update' : 'Create'} Staff Member
+                {editingId ? "Update" : "Create"} Staff Member
               </Button>
             </div>
           </form>
@@ -221,29 +269,36 @@ export default function StaffPage() {
       <div className="grid grid-cols-1 gap-4">
         {staff.length > 0 ? (
           staff.map((s) => (
-            <Card key={s._id} className="p-6 border-0 shadow-md hover:shadow-lg transition">
+            <Card
+              key={s._id}
+              className="p-6 border-0 shadow-md hover:shadow-lg transition"
+            >
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
                     <Users className="h-5 w-5 text-blue-600" />
-                    <h3 className="text-lg font-bold text-gray-900">{s.name}</h3>
+                    <h3 className="text-lg font-bold text-gray-900">
+                      {s.name}
+                    </h3>
                     <span
                       className={`px-2 py-1 rounded text-xs font-medium ${
                         s.isActive
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                          ? "bg-green-100 text-green-800"
+                          : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {s.isActive ? 'Active' : 'Inactive'}
+                      {s.isActive ? "Active" : "Inactive"}
                     </span>
                   </div>
                   <p className="text-sm text-gray-600">{s.email}</p>
-                  {s.phone && <p className="text-sm text-gray-600">{s.phone}</p>}
+                  {s.phone && (
+                    <p className="text-sm text-gray-600">{s.phone}</p>
+                  )}
                   <div className="mt-3 flex gap-3 flex-wrap">
                     <div className="bg-purple-50 px-3 py-1 rounded-full text-xs font-medium text-purple-800">
                       {s.role.toUpperCase()}
                     </div>
-                    {rolePermissions[s.role].map((perm) => (
+                    {rolePermissions[s.role].slice(0, 3).map((perm) => (
                       <div
                         key={perm}
                         className="bg-blue-50 px-3 py-1 rounded-full text-xs font-medium text-blue-800"
@@ -251,6 +306,11 @@ export default function StaffPage() {
                         {perm}
                       </div>
                     ))}
+                    {rolePermissions[s.role].length > 3 && (
+                      <div className="bg-gray-50 px-3 py-1 rounded-full text-xs font-medium text-gray-600">
+                        +{rolePermissions[s.role].length - 3} more
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -287,20 +347,38 @@ export default function StaffPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {Object.entries(roleDescriptions).map(([role, desc]) => (
             <div key={role} className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-bold text-gray-900 mb-2 capitalize">{role}</h3>
+              <h3 className="font-bold text-gray-900 mb-2 capitalize">
+                {role}
+              </h3>
               <p className="text-sm text-gray-600 mb-3">{desc}</p>
               <div className="text-xs space-y-1">
-                {rolePermissions[role].map((perm) => (
-                  <div key={perm} className="flex items-center gap-2 text-gray-700">
+                {rolePermissions[role].slice(0, 5).map((perm) => (
+                  <div
+                    key={perm}
+                    className="flex items-center gap-2 text-gray-700"
+                  >
                     <CheckCircle className="h-3 w-3 text-green-600" />
                     {perm}
                   </div>
                 ))}
+                {rolePermissions[role].length > 5 && (
+                  <div className="text-gray-500 text-xs pt-1">
+                    +{rolePermissions[role].length - 5} more permissions
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       </Card>
     </div>
+  );
+}
+
+export default function StaffPage() {
+  return (
+    <PermissionGuard roles={["admin"]}>
+      <StaffContent />
+    </PermissionGuard>
   );
 }

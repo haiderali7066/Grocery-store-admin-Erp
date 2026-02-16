@@ -1,3 +1,4 @@
+// app/admin/settings/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -18,8 +19,10 @@ import {
   Save,
   CheckCircle,
   AlertCircle,
+  Truck,
 } from "lucide-react";
 import Image from "next/image";
+import PermissionGuard from "@/components/admin/PermissionGuard";
 
 interface Settings {
   storeName: string;
@@ -33,24 +36,8 @@ interface Settings {
   facebookUrl: string;
   instagramUrl: string;
   twitterUrl: string;
-  youtubeUrl: string; // ADD
-  tiktokUrl: string; // ADD
-  whatsappNumber: string;
-  // ... rest
-}
-
-interface Settings {
-  storeName: string;
-  storeLogoUrl: string;
-  storeDescription: string;
-  contactEmail: string;
-  contactPhone: string;
-  address: string;
-  city: string;
-  country: string;
-  facebookUrl: string;
-  instagramUrl: string;
-  twitterUrl: string;
+  youtubeUrl: string;
+  tiktokUrl: string;
   whatsappNumber: string;
   taxRate: number;
   taxName: string;
@@ -84,6 +71,15 @@ interface Settings {
   shippingCost: number;
 }
 
+interface HeroBanner {
+  title: string;
+  subtitle: string;
+  imageUrl: string;
+  link: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 const DEFAULT_SETTINGS: Settings = {
   storeName: "",
   storeLogoUrl: "",
@@ -96,14 +92,34 @@ const DEFAULT_SETTINGS: Settings = {
   facebookUrl: "",
   instagramUrl: "",
   twitterUrl: "",
-  youtubeUrl: "", // ADD
-  tiktokUrl: "", // ADD
+  youtubeUrl: "",
+  tiktokUrl: "",
   whatsappNumber: "",
   taxRate: 0,
   taxName: "",
   taxEnabled: false,
   paymentMethods: {
-    // ... rest stays the same
+    cod: { enabled: false, displayName: "", description: "" },
+    bank: {
+      enabled: false,
+      displayName: "",
+      accountName: "",
+      accountNumber: "",
+      bankName: "",
+      iban: "",
+    },
+    easypaisa: {
+      enabled: false,
+      displayName: "",
+      accountNumber: "",
+      accountName: "",
+    },
+    jazzcash: {
+      enabled: false,
+      displayName: "",
+      accountNumber: "",
+      accountName: "",
+    },
   },
   heroBanners: [],
   businessHours: "",
@@ -113,7 +129,7 @@ const DEFAULT_SETTINGS: Settings = {
 
 type ToastType = "success" | "error" | null;
 
-export default function SettingsPage() {
+function SettingsContent() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -144,6 +160,13 @@ export default function SettingsPage() {
       const data = await res.json();
       if (data.settings) {
         const s = data.settings;
+
+        console.log("✅ Admin Settings Loaded:", {
+          taxEnabled: s.taxEnabled,
+          taxRate: s.taxRate,
+          taxName: s.taxName,
+        });
+
         setSettings({
           storeName: s.storeName || "",
           storeLogoUrl: s.storeLogoUrl || "",
@@ -156,13 +179,15 @@ export default function SettingsPage() {
           facebookUrl: s.facebookUrl || "",
           instagramUrl: s.instagramUrl || "",
           twitterUrl: s.twitterUrl || "",
+          youtubeUrl: s.youtubeUrl || "",
+          tiktokUrl: s.tiktokUrl || "",
           whatsappNumber: s.whatsappNumber || "",
-          taxRate: s.taxRate || 0,
-          taxName: s.taxName || "",
-          taxEnabled: s.taxEnabled || false,
+          taxRate: s.taxRate ?? 17,
+          taxName: s.taxName || "GST",
+          taxEnabled: s.taxEnabled ?? true,
           businessHours: s.businessHours || "",
-          freeShippingThreshold: s.freeShippingThreshold || 0,
-          shippingCost: s.shippingCost || 0,
+          freeShippingThreshold: s.freeShippingThreshold ?? 0,
+          shippingCost: s.shippingCost ?? 0,
           heroBanners: s.heroBanners || [],
           paymentMethods: {
             cod: {
@@ -384,7 +409,7 @@ export default function SettingsPage() {
           <TabsTrigger value="tax">Tax & Shipping</TabsTrigger>
         </TabsList>
 
-        {/* ── STORE INFO ── */}
+        {/* Store Info Tab */}
         <TabsContent value="store" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-4">
@@ -574,7 +599,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* ── SOCIAL MEDIA ── */}
+        {/* Social Media Tab */}
         <TabsContent value="social" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
@@ -634,7 +659,8 @@ export default function SettingsPage() {
             </div>
           </Card>
         </TabsContent>
-        {/* ── HERO BANNERS ── */}
+
+        {/* Hero Banners Tab */}
         <TabsContent value="banners" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <div className="flex items-center justify-between mb-2">
@@ -832,7 +858,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* ── PAYMENT METHODS ── */}
+        {/* Payment Methods Tab */}
         <TabsContent value="payment" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
@@ -960,7 +986,7 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* ── TAX & SHIPPING ── */}
+        {/* Tax & Shipping Tab */}
         <TabsContent value="tax" className="space-y-4">
           {/* Tax */}
           <Card className="p-6 border-0 shadow-md">
@@ -995,6 +1021,8 @@ export default function SettingsPage() {
                       setSettings({ ...settings, taxName: e.target.value })
                     }
                     placeholder="GST, VAT, etc."
+                    disabled={!settings.taxEnabled}
+                    className={!settings.taxEnabled ? "opacity-50" : ""}
                   />
                 </div>
                 <div>
@@ -1014,15 +1042,32 @@ export default function SettingsPage() {
                       })
                     }
                     placeholder="17"
+                    disabled={!settings.taxEnabled}
+                    className={!settings.taxEnabled ? "opacity-50" : ""}
                   />
                 </div>
               </div>
 
-              {settings.taxEnabled && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <p className="text-sm text-blue-800">
-                    <strong>Active:</strong> {settings.taxName || "Tax"} at{" "}
-                    {settings.taxRate}% will be applied at checkout.
+              {/* Status Indicator */}
+              {settings.taxEnabled ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <p className="text-sm text-green-800 font-semibold mb-1">
+                    ✓ Tax Active: {settings.taxName || "Tax"} at{" "}
+                    {settings.taxRate}%
+                  </p>
+                  <p className="text-xs text-green-700">
+                    Example calculation: Rs. 1,000 subtotal = Rs.{" "}
+                    {((1000 * settings.taxRate) / 100).toFixed(0)} tax = Rs.{" "}
+                    {(1000 + (1000 * settings.taxRate) / 100).toFixed(0)} total
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <p className="text-sm text-amber-800 font-semibold">
+                    ⚠ Tax Disabled
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    No tax will be charged to customers at checkout
                   </p>
                 </div>
               )}
@@ -1031,7 +1076,8 @@ export default function SettingsPage() {
 
           {/* Shipping */}
           <Card className="p-6 border-0 shadow-md">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
+            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Truck className="h-5 w-5" />
               Shipping Settings
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1070,11 +1116,18 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
-            {settings.freeShippingThreshold > 0 && (
+            {settings.freeShippingThreshold > 0 ? (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Free Shipping Active:</strong> Orders above Rs.{" "}
+                  {settings.freeShippingThreshold.toLocaleString()} get free
+                  shipping
+                </p>
+              </div>
+            ) : (
               <p className="text-sm text-gray-500 mt-3">
-                Orders above Rs{" "}
-                {settings.freeShippingThreshold.toLocaleString()} get free
-                shipping.
+                Flat shipping rate of Rs.{" "}
+                {settings.shippingCost.toLocaleString()} on all orders
               </p>
             )}
           </Card>
@@ -1084,7 +1137,7 @@ export default function SettingsPage() {
   );
 }
 
-// ── Reusable payment section wrapper ──
+// Payment section component
 function PaymentSection({
   title,
   enabled,
@@ -1128,5 +1181,14 @@ function PaymentSection({
         {children}
       </div>
     </div>
+  );
+}
+
+// Main export with PermissionGuard
+export default function SettingsPage() {
+  return (
+    <PermissionGuard roles={["admin"]}>
+      <SettingsContent />
+    </PermissionGuard>
   );
 }
