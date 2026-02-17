@@ -1,138 +1,120 @@
-import { Product, InventoryBatch } from '@/lib/models/index';
+// lib/services/stockService.ts
+import { Product, InventoryBatch } from "@/lib/models";
 
-interface StockDeductionItem {
+interface StockItem {
   productId: string;
   quantity: number;
 }
 
-/**
- * Deduct stock from inventory using FIFO method
- * Used by both online orders and POS orders
- */
-export async function deductStock(items: StockDeductionItem[]): Promise<{ success: boolean; error?: string }> {
-  try {
-    for (const item of items) {
-      const product = await Product.findById(item.productId);
-      
-      if (!product) {
-        return { success: false, error: `Product ${item.productId} not found` };
-      }
-
-      if (product.stock < item.quantity) {
-        return { 
-          success: false, 
-          error: `Insufficient stock for ${product.name}. Available: ${product.stock}, Required: ${item.quantity}` 
-        };
-      }
-
-      // Deduct from InventoryBatch using FIFO
-      const batches = await InventoryBatch.find({
-        product: item.productId,
-        remainingQuantity: { $gt: 0 },
-      }).sort({ createdAt: 1 });
-
-      let remainingToDeduct = item.quantity;
-
-      for (const batch of batches) {
-        if (remainingToDeduct <= 0) break;
-
-        const deductAmount = Math.min(remainingToDeduct, batch.remainingQuantity);
-        batch.remainingQuantity -= deductAmount;
-        await batch.save();
-        remainingToDeduct -= deductAmount;
-      }
-
-      // Update product stock
-      product.stock -= item.quantity;
-      await product.save();
-    }
-
-    return { success: true };
-  } catch (error: any) {
-    return { success: false, error: error.message };
-  }
+interface StockCheckResult {
+  available: boolean;
+  unavailableItems?: {
+    productId: string;
+    requested: number;
+    available: number;
+  }[];
 }
 
-/**
- * Add stock to inventory from purchases
- */
-export async function addStock(
-  productId: string,
-  quantity: number,
-  buyingPrice: number,
-  supplier: string,
-  batchNumber?: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const product = await Product.findById(productId);
-    
+// ── Check stock availability ─────────────────────────────────────────────────
+export async function checkStockAvailability(
+  items: StockItem[],
+): Promise<StockCheckResult> {
+  const unavailableItems = [];
+
+  for (const item of items) {
+    const product = (await Product.findById(item.productId).lean()) as any;
     if (!product) {
-      return { success: false, error: 'Product not found' };
+      unavailableItems.push({
+        productId: item.productId,
+        requested: item.quantity,
+        available: 0,
+      });
+      continue;
     }
 
-    // Create inventory batch
-    const batch = new InventoryBatch({
-      product: productId,
-      quantity,
-      remainingQuantity: quantity,
-      buyingPrice,
-      supplier,
-      batchNumber: batchNumber || `BATCH-${Date.now()}`,
-    });
+    if (product.stock < item.quantity) {
+      unavailableItems.push({
+        productId: item.productId,
+        requested: item.quantity,
+        available: product.stock,
+      });
+    }
+  }
 
-    await batch.save();
+  return {
+    available: unavailableItems.length === 0,
+    unavailableItems:
+      unavailableItems.length > 0 ? unavailableItems : undefined,
+  };
+}
+
+// ── Deduct stock (FIFO) ───────────────────────────────────────────────────────
+export async function deductStock(items: StockItem[]): Promise<void> {
+  for (const item of items) {
+    let remainingToDeduct = item.quantity;
+
+    // Get active batches in FIFO order (oldest first)
+    const batches = await InventoryBatch.find({
+      product: item.productId,
+      status: { $in: ["active", "partial"] },
+      remainingQuantity: { $gt: 0 },
+    }).sort({ createdAt: 1 });
+
+    for (const batch of batches) {
+      if (remainingToDeduct <= 0) break;
+
+      if (batch.remainingQuantity >= remainingToDeduct) {
+        batch.remainingQuantity -= remainingToDeduct;
+        batch.status = batch.remainingQuantity === 0 ? "finished" : "partial";
+        await batch.save();
+        remainingToDeduct = 0;
+      } else {
+        remainingToDeduct -= batch.remainingQuantity;
+        batch.remainingQuantity = 0;
+        batch.status = "finished";
+        await batch.save();
+      }
+    }
 
     // Update product stock
-    product.stock += quantity;
-    await product.save();
-
-    return { success: true };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+    await Product.findByIdAndUpdate(item.productId, {
+      $inc: { stock: -item.quantity },
+    });
   }
 }
 
-/**
- * Check if stock is available
- */
-export async function checkStockAvailability(
-  items: StockDeductionItem[]
-): Promise<{ available: boolean; shortfall?: { productId: string; required: number; available: number }[] }> {
-  try {
-    const shortfalls = [];
+// ── Restock (reverse of deduct) ───────────────────────────────────────────────
+// Called when order is cancelled, rejected, deleted, or returned
+export async function restockItems(items: StockItem[]): Promise<void> {
+  for (const item of items) {
+    let remainingToRestock = item.quantity;
 
-    for (const item of items) {
-      const product = await Product.findById(item.productId);
-      
-      if (!product || product.stock < item.quantity) {
-        shortfalls.push({
-          productId: item.productId,
-          required: item.quantity,
-          available: product?.stock || 0,
-        });
+    // Find most recently deducted batches (LIFO for restock = reverse FIFO)
+    const batches = await InventoryBatch.find({
+      product: item.productId,
+      status: { $in: ["finished", "partial"] },
+    }).sort({ createdAt: -1 }); // Most recent first
+
+    for (const batch of batches) {
+      if (remainingToRestock <= 0) break;
+
+      const canRestore = Math.min(
+        remainingToRestock,
+        batch.quantity - batch.remainingQuantity, // How much was deducted from this batch
+      );
+
+      if (canRestore > 0) {
+        batch.remainingQuantity += canRestore;
+        batch.status =
+          batch.remainingQuantity === batch.quantity ? "active" : "partial";
+        await batch.save();
+        remainingToRestock -= canRestore;
       }
     }
 
-    return {
-      available: shortfalls.length === 0,
-      shortfall: shortfalls.length > 0 ? shortfalls : undefined,
-    };
-  } catch (error: any) {
-    return { available: false, shortfall: [] };
-  }
-}
-
-/**
- * Get low stock alerts
- */
-export async function getLowStockAlerts(): Promise<any[]> {
-  try {
-    const products = await Product.find({
-      $expr: { $lte: ['$stock', '$lowStockThreshold'] },
-    }).select('name sku stock lowStockThreshold');
-
-    return products;
-  } catch (error) {
-    return [];
+    // Update product stock regardless
+    await Product.findByIdAndUpdate(item.productId, {
+      $inc: { stock: item.quantity },
+    });
   }
 }
