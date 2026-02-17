@@ -118,7 +118,9 @@ export default function CustomersPage() {
     }
   };
 
-  useEffect(() => { fetchCustomers(); }, [page, search]);
+  useEffect(() => {
+    fetchCustomers();
+  }, [page, search]);
 
   const openEdit = (c: Customer) => {
     setEditCustomer(c);
@@ -180,7 +182,10 @@ export default function CustomersPage() {
         const d = await res.json();
         throw new Error(d.error || "Save failed");
       }
-      showToast("success", editCustomer ? "Customer updated!" : "Customer created!");
+      showToast(
+        "success",
+        editCustomer ? "Customer updated!" : "Customer created!",
+      );
       setShowForm(false);
       fetchCustomers();
     } catch (err: any) {
@@ -193,7 +198,9 @@ export default function CustomersPage() {
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete customer "${name}"? This cannot be undone.`)) return;
     try {
-      const res = await fetch(`/api/admin/customers/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/customers/${id}`, {
+        method: "DELETE",
+      });
       if (!res.ok) throw new Error("Delete failed");
       showToast("success", "Customer deleted");
       fetchCustomers();
@@ -245,7 +252,10 @@ export default function CustomersPage() {
         <Input
           placeholder="Search by name, email or phone…"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           className="pl-9 rounded-xl"
         />
       </div>
@@ -256,12 +266,24 @@ export default function CustomersPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                <th className="text-left px-5 py-3 font-bold text-gray-500">Customer</th>
-                <th className="text-left px-5 py-3 font-bold text-gray-500">Contact</th>
-                <th className="text-left px-5 py-3 font-bold text-gray-500">City</th>
-                <th className="text-right px-5 py-3 font-bold text-gray-500">Orders</th>
-                <th className="text-right px-5 py-3 font-bold text-gray-500">Total Spent</th>
-                <th className="text-left px-5 py-3 font-bold text-gray-500">Joined</th>
+                <th className="text-left px-5 py-3 font-bold text-gray-500">
+                  Customer
+                </th>
+                <th className="text-left px-5 py-3 font-bold text-gray-500">
+                  Contact
+                </th>
+                <th className="text-left px-5 py-3 font-bold text-gray-500">
+                  City
+                </th>
+                <th className="text-right px-5 py-3 font-bold text-gray-500">
+                  Orders
+                </th>
+                <th className="text-right px-5 py-3 font-bold text-gray-500">
+                  Total Spent
+                </th>
+                <th className="text-left px-5 py-3 font-bold text-gray-500">
+                  Joined
+                </th>
                 <th className="px-5 py-3" />
               </tr>
             </thead>
@@ -289,7 +311,9 @@ export default function CustomersPage() {
                             {c.name.charAt(0).toUpperCase()}
                           </span>
                         </div>
-                        <span className="font-semibold text-gray-900">{c.name}</span>
+                        <span className="font-semibold text-gray-900">
+                          {c.name}
+                        </span>
                       </div>
                     </td>
                     <td className="px-5 py-3">
@@ -309,7 +333,9 @@ export default function CustomersPage() {
                     </td>
                     <td className="px-5 py-3 text-gray-400 text-xs">
                       {new Date(c.createdAt).toLocaleDateString("en-PK", {
-                        day: "numeric", month: "short", year: "numeric",
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
                       })}
                     </td>
                     <td className="px-5 py-3">
@@ -384,21 +410,55 @@ export default function CustomersPage() {
           </DialogHeader>
           <div className="space-y-4 mt-2">
             {[
-              { key: "name", label: "Full Name *", type: "text", placeholder: "John Doe", icon: User },
-              { key: "email", label: "Email *", type: "email", placeholder: "john@example.com", icon: Mail },
-              { key: "phone", label: "Phone", type: "tel", placeholder: "+92 300 1234567", icon: Phone },
-              { key: "city", label: "City", type: "text", placeholder: "Lahore", icon: MapPin },
-              { key: "street", label: "Street Address", type: "text", placeholder: "House #, Block, Area", icon: MapPin },
+              {
+                key: "name",
+                label: "Full Name *",
+                type: "text",
+                placeholder: "John Doe",
+                icon: User,
+              },
+              {
+                key: "email",
+                label: "Email *",
+                type: "email",
+                placeholder: "john@example.com",
+                icon: Mail,
+              },
+              {
+                key: "phone",
+                label: "Phone",
+                type: "tel",
+                placeholder: "+92 300 1234567",
+                icon: Phone,
+              },
+              {
+                key: "city",
+                label: "City",
+                type: "text",
+                placeholder: "Lahore",
+                icon: MapPin,
+              },
+              {
+                key: "street",
+                label: "Street Address",
+                type: "text",
+                placeholder: "House #, Block, Area",
+                icon: MapPin,
+              },
             ].map(({ key, label, type, placeholder, icon: Icon }) => (
               <div key={key}>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">{label}</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  {label}
+                </label>
                 <div className="relative">
                   <Icon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
                     type={type}
                     placeholder={placeholder}
                     value={(form as any)[key]}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                    onChange={(e) =>
+                      setForm({ ...form, [key]: e.target.value })
+                    }
                     className="pl-9 rounded-xl"
                   />
                 </div>
@@ -432,7 +492,10 @@ export default function CustomersPage() {
       </Dialog>
 
       {/* ── Customer Ledger Dialog ── */}
-      <Dialog open={!!viewCustomer} onOpenChange={(o) => !o && setViewCustomer(null)}>
+      <Dialog
+        open={!!viewCustomer}
+        onOpenChange={(o) => !o && setViewCustomer(null)}
+      >
         <DialogContent className="rounded-2xl max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <div className="flex items-center justify-between">
@@ -460,7 +523,9 @@ export default function CustomersPage() {
                     </span>
                   </div>
                   <div>
-                    <p className="font-bold text-gray-900">{viewCustomer.name}</p>
+                    <p className="font-bold text-gray-900">
+                      {viewCustomer.name}
+                    </p>
                     <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
                       <span className="flex items-center gap-1">
                         <Mail className="h-3 w-3" /> {viewCustomer.email}
@@ -476,12 +541,15 @@ export default function CustomersPage() {
                 <div className="grid grid-cols-3 gap-3 mt-3">
                   <div className="bg-white rounded-lg p-2.5 text-center">
                     <p className="text-xs text-gray-400">Total Orders</p>
-                    <p className="font-black text-gray-900">{viewCustomer.totalOrders ?? ledger.length}</p>
+                    <p className="font-black text-gray-900">
+                      {viewCustomer.totalOrders ?? ledger.length}
+                    </p>
                   </div>
                   <div className="bg-white rounded-lg p-2.5 text-center">
                     <p className="text-xs text-gray-400">Total Spent</p>
                     <p className="font-black text-green-700">
-                      Rs. {ledger.reduce((s, o) => s + o.total, 0).toLocaleString()}
+                      Rs.{" "}
+                      {ledger.reduce((s, o) => s + o.total, 0).toLocaleString()}
                     </p>
                   </div>
                   <div className="bg-white rounded-lg p-2.5 text-center">
@@ -490,7 +558,8 @@ export default function CustomersPage() {
                       Rs.{" "}
                       {ledger.length > 0
                         ? Math.round(
-                            ledger.reduce((s, o) => s + o.total, 0) / ledger.length
+                            ledger.reduce((s, o) => s + o.total, 0) /
+                              ledger.length,
                           ).toLocaleString()
                         : 0}
                     </p>
@@ -526,14 +595,16 @@ export default function CustomersPage() {
                           </span>
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              STATUS_COLORS[order.orderStatus] || "bg-gray-100 text-gray-500"
+                              STATUS_COLORS[order.orderStatus] ||
+                              "bg-gray-100 text-gray-500"
                             }`}
                           >
                             {order.orderStatus}
                           </span>
                           <span
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              STATUS_COLORS[order.paymentStatus] || "bg-gray-100 text-gray-500"
+                              STATUS_COLORS[order.paymentStatus] ||
+                              "bg-gray-100 text-gray-500"
                             }`}
                           >
                             {order.paymentStatus}
@@ -545,13 +616,19 @@ export default function CustomersPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-gray-400">
-                          {order.items.length} item{order.items.length !== 1 ? "s" : ""} ·{" "}
+                          {order.items.length} item
+                          {order.items.length !== 1 ? "s" : ""} ·{" "}
                           {order.paymentMethod}
                         </p>
                         <p className="text-xs text-gray-400">
-                          {new Date(order.createdAt).toLocaleDateString("en-PK", {
-                            day: "numeric", month: "short", year: "numeric",
-                          })}
+                          {new Date(order.createdAt).toLocaleDateString(
+                            "en-PK",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )}
                         </p>
                       </div>
                       {/* Item names */}

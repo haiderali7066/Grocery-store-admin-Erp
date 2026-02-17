@@ -34,14 +34,16 @@ interface ReportData {
 }
 
 const PERIODS = ["daily", "weekly", "monthly"] as const;
-type Period = typeof PERIODS[number];
+type Period = (typeof PERIODS)[number];
 
 export default function ProfitLossPage() {
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>("monthly");
-  const [activeTab, setActiveTab] = useState<"overview" | "pl" | "sales">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "pl" | "sales">(
+    "overview",
+  );
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -58,10 +60,13 @@ export default function ProfitLossPage() {
     }
   }, [period]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const totalSales = (data?.breakdown.online ?? 0) + (data?.breakdown.pos ?? 0);
-  const onlinePct = totalSales > 0 ? (data!.breakdown.online / totalSales) * 100 : 0;
+  const onlinePct =
+    totalSales > 0 ? (data!.breakdown.online / totalSales) * 100 : 0;
   const posPct = totalSales > 0 ? (data!.breakdown.pos / totalSales) * 100 : 0;
 
   return (
@@ -69,8 +74,12 @@ export default function ProfitLossPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-gray-900">Analytics & Reports</h1>
-          <p className="text-gray-500 text-sm mt-1">Financial performance overview</p>
+          <h1 className="text-3xl font-black text-gray-900">
+            Analytics & Reports
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            Financial performance overview
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
@@ -194,7 +203,8 @@ export default function ProfitLossPage() {
                               style={{
                                 width: `${
                                   data.stats.totalExpenses > 0
-                                    ? (ex.amount / data.stats.totalExpenses) * 100
+                                    ? (ex.amount / data.stats.totalExpenses) *
+                                      100
                                     : 0
                                 }%`,
                               }}
@@ -222,7 +232,8 @@ export default function ProfitLossPage() {
                       {data?.stats.margins.gross.toFixed(1) ?? 0}%
                     </p>
                     <p className="text-xs text-gray-400 mt-3 max-w-xs mx-auto">
-                      Profit after Cost of Goods Sold, before operational expenses
+                      Profit after Cost of Goods Sold, before operational
+                      expenses
                     </p>
                     <div className="mt-4 grid grid-cols-2 gap-4 max-w-xs mx-auto">
                       <div className="bg-green-50 rounded-xl p-3">
@@ -278,7 +289,10 @@ export default function ProfitLossPage() {
                 <PLSection title="COST OF GOODS SOLD" accent="orange">
                   <PLRow
                     label="Cost of Goods Sold"
-                    value={(data?.stats.totalRevenue ?? 0) - (data?.stats.grossProfit ?? 0)}
+                    value={
+                      (data?.stats.totalRevenue ?? 0) -
+                      (data?.stats.grossProfit ?? 0)
+                    }
                     indent
                     negative
                   />
@@ -286,7 +300,9 @@ export default function ProfitLossPage() {
                     label="Gross Profit"
                     value={data?.stats.grossProfit ?? 0}
                     bold
-                    highlight={(data?.stats.grossProfit ?? 0) >= 0 ? "green" : "red"}
+                    highlight={
+                      (data?.stats.grossProfit ?? 0) >= 0 ? "green" : "red"
+                    }
                   />
                   <PLRow
                     label="Gross Margin"
@@ -301,7 +317,10 @@ export default function ProfitLossPage() {
                   {data?.breakdown.expenses.map((ex, i) => (
                     <PLRow
                       key={i}
-                      label={ex.category.charAt(0).toUpperCase() + ex.category.slice(1)}
+                      label={
+                        ex.category.charAt(0).toUpperCase() +
+                        ex.category.slice(1)
+                      }
                       value={ex.amount}
                       indent
                       negative
@@ -329,7 +348,8 @@ export default function ProfitLossPage() {
                             : "text-red-600"
                         }`}
                       >
-                        Rs. {Math.abs(data?.stats.netProfit ?? 0).toLocaleString()}
+                        Rs.{" "}
+                        {Math.abs(data?.stats.netProfit ?? 0).toLocaleString()}
                       </span>
                       <p
                         className={`text-xs font-semibold mt-0.5 ${
@@ -338,8 +358,8 @@ export default function ProfitLossPage() {
                             : "text-red-500"
                         }`}
                       >
-                        {(data?.stats.netProfit ?? 0) >= 0 ? "PROFIT" : "LOSS"} ·{" "}
-                        {data?.stats.margins.net.toFixed(1)}% net margin
+                        {(data?.stats.netProfit ?? 0) >= 0 ? "PROFIT" : "LOSS"}{" "}
+                        · {data?.stats.margins.net.toFixed(1)}% net margin
                       </p>
                     </div>
                   </div>
@@ -406,18 +426,26 @@ export default function ProfitLossPage() {
 
               {/* Combined visual bar */}
               <Card className="p-6 border-0 shadow-md">
-                <h3 className="font-bold text-gray-900 mb-5">Sales Channel Distribution</h3>
+                <h3 className="font-bold text-gray-900 mb-5">
+                  Sales Channel Distribution
+                </h3>
                 <div className="flex h-10 rounded-xl overflow-hidden gap-0.5">
                   <div
                     className="bg-blue-500 flex items-center justify-center text-white text-xs font-bold transition-all"
-                    style={{ width: `${onlinePct}%`, minWidth: onlinePct > 5 ? "auto" : 0 }}
+                    style={{
+                      width: `${onlinePct}%`,
+                      minWidth: onlinePct > 5 ? "auto" : 0,
+                    }}
                     title={`Online: Rs. ${data?.breakdown.online.toLocaleString()}`}
                   >
                     {onlinePct > 15 && "Online"}
                   </div>
                   <div
                     className="bg-green-500 flex items-center justify-center text-white text-xs font-bold transition-all"
-                    style={{ width: `${posPct}%`, minWidth: posPct > 5 ? "auto" : 0 }}
+                    style={{
+                      width: `${posPct}%`,
+                      minWidth: posPct > 5 ? "auto" : 0,
+                    }}
                     title={`POS: Rs. ${data?.breakdown.pos.toLocaleString()}`}
                   >
                     {posPct > 15 && "POS"}
@@ -428,14 +456,18 @@ export default function ProfitLossPage() {
                     <div className="w-3 h-3 bg-blue-500 rounded-full" />
                     <span className="text-sm text-gray-600">
                       Online —{" "}
-                      <strong>Rs. {(data?.breakdown.online ?? 0).toLocaleString()}</strong>
+                      <strong>
+                        Rs. {(data?.breakdown.online ?? 0).toLocaleString()}
+                      </strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-3 h-3 bg-green-500 rounded-full" />
                     <span className="text-sm text-gray-600">
                       POS —{" "}
-                      <strong>Rs. {(data?.breakdown.pos ?? 0).toLocaleString()}</strong>
+                      <strong>
+                        Rs. {(data?.breakdown.pos ?? 0).toLocaleString()}
+                      </strong>
                     </span>
                   </div>
                 </div>
@@ -446,9 +478,15 @@ export default function ProfitLossPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
-                      <th className="text-left px-5 py-3 font-bold text-gray-600">Channel</th>
-                      <th className="text-right px-5 py-3 font-bold text-gray-600">Revenue</th>
-                      <th className="text-right px-5 py-3 font-bold text-gray-600">Share</th>
+                      <th className="text-left px-5 py-3 font-bold text-gray-600">
+                        Channel
+                      </th>
+                      <th className="text-right px-5 py-3 font-bold text-gray-600">
+                        Revenue
+                      </th>
+                      <th className="text-right px-5 py-3 font-bold text-gray-600">
+                        Share
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
@@ -504,7 +542,11 @@ export default function ProfitLossPage() {
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
 function StatCard({
-  title, value, icon, color, sub,
+  title,
+  value,
+  icon,
+  color,
+  sub,
 }: {
   title: string;
   value: number;
@@ -528,10 +570,14 @@ function StatCard({
   };
   return (
     <Card className="p-5 border-0 shadow-md hover:shadow-lg transition-shadow">
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${bg[color]}`}>
+      <div
+        className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${bg[color]}`}
+      >
         {icon}
       </div>
-      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">{title}</p>
+      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
+        {title}
+      </p>
       <p className={`text-2xl font-black ${val[color]}`}>
         Rs. {value.toLocaleString()}
       </p>
@@ -541,7 +587,9 @@ function StatCard({
 }
 
 function PLSection({
-  title, accent, children,
+  title,
+  accent,
+  children,
 }: {
   title: string;
   accent: "blue" | "orange" | "red";
@@ -555,7 +603,9 @@ function PLSection({
   return (
     <div>
       <div className={`px-6 py-2 border-l-4 ${colors[accent]}`}>
-        <p className="text-xs font-black text-gray-500 uppercase tracking-widest">{title}</p>
+        <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
+          {title}
+        </p>
       </div>
       <div>{children}</div>
     </div>
@@ -563,7 +613,13 @@ function PLSection({
 }
 
 function PLRow({
-  label, value, pct, indent, bold, negative, highlight,
+  label,
+  value,
+  pct,
+  indent,
+  bold,
+  negative,
+  highlight,
 }: {
   label: string;
   value: number | null;
@@ -574,8 +630,12 @@ function PLRow({
   highlight?: "green" | "red";
 }) {
   const textColor = highlight
-    ? highlight === "green" ? "text-green-700" : "text-red-600"
-    : negative ? "text-red-600" : "text-gray-900";
+    ? highlight === "green"
+      ? "text-green-700"
+      : "text-red-600"
+    : negative
+      ? "text-red-600"
+      : "text-gray-900";
 
   return (
     <div
@@ -591,11 +651,11 @@ function PLRow({
         {label}
       </span>
       <span className={`text-sm font-bold ${textColor}`}>
-        {pct != null ? (
-          `${pct.toFixed(1)}%`
-        ) : value != null ? (
-          `${negative && value > 0 ? "−" : ""}Rs. ${Math.abs(value).toLocaleString()}`
-        ) : null}
+        {pct != null
+          ? `${pct.toFixed(1)}%`
+          : value != null
+            ? `${negative && value > 0 ? "−" : ""}Rs. ${Math.abs(value).toLocaleString()}`
+            : null}
       </span>
     </div>
   );

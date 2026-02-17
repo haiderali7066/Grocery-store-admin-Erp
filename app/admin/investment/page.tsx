@@ -49,7 +49,11 @@ export default function InvestmentPage() {
 
   // Add investment dialog
   const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ amount: "", source: "cash", description: "" });
+  const [addForm, setAddForm] = useState({
+    amount: "",
+    source: "cash",
+    description: "",
+  });
   const [addLoading, setAddLoading] = useState(false);
 
   // Withdrawal dialog
@@ -82,7 +86,9 @@ export default function InvestmentPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   const handleAdd = async () => {
     if (!addForm.amount || parseFloat(addForm.amount) <= 0) {
@@ -128,9 +134,13 @@ export default function InvestmentPage() {
       return;
     }
 
-    const inv = data.investments.find((i) => i._id === withdrawForm.investmentId);
+    const inv = data.investments.find(
+      (i) => i._id === withdrawForm.investmentId,
+    );
     if (inv && amount > inv.remainingBalance) {
-      setWithdrawError(`Max available: Rs. ${inv.remainingBalance.toLocaleString()}`);
+      setWithdrawError(
+        `Max available: Rs. ${inv.remainingBalance.toLocaleString()}`,
+      );
       return;
     }
 
@@ -147,7 +157,12 @@ export default function InvestmentPage() {
         }),
       });
       if (res.ok) {
-        setWithdrawForm({ investmentId: "", amount: "", reason: "", destination: "cash" });
+        setWithdrawForm({
+          investmentId: "",
+          amount: "",
+          reason: "",
+          destination: "cash",
+        });
         setShowWithdraw(false);
         fetchData();
       } else {
@@ -162,7 +177,9 @@ export default function InvestmentPage() {
   };
 
   const usedAmount = data.totalInvestment - data.remainingBalance;
-  const selectedInv = data.investments.find((i) => i._id === withdrawForm.investmentId);
+  const selectedInv = data.investments.find(
+    (i) => i._id === withdrawForm.investmentId,
+  );
 
   if (isLoading) {
     return (
@@ -177,14 +194,27 @@ export default function InvestmentPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Investment & Capital</h1>
-          <p className="text-gray-500 text-sm mt-1">Track business investment and capital flows</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Investment & Capital
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            Track business investment and capital flows
+          </p>
         </div>
         <div className="flex gap-2">
           {/* Withdrawal Dialog */}
-          <Dialog open={showWithdraw} onOpenChange={(o) => { setShowWithdraw(o); setWithdrawError(""); }}>
+          <Dialog
+            open={showWithdraw}
+            onOpenChange={(o) => {
+              setShowWithdraw(o);
+              setWithdrawError("");
+            }}
+          >
             <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2 rounded-xl border-orange-200 text-orange-600 hover:bg-orange-50">
+              <Button
+                variant="outline"
+                className="gap-2 rounded-xl border-orange-200 text-orange-600 hover:bg-orange-50"
+              >
                 <MinusCircle className="h-4 w-4" />
                 Withdraw
               </Button>
@@ -201,7 +231,11 @@ export default function InvestmentPage() {
                   <select
                     value={withdrawForm.investmentId}
                     onChange={(e) =>
-                      setWithdrawForm({ ...withdrawForm, investmentId: e.target.value, amount: "" })
+                      setWithdrawForm({
+                        ...withdrawForm,
+                        investmentId: e.target.value,
+                        amount: "",
+                      })
                     }
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                   >
@@ -220,10 +254,12 @@ export default function InvestmentPage() {
                 {selectedInv && (
                   <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3 text-sm">
                     <p className="font-semibold text-orange-800">
-                      Available: Rs. {selectedInv.remainingBalance.toLocaleString()}
+                      Available: Rs.{" "}
+                      {selectedInv.remainingBalance.toLocaleString()}
                     </p>
                     <p className="text-orange-600 text-xs mt-0.5">
-                      Original: Rs. {selectedInv.amount.toLocaleString()} from {selectedInv.source}
+                      Original: Rs. {selectedInv.amount.toLocaleString()} from{" "}
+                      {selectedInv.source}
                     </p>
                   </div>
                 )}
@@ -237,7 +273,10 @@ export default function InvestmentPage() {
                     placeholder="0"
                     value={withdrawForm.amount}
                     onChange={(e) =>
-                      setWithdrawForm({ ...withdrawForm, amount: e.target.value })
+                      setWithdrawForm({
+                        ...withdrawForm,
+                        amount: e.target.value,
+                      })
                     }
                     className="rounded-xl"
                     max={selectedInv?.remainingBalance}
@@ -251,7 +290,10 @@ export default function InvestmentPage() {
                   <select
                     value={withdrawForm.destination}
                     onChange={(e) =>
-                      setWithdrawForm({ ...withdrawForm, destination: e.target.value })
+                      setWithdrawForm({
+                        ...withdrawForm,
+                        destination: e.target.value,
+                      })
                     }
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
                   >
@@ -271,7 +313,10 @@ export default function InvestmentPage() {
                     placeholder="Reason for withdrawal…"
                     value={withdrawForm.reason}
                     onChange={(e) =>
-                      setWithdrawForm({ ...withdrawForm, reason: e.target.value })
+                      setWithdrawForm({
+                        ...withdrawForm,
+                        reason: e.target.value,
+                      })
                     }
                     className="rounded-xl"
                   />
@@ -309,32 +354,46 @@ export default function InvestmentPage() {
               </DialogHeader>
               <div className="space-y-4 mt-2">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Amount (Rs)</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Amount (Rs)
+                  </label>
                   <Input
                     type="number"
                     value={addForm.amount}
-                    onChange={(e) => setAddForm({ ...addForm, amount: e.target.value })}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, amount: e.target.value })
+                    }
                     placeholder="0"
                     className="rounded-xl"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Source Wallet</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Source Wallet
+                  </label>
                   <select
                     value={addForm.source}
-                    onChange={(e) => setAddForm({ ...addForm, source: e.target.value })}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, source: e.target.value })
+                    }
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
                   >
                     {SOURCES.map((s) => (
-                      <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                      <option key={s} value={s}>
+                        {s.charAt(0).toUpperCase() + s.slice(1)}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Description</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Description
+                  </label>
                   <Input
                     value={addForm.description}
-                    onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
+                    onChange={(e) =>
+                      setAddForm({ ...addForm, description: e.target.value })
+                    }
                     placeholder="Initial capital, additional funds…"
                     className="rounded-xl"
                   />
@@ -366,7 +425,9 @@ export default function InvestmentPage() {
         <Card className="p-6 border-0 shadow-md bg-green-50">
           <div className="flex items-center gap-3 mb-2">
             <TrendingUp className="h-5 w-5 text-green-600" />
-            <p className="text-sm font-medium text-gray-600">Available Balance</p>
+            <p className="text-sm font-medium text-gray-600">
+              Available Balance
+            </p>
           </div>
           <p className="text-3xl font-black text-green-600">
             Rs. {data.remainingBalance.toLocaleString()}
@@ -375,7 +436,9 @@ export default function InvestmentPage() {
         <Card className="p-6 border-0 shadow-md bg-orange-50">
           <div className="flex items-center gap-3 mb-2">
             <TrendingDown className="h-5 w-5 text-orange-600" />
-            <p className="text-sm font-medium text-gray-600">Used for Purchases</p>
+            <p className="text-sm font-medium text-gray-600">
+              Used for Purchases
+            </p>
           </div>
           <p className="text-3xl font-black text-orange-600">
             Rs. {usedAmount.toLocaleString()}
@@ -390,12 +453,15 @@ export default function InvestmentPage() {
         </div>
         <div className="divide-y divide-gray-50">
           {data.investments.length === 0 ? (
-            <p className="text-center text-gray-400 py-12 text-sm">No investments recorded</p>
+            <p className="text-center text-gray-400 py-12 text-sm">
+              No investments recorded
+            </p>
           ) : (
             data.investments.map((inv) => {
-              const pct = inv.amount > 0
-                ? Math.round((inv.remainingBalance / inv.amount) * 100)
-                : 0;
+              const pct =
+                inv.amount > 0
+                  ? Math.round((inv.remainingBalance / inv.amount) * 100)
+                  : 0;
               return (
                 <div key={inv._id} className="px-5 py-4">
                   <div className="flex items-center justify-between mb-2">
@@ -408,9 +474,15 @@ export default function InvestmentPage() {
                           {inv.description || "Investment"}
                         </p>
                         <p className="text-xs text-gray-400">
-                          {inv.source} · {new Date(inv.investmentDate).toLocaleDateString("en-PK", {
-                            day: "numeric", month: "short", year: "numeric",
-                          })}
+                          {inv.source} ·{" "}
+                          {new Date(inv.investmentDate).toLocaleDateString(
+                            "en-PK",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            },
+                          )}
                         </p>
                       </div>
                     </div>
@@ -431,7 +503,9 @@ export default function InvestmentPage() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">{pct}% remaining</p>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      {pct}% remaining
+                    </p>
                   </div>
                 </div>
               );

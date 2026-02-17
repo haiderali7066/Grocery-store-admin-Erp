@@ -33,14 +33,33 @@ interface Expense {
 const SOURCES = [
   { value: "cash", label: "Cash", icon: <Banknote className="h-3.5 w-3.5" /> },
   { value: "bank", label: "Bank", icon: <Landmark className="h-3.5 w-3.5" /> },
-  { value: "easypaisa", label: "EasyPaisa", icon: <Smartphone className="h-3.5 w-3.5" /> },
-  { value: "jazzcash", label: "JazzCash", icon: <Smartphone className="h-3.5 w-3.5" /> },
-  { value: "card", label: "Card", icon: <DollarSign className="h-3.5 w-3.5" /> },
+  {
+    value: "easypaisa",
+    label: "EasyPaisa",
+    icon: <Smartphone className="h-3.5 w-3.5" />,
+  },
+  {
+    value: "jazzcash",
+    label: "JazzCash",
+    icon: <Smartphone className="h-3.5 w-3.5" />,
+  },
+  {
+    value: "card",
+    label: "Card",
+    icon: <DollarSign className="h-3.5 w-3.5" />,
+  },
 ];
 
 const CATEGORIES = [
-  "rent", "utilities", "salary", "maintenance", "marketing",
-  "transport", "packaging", "miscellaneous", "other",
+  "rent",
+  "utilities",
+  "salary",
+  "maintenance",
+  "marketing",
+  "transport",
+  "packaging",
+  "miscellaneous",
+  "other",
 ];
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -80,7 +99,9 @@ export default function ExpensesPage() {
     }
   };
 
-  useEffect(() => { fetchExpenses(); }, []);
+  useEffect(() => {
+    fetchExpenses();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +117,12 @@ export default function ExpensesPage() {
         }),
       });
       if (res.ok) {
-        setFormData({ category: "rent", amount: "", description: "", source: "cash" });
+        setFormData({
+          category: "rent",
+          amount: "",
+          description: "",
+          source: "cash",
+        });
         setShowDialog(false);
         fetchExpenses();
       } else {
@@ -126,9 +152,10 @@ export default function ExpensesPage() {
       .reduce((sum, e) => sum + e.amount, 0),
   })).filter((s) => s.total > 0);
 
-  const filtered = filterSource === "all"
-    ? expenses
-    : expenses.filter((e) => e.source === filterSource);
+  const filtered =
+    filterSource === "all"
+      ? expenses
+      : expenses.filter((e) => e.source === filterSource);
 
   return (
     <div className="space-y-6 p-6">
@@ -136,7 +163,9 @@ export default function ExpensesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Expenses</h1>
-          <p className="text-gray-500 text-sm mt-1">Track all business expenditures</p>
+          <p className="text-gray-500 text-sm mt-1">
+            Track all business expenditures
+          </p>
         </div>
         <Dialog open={showDialog} onOpenChange={setShowDialog}>
           <DialogTrigger asChild>
@@ -150,14 +179,20 @@ export default function ExpensesPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4 mt-2">
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Category</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                  Category
+                </label>
                 <select
                   value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-600"
                 >
                   {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                    <option key={c} value={c}>
+                      {c.charAt(0).toUpperCase() + c.slice(1)}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -172,7 +207,9 @@ export default function ExpensesPage() {
                     <button
                       key={s.value}
                       type="button"
-                      onClick={() => setFormData({ ...formData, source: s.value })}
+                      onClick={() =>
+                        setFormData({ ...formData, source: s.value })
+                      }
                       className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border-2 text-xs font-bold transition-all ${
                         formData.source === s.value
                           ? "border-green-600 bg-green-50 text-green-700"
@@ -187,29 +224,40 @@ export default function ExpensesPage() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Amount (Rs)</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                  Amount (Rs)
+                </label>
                 <Input
                   type="number"
                   placeholder="0"
                   value={formData.amount}
-                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, amount: e.target.value })
+                  }
                   className="rounded-xl"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Description</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1 block">
+                  Description
+                </label>
                 <Input
                   placeholder="Optional notes..."
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   className="rounded-xl"
                 />
               </div>
 
               <div className="flex gap-2 pt-2">
-                <Button type="submit" className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl">
+                <Button
+                  type="submit"
+                  className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl"
+                >
                   Add Expense
                 </Button>
                 <Button
@@ -229,17 +277,25 @@ export default function ExpensesPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card className="p-4 border-0 shadow-md col-span-2 md:col-span-1 lg:col-span-1 bg-gradient-to-br from-red-50 to-orange-50">
-          <p className="text-xs text-gray-500 font-medium mb-1">Total (This Month)</p>
-          <p className="text-2xl font-black text-red-600">Rs. {totalExpenses.toLocaleString()}</p>
+          <p className="text-xs text-gray-500 font-medium mb-1">
+            Total (This Month)
+          </p>
+          <p className="text-2xl font-black text-red-600">
+            Rs. {totalExpenses.toLocaleString()}
+          </p>
         </Card>
         {bySource.map((s) => (
           <Card key={s.value} className="p-4 border-0 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
-              <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${SOURCE_COLORS[s.value]}`}>
+              <span
+                className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${SOURCE_COLORS[s.value]}`}
+              >
                 {s.icon} {s.label}
               </span>
             </div>
-            <p className="text-lg font-black text-gray-900">Rs. {s.total.toLocaleString()}</p>
+            <p className="text-lg font-black text-gray-900">
+              Rs. {s.total.toLocaleString()}
+            </p>
           </Card>
         ))}
       </div>
@@ -257,7 +313,9 @@ export default function ExpensesPage() {
             >
               <option value="all">All Sources</option>
               {SOURCES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
               ))}
             </select>
           </div>
@@ -267,7 +325,9 @@ export default function ExpensesPage() {
           {isLoading ? (
             <p className="text-gray-400 text-center py-10 text-sm">Loading…</p>
           ) : filtered.length === 0 ? (
-            <p className="text-gray-400 text-center py-12 text-sm">No expenses found</p>
+            <p className="text-gray-400 text-center py-12 text-sm">
+              No expenses found
+            </p>
           ) : (
             filtered.map((expense) => (
               <div
@@ -279,19 +339,27 @@ export default function ExpensesPage() {
                     <DollarSign className="h-4 w-4 text-red-500" />
                   </div>
                   <div>
-                    <p className="font-semibold text-gray-900 capitalize text-sm">{expense.category}</p>
+                    <p className="font-semibold text-gray-900 capitalize text-sm">
+                      {expense.category}
+                    </p>
                     {expense.description && (
-                      <p className="text-xs text-gray-400">{expense.description}</p>
+                      <p className="text-xs text-gray-400">
+                        {expense.description}
+                      </p>
                     )}
                     <p className="text-xs text-gray-400 mt-0.5">
                       {new Date(expense.date).toLocaleDateString("en-PK", {
-                        day: "numeric", month: "short", year: "numeric",
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
                       })}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${SOURCE_COLORS[expense.source] || "bg-gray-100 text-gray-500"}`}>
+                  <span
+                    className={`text-xs font-bold px-2.5 py-1 rounded-full ${SOURCE_COLORS[expense.source] || "bg-gray-100 text-gray-500"}`}
+                  >
                     {expense.source}
                   </span>
                   <p className="font-black text-red-600 text-sm min-w-[80px] text-right">
