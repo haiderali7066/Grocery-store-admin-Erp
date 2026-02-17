@@ -56,7 +56,8 @@ export function HeroCarousel() {
 
   // Shared responsive classes for height, max-width, and border radius
   // Takes up edge-to-edge on small mobile, rounded on medium+, stops growing at 1920px
-  const layoutClasses = "relative w-full h-[350px] sm:h-[450px] md:h-[550px] lg:h-[650px] 2xl:h-[750px] max-w-[1920px] mx-auto rounded-none sm:rounded-2xl lg:rounded-3xl overflow-hidden shadow-2xl";
+  const layoutClasses =
+    "relative w-full h-[350px] sm:h-[450px] md:h-[550px] lg:h-[650px] 2xl:h-[750px] max-w-[1920px] mx-auto rounded-none sm:rounded-2xl lg:rounded-3xl overflow-hidden shadow-2xl";
 
   // Loading skeleton
   if (isLoading) {
@@ -66,9 +67,13 @@ export function HeroCarousel() {
   // No active banners — show a plain fallback
   if (banners.length === 0) {
     return (
-      <div className={`${layoutClasses} bg-gradient-to-br from-primary/80 to-accent/60 flex items-center justify-center`}>
+      <div
+        className={`${layoutClasses} bg-gradient-to-br from-primary/80 to-accent/60 flex items-center justify-center`}
+      >
         <div className="text-center text-white px-6">
-          <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold mb-4">Welcome</h2>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold mb-4">
+            Welcome
+          </h2>
           <p className="text-base sm:text-lg md:text-xl lg:text-2xl mb-8 opacity-90">
             Shop fresh quality groceries delivered to your doorstep
           </p>
@@ -113,7 +118,8 @@ export function HeroCarousel() {
                     className="object-cover mix-blend-overlay"
                     priority={index === 0}
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
+                      (e.currentTarget as HTMLImageElement).style.display =
+                        "none";
                     }}
                   />
                 )}

@@ -78,6 +78,12 @@ const menuItems: MenuItem[] = [
     permission: "inventory",
   },
   {
+    label: "Customers",
+    icon: Tags,
+    href: "/admin/customers",
+    permission: "all",
+  },
+  {
     label: "Inventory",
     icon: BarChart3,
     href: "/admin/inventory",

@@ -1,45 +1,119 @@
-import { connectDB } from '@/lib/db';
-import { User, Order } from '@/lib/models/index';
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyAuth, getTokenFromCookie } from '@/lib/auth';
+// app/api/admin/customers/route.ts
+
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { User, Order } from "@/lib/models";
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+
+function requireAdmin(req: NextRequest) {
+  const token = getTokenFromCookie(req.headers.get("cookie") || "");
+  const payload = verifyToken(token);
+  if (!payload || payload.role !== "admin") return null;
+  return payload;
+}
 
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
-
-    const token = getTokenFromCookie(req.headers.get('cookie') || '');
-    const payload = verifyAuth(token);
-    if (!payload || payload.role !== 'admin') {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    if (!requireAdmin(req)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get all non-admin users
-    const users = await User.find({ role: 'user' }).select('name email phone addresses').lean();
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
+    const limit = Math.min(100, parseInt(searchParams.get("limit") || "20"));
+    const search = searchParams.get("search") || "";
 
-    // Get orders and customer stats
-    const orders = await Order.find().lean();
+    const query: any = { role: "user" };
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+      ];
+    }
 
-    const customers = users.map((user: any) => {
-      const userOrders = orders.filter((o) => o.customer?.toString() === user._id.toString() || o.email === user.email);
-      const totalSpent = userOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+    const [users, total] = await Promise.all([
+      User.find(query)
+        .select("-password")
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      User.countDocuments(query),
+    ]);
 
-      return {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        city: user.addresses?.[0]?.city || 'N/A',
-        totalOrders: userOrders.length,
-        totalSpent,
-        lastOrderDate: userOrders.length > 0
-          ? new Date(Math.max(...userOrders.map((o: any) => new Date(o.createdAt).getTime())))
-          : null,
-      };
+    // Attach aggregated order stats
+    const userIds = users.map((u: any) => u._id);
+    const orderStats = await Order.aggregate([
+      { $match: { user: { $in: userIds } } },
+      {
+        $group: {
+          _id: "$user",
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: "$total" },
+        },
+      },
+    ]);
+    const statsMap = Object.fromEntries(
+      orderStats.map((s: any) => [s._id.toString(), s]),
+    );
+
+    const customers = users.map((u: any) => ({
+      ...u,
+      _id: u._id.toString(),
+      totalOrders: statsMap[u._id.toString()]?.totalOrders || 0,
+      totalSpent: statsMap[u._id.toString()]?.totalSpent || 0,
+    }));
+
+    return NextResponse.json({ customers, total, page, limit });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    await connectDB();
+    if (!requireAdmin(req)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { name, email, phone, addresses } = await req.json();
+
+    if (!name || !email) {
+      return NextResponse.json(
+        { error: "Name and email are required" },
+        { status: 400 },
+      );
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return NextResponse.json(
+        { error: "Email already registered" },
+        { status: 409 },
+      );
+    }
+
+    const bcrypt = await import("bcryptjs");
+    const tempPassword = await bcrypt.default.hash(
+      Math.random().toString(36) + Date.now(),
+      10,
+    );
+
+    const user = await User.create({
+      name,
+      email: email.toLowerCase(),
+      password: tempPassword,
+      phone: phone || "",
+      addresses: addresses || [],
+      role: "user",
     });
 
-    return NextResponse.json({ customers }, { status: 200 });
-  } catch (error) {
-    console.error('[Customers] Error:', error);
-    return NextResponse.json({ message: 'Internal error' }, { status: 500 });
+    const { password: _p, ...safeUser } = user.toObject();
+    return NextResponse.json({ customer: safeUser }, { status: 201 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

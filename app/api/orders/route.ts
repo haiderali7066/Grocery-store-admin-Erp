@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
       paymentMethod,
       paymentStatus: "pending",
       // COD orders are auto-confirmed; others wait for payment verification
-      orderStatus: paymentMethod === "cod" ? "confirmed" : "pending",
+      orderStatus: paymentMethod === "cod" ? "pending" : "confirmed",
       screenshot: screenshot || null,
     });
 

@@ -1,3 +1,5 @@
+// app/api/admin/wallet/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Wallet, Transaction } from "@/lib/models";
@@ -13,7 +15,6 @@ export async function GET(req: NextRequest) {
         bank: 0,
         easyPaisa: 0,
         jazzCash: 0,
-        card: 0,
       });
     }
 
@@ -26,14 +27,11 @@ export async function GET(req: NextRequest) {
       bank: wallet.bank || 0,
       easyPaisa: wallet.easyPaisa || 0,
       jazzCash: wallet.jazzCash || 0,
-      card: wallet.card || 0,
       totalBalance:
-        wallet.cash +
-        wallet.bank +
-        wallet.easyPaisa +
-        wallet.jazzCash +
-        wallet.card,
-      // Optional: Calculate totals from transactions for the summary cards
+        (wallet.cash || 0) +
+        (wallet.bank || 0) +
+        (wallet.easyPaisa || 0) +
+        (wallet.jazzCash || 0),
     };
 
     return NextResponse.json({ wallet: walletData, transactions });
