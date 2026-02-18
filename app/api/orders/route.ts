@@ -121,8 +121,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create order
-    const order = new Order({
+    // Create order with proper COD status initialization
+    const orderData: any = {
       orderNumber: generateOrderNumber(),
       user: payload.userId,
       items: items.map((item: any) => ({
@@ -141,8 +141,14 @@ export async function POST(req: NextRequest) {
       paymentStatus: "pending",
       orderStatus: paymentMethod === "cod" ? "pending" : "pending",
       screenshot: screenshot || null,
-    });
+    };
 
+    // Initialize COD payment status for COD orders
+    if (paymentMethod === "cod") {
+      orderData.codPaymentStatus = "unpaid";
+    }
+
+    const order = new Order(orderData);
     await order.save();
 
     // Deduct stock after order creation

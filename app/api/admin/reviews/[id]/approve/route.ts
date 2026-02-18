@@ -1,18 +1,53 @@
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/admin/reviews/[id]/approve/route.ts
+
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Review } from "@/lib/models";
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    // In a real app, update in database
-    console.log('[v0] Review approved:', params.id);
-    return NextResponse.json({ message: 'Review approved' });
-  } catch (error) {
-    console.error('[v0] Error approving review:', error);
+    await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    const payload = verifyToken(token);
+
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+
+    const review = await Review.findByIdAndUpdate(
+      id,
+      {
+        isApproved: true,
+        approvedBy: payload.userId,
+        approvedAt: new Date(),
+      },
+      { new: true },
+    );
+
+    if (!review) {
+      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Review approved successfully",
+      review: {
+        _id: review._id.toString(),
+        isApproved: review.isApproved,
+      },
+    });
+  } catch (error: any) {
+    console.error("Error approving review:", error);
     return NextResponse.json(
-      { message: 'Failed to approve review' },
-      { status: 500 }
+      { error: error.message || "Failed to approve review" },
+      { status: 500 },
     );
   }
 }

@@ -89,8 +89,6 @@ export async function PUT(
     const sku = formData.get("sku") as string;
     const description = formData.get("description") as string;
 
-    // No basePrice/retailPrice update here as requested
-
     const discount = Number(formData.get("discount") || 0);
     const discountType = formData.get("discountType") as "percentage" | "fixed";
     const category = formData.get("category") as string;
@@ -99,6 +97,7 @@ export async function PUT(
     const isFlashSale = formData.get("isFlashSale") === "true";
     const isHot = formData.get("isHot") === "true";
     const isFeatured = formData.get("isFeatured") === "true";
+    const onlineVisible = formData.get("onlineVisible") === "true";
 
     const imageFile = formData.get("image") as File | null;
 
@@ -131,7 +130,6 @@ export async function PUT(
     product.name = name;
     product.sku = sku;
     product.description = description;
-    // retailPrice remains unchanged or 0
     product.discount = discount;
     product.discountType = discountType;
     product.category = category;
@@ -140,9 +138,10 @@ export async function PUT(
     product.unitSize = weight;
     product.unitType = weightUnit;
 
-    product.isNewArrival = isFlashSale; // Mapping isFlashSale to isNewArrival based on previous logic
+    product.isNewArrival = isFlashSale;
     product.isHot = isHot;
     product.isFeatured = isFeatured;
+    product.onlineVisible = onlineVisible; // NEW: Update online store visibility
     product.mainImage = imageUrl;
 
     await product.save();

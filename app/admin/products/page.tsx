@@ -21,6 +21,8 @@ import {
   File as Fire,
   Upload,
   X,
+  Globe,
+  Store,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -31,13 +33,14 @@ interface Product {
   discount: number;
   discountType: "percentage" | "fixed";
   stock: number;
-  category: string; // Assuming this is the ID. If populated object, handle accordingly.
-  weight: number; // Added to interface based on usage
-  weightUnit: string; // Added to interface based on usage
+  category: string;
+  weight: number;
+  weightUnit: string;
   status: string;
   isNewArrival: boolean;
   isHot: boolean;
   isFeatured: boolean;
+  onlineVisible: boolean;
   mainImage?: string;
   sku?: string;
   description?: string;
@@ -56,7 +59,6 @@ export default function ProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  // Track which product is being edited (null = creating new)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -72,6 +74,7 @@ export default function ProductsPage() {
     isFlashSale: false,
     isHot: false,
     isFeatured: false,
+    onlineVisible: true,
     image: null as File | null,
   });
 
@@ -82,7 +85,8 @@ export default function ProductsPage() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch("/api/products");
+      // Use admin endpoint to see ALL products (no filters)
+      const response = await fetch("/api/admin/products");
       if (response.ok) {
         const data = await response.json();
         setProducts(data.products || []);
@@ -146,6 +150,7 @@ export default function ProductsPage() {
       isFlashSale: false,
       isHot: false,
       isFeatured: false,
+      onlineVisible: true,
       image: null,
     });
     setImagePreview(null);
@@ -159,13 +164,14 @@ export default function ProductsPage() {
       description: product.description || "",
       discount: product.discount?.toString() || "",
       discountType: product.discountType || "percentage",
-      category: product.category, // Ensure this matches the ID format of your <select>
-      weight: (product as any).unitSize?.toString() || "", // Adjust based on your actual DB field name (unitSize vs weight)
-      weightUnit: (product as any).unitType || "kg", // Adjust based on your actual DB field name (unitType vs weightUnit)
+      category: product.category,
+      weight: (product as any).unitSize?.toString() || "",
+      weightUnit: (product as any).unitType || "kg",
       isFlashSale: product.isNewArrival,
       isHot: product.isHot,
       isFeatured: product.isFeatured,
-      image: null, // Reset file input
+      onlineVisible: product.onlineVisible ?? true,
+      image: null,
     });
     setImagePreview(product.mainImage || null);
     setIsDialogOpen(true);
@@ -188,16 +194,15 @@ export default function ProductsPage() {
       submitData.append("isFlashSale", formData.isFlashSale.toString());
       submitData.append("isHot", formData.isHot.toString());
       submitData.append("isFeatured", formData.isFeatured.toString());
+      submitData.append("onlineVisible", formData.onlineVisible.toString());
 
       if (formData.image) {
         submitData.append("image", formData.image);
       }
 
-      // Determine URL and Method based on editing state
       const url = editingId
         ? `/api/admin/products/${editingId}`
         : "/api/admin/products";
-
       const method = editingId ? "PUT" : "POST";
 
       const response = await fetch(url, {
@@ -265,13 +270,13 @@ export default function ProductsPage() {
           open={isDialogOpen}
           onOpenChange={(open) => {
             setIsDialogOpen(open);
-            if (!open) resetForm(); // Reset form when dialog closes
+            if (!open) resetForm();
           }}
         >
           <DialogTrigger asChild>
             <Button
               className="bg-green-700 hover:bg-green-800"
-              onClick={resetForm} // Ensure form is clean for "Add"
+              onClick={resetForm}
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Product
@@ -470,7 +475,7 @@ export default function ProductsPage() {
 
               <div className="space-y-3 border-t pt-4">
                 <p className="text-sm font-medium text-gray-700">
-                  Product Tags
+                  Product Tags & Visibility
                 </p>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -512,6 +517,30 @@ export default function ProductsPage() {
                     className="rounded"
                   />
                   <span className="text-sm font-medium">Featured</span>
+                </label>
+
+                {/* NEW: Online Visible Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer p-3 bg-green-50 rounded-lg border border-green-200">
+                  <input
+                    type="checkbox"
+                    checked={formData.onlineVisible}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        onlineVisible: e.target.checked,
+                      })
+                    }
+                    className="rounded accent-green-600"
+                  />
+                  <Globe className="h-4 w-4 text-green-600" />
+                  <div className="flex-1">
+                    <span className="text-sm font-semibold text-green-900">
+                      List in Online Store
+                    </span>
+                    <p className="text-xs text-green-700 mt-0.5">
+                      Show this product on your website store
+                    </p>
+                  </div>
                 </label>
               </div>
 
@@ -600,6 +629,15 @@ export default function ProductsPage() {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-1 flex-wrap">
+                      {product.onlineVisible ? (
+                        <span className="inline-flex items-center gap-1 bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-medium">
+                          <Globe className="h-3 w-3" /> Online
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-medium">
+                          <Store className="h-3 w-3" /> POS Only
+                        </span>
+                      )}
                       {product.isNewArrival && (
                         <span className="inline-flex items-center gap-1 bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-medium">
                           <Zap className="h-3 w-3" /> Flash

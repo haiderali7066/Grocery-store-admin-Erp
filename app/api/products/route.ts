@@ -13,11 +13,19 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search");
     const minPrice = searchParams.get("minPrice");
     const maxPrice = searchParams.get("maxPrice");
-    const limit = parseInt(searchParams.get("limit") || "50"); // Increased limit
+    const limit = parseInt(searchParams.get("limit") || "50");
     const skip = parseInt(searchParams.get("skip") || "0");
 
     // Build Filter Object
-    const filter: any = { status: "active", onlineVisible: true };
+    // CRITICAL: Only show products that are:
+    // - active status
+    // - visible in online store
+    // - have stock available
+    const filter: any = {
+      status: "active",
+      onlineVisible: true,
+      stock: { $gt: 0 }, // Only in-stock products
+    };
 
     if (isFeatured === "true") filter.isFeatured = true;
     if (isHot === "true") filter.isHot = true;
@@ -42,7 +50,7 @@ export async function GET(req: NextRequest) {
     const products = await Product.find(filter)
       .limit(limit)
       .skip(skip)
-      .populate("category") // This returns the object, handled in frontend interface
+      .populate("category")
       .sort({ createdAt: -1 }); // Show newest first
 
     const total = await Product.countDocuments(filter);

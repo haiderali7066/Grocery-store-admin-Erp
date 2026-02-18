@@ -1,19 +1,17 @@
-'use client';
+"use client";
 
-import React from "react"
-
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
-import { Star } from 'lucide-react';
+import React, { useState, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
+import { Star, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
+} from "@/components/ui/dialog";
 
 interface Review {
   _id: string;
@@ -28,16 +26,17 @@ interface ProductReviewsProps {
   productName: string;
 }
 
-export function ProductReviews({ productId, productName }: ProductReviewsProps) {
+export function ProductReviews({
+  productId,
+  productName,
+}: ProductReviewsProps) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [formData, setFormData] = useState({
-    userName: '',
-    rating: 5,
-    comment: '',
-  });
+  const [formData, setFormData] = useState({ rating: 5, comment: "" });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   useEffect(() => {
     fetchReviews();
@@ -45,13 +44,15 @@ export function ProductReviews({ productId, productName }: ProductReviewsProps) 
 
   const fetchReviews = async () => {
     try {
-      const res = await fetch(`/api/products/${productId}/reviews?approved=true`);
+      const res = await fetch(
+        `/api/products/${productId}/reviews?approved=true`,
+      );
       if (res.ok) {
         const data = await res.json();
         setReviews(data.reviews || []);
       }
-    } catch (error) {
-      console.error('[v0] Error fetching reviews:', error);
+    } catch (err) {
+      console.error("Error fetching reviews:", err);
     } finally {
       setIsLoading(false);
     }
@@ -59,34 +60,40 @@ export function ProductReviews({ productId, productName }: ProductReviewsProps) 
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.userName || !formData.comment) {
-      alert('Please fill in all fields');
+    setError("");
+    setSuccess("");
+
+    if (!formData.comment.trim()) {
+      setError("Please write a review comment");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/products/reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/products/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId,
-          productName,
-          userName: formData.userName,
-          rating: parseInt(formData.rating.toString()),
-          comment: formData.comment,
+          rating: formData.rating,
+          comment: formData.comment.trim(),
         }),
       });
 
-      if (res.ok) {
-        setFormData({ userName: '', rating: 5, comment: '' });
-        setShowReviewForm(false);
-        fetchReviews();
-        alert('Review submitted! It will appear after admin approval.');
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to submit review");
       }
-    } catch (error) {
-      console.error('[v0] Error submitting review:', error);
-      alert('Failed to submit review');
+
+      setSuccess(data.message || "Review submitted!");
+      setFormData({ rating: 5, comment: "" });
+      setTimeout(() => {
+        setShowReviewForm(false);
+        setSuccess("");
+      }, 2000);
+    } catch (err: any) {
+      setError(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -94,17 +101,26 @@ export function ProductReviews({ productId, productName }: ProductReviewsProps) 
 
   const averageRating =
     reviews.length > 0
-      ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
-      : 0;
+      ? (
+          reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+        ).toFixed(1)
+      : "0";
 
-  const renderStars = (rating: number) => {
+  const renderStars = (
+    rating: number,
+    interactive = false,
+    onClick?: (r: number) => void,
+  ) => {
     return (
       <div className="flex gap-1">
         {Array.from({ length: 5 }).map((_, i) => (
           <Star
             key={i}
-            size={16}
-            className={i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}
+            size={interactive ? 24 : 16}
+            className={`${
+              i < rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+            } ${interactive ? "cursor-pointer hover:scale-110 transition-transform" : ""}`}
+            onClick={() => interactive && onClick?.(i + 1)}
           />
         ))}
       </div>
@@ -117,79 +133,104 @@ export function ProductReviews({ productId, productName }: ProductReviewsProps) 
         <h2 className="text-2xl font-bold mb-4">Customer Reviews</h2>
 
         {/* Rating Summary */}
-        <div className="flex items-center gap-6 mb-6">
-          <div>
-            <div className="text-4xl font-bold">{averageRating}</div>
-            <div className="flex gap-1 mt-2">{renderStars(Math.round(parseFloat(averageRating.toString())))}</div>
-            <p className="text-sm text-gray-600 mt-1">Based on {reviews.length} reviews</p>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 mb-6">
+          <div className="flex items-center gap-4">
+            <div className="text-center">
+              <div className="text-5xl font-black text-gray-900">
+                {averageRating}
+              </div>
+              <div className="flex gap-1 mt-2 justify-center">
+                {renderStars(Math.round(parseFloat(averageRating)))}
+              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                {reviews.length} {reviews.length === 1 ? "review" : "reviews"}
+              </p>
+            </div>
           </div>
 
           <Dialog open={showReviewForm} onOpenChange={setShowReviewForm}>
             <DialogTrigger asChild>
-              <Button className="bg-primary hover:bg-primary/90 rounded-full">
+              <Button className="bg-green-700 hover:bg-green-800 rounded-xl">
                 Write a Review
               </Button>
             </DialogTrigger>
-            <DialogContent className="rounded-2xl">
+            <DialogContent className="rounded-2xl max-w-md">
               <DialogHeader>
-                <DialogTitle>Write a Review for {productName}</DialogTitle>
+                <DialogTitle>Review: {productName}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleSubmitReview} className="space-y-4">
+              <form onSubmit={handleSubmitReview} className="space-y-4 mt-2">
                 <div>
-                  <label className="text-sm font-medium">Your Name</label>
-                  <Input
-                    placeholder="Enter your name"
-                    value={formData.userName}
-                    onChange={(e) =>
-                      setFormData({ ...formData, userName: e.target.value })
-                    }
-                    className="mt-1"
-                  />
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Your Rating
+                  </label>
+                  <div className="flex justify-center">
+                    {renderStars(formData.rating, true, (r) =>
+                      setFormData({ ...formData, rating: r }),
+                    )}
+                  </div>
+                  <p className="text-center text-xs text-gray-400 mt-1">
+                    {formData.rating === 5
+                      ? "Excellent"
+                      : formData.rating === 4
+                        ? "Good"
+                        : formData.rating === 3
+                          ? "Average"
+                          : formData.rating === 2
+                            ? "Poor"
+                            : "Very Poor"}
+                  </p>
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium">Rating</label>
-                  <select
-                    value={formData.rating}
-                    onChange={(e) =>
-                      setFormData({ ...formData, rating: parseInt(e.target.value) })
-                    }
-                    className="w-full px-3 py-2 border rounded-lg mt-1"
-                  >
-                    <option value={5}>5 Stars - Excellent</option>
-                    <option value={4}>4 Stars - Good</option>
-                    <option value={3}>3 Stars - Average</option>
-                    <option value={2}>2 Stars - Poor</option>
-                    <option value={1}>1 Star - Very Poor</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium">Your Review</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Your Review
+                  </label>
                   <textarea
-                    placeholder="Share your experience with this product..."
+                    placeholder="Share your experience with this product…"
                     value={formData.comment}
                     onChange={(e) =>
                       setFormData({ ...formData, comment: e.target.value })
                     }
-                    className="w-full border rounded-lg p-2 text-sm mt-1"
+                    className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     rows={4}
+                    required
                   />
                 </div>
 
-                <div className="flex gap-2 pt-4">
+                {error && (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {success && (
+                  <div className="flex items-center gap-2 bg-green-50 border border-green-100 text-green-600 px-4 py-3 rounded-xl text-sm">
+                    <CheckCircle className="h-4 w-4 shrink-0" />
+                    {success}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
                   <Button
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 bg-primary rounded-full"
+                    className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl"
                   >
-                    {isSubmitting ? 'Submitting...' : 'Submit Review'}
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Submitting…
+                      </>
+                    ) : (
+                      "Submit Review"
+                    )}
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => setShowReviewForm(false)}
-                    className="flex-1 rounded-full bg-transparent"
+                    className="flex-1 rounded-xl"
                   >
                     Cancel
                   </Button>
@@ -201,23 +242,39 @@ export function ProductReviews({ productId, productName }: ProductReviewsProps) 
 
         {/* Reviews List */}
         {isLoading ? (
-          <p className="text-gray-500 text-center py-8">Loading reviews...</p>
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
         ) : reviews.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No reviews yet. Be the first to review!</p>
+          <Card className="p-12 text-center border-0 bg-gray-50">
+            <p className="text-gray-400 text-sm">
+              No reviews yet. Be the first to review this product!
+            </p>
+          </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {reviews.map((review) => (
-              <Card key={review._id} className="p-6 border-0">
+              <Card key={review._id} className="p-5 border-0 shadow-sm">
                 <div className="flex justify-between items-start mb-3">
                   <div>
-                    <p className="font-semibold">{review.userName}</p>
-                    <div className="flex gap-1 mt-1">{renderStars(review.rating)}</div>
+                    <p className="font-semibold text-gray-900">
+                      {review.userName}
+                    </p>
+                    <div className="flex gap-1 mt-1">
+                      {renderStars(review.rating)}
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-600">
-                    {new Date(review.createdAt).toLocaleDateString()}
+                  <p className="text-xs text-gray-400">
+                    {new Date(review.createdAt).toLocaleDateString("en-PK", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
                   </p>
                 </div>
-                <p className="text-gray-700">{review.comment}</p>
+                <p className="text-gray-700 text-sm leading-relaxed">
+                  {review.comment}
+                </p>
               </Card>
             ))}
           </div>

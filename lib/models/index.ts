@@ -295,9 +295,8 @@ export const POSSaleSchema = new Schema(
   },
   { timestamps: true },
 );
-
 // =========================
-// Order Schema (UPDATED - Add COD)
+// Order Schema (UPDATED - Add COD Payment Tracking)
 // =========================
 export const OrderSchema = new Schema(
   {
@@ -325,6 +324,7 @@ export const OrderSchema = new Schema(
     subtotal: { type: Number, required: true },
     gstAmount: { type: Number, required: true },
     discount: { type: Number, default: 0 },
+    shippingCost: { type: Number, default: 0 },
     total: { type: Number, required: true },
     paymentMethod: {
       type: String,
@@ -336,6 +336,16 @@ export const OrderSchema = new Schema(
       enum: ["pending", "verified", "failed"],
       default: "pending",
     },
+    // NEW: Track COD payment status separately
+    codPaymentStatus: {
+      type: String,
+      enum: ["unpaid", "paid"],
+      default: function() {
+        return this.paymentMethod === "cod" ? "unpaid" : null;
+      },
+    },
+    codPaidAt: Date, // When admin marked COD as paid
+    codPaidBy: { type: Schema.Types.ObjectId, ref: "User" }, // Which admin marked it paid
     screenshot: String, // Optional for COD
     invoiceNumber: String,
     orderStatus: {
@@ -361,6 +371,7 @@ export const OrderSchema = new Schema(
   },
   { timestamps: true },
 );
+
 
 // =========================
 // Payment Schema
@@ -634,6 +645,57 @@ export const InvestmentSchema = new Schema(
 );
 
 // =========================
+// Review Schema - ADD THIS to your lib/models/index.ts file
+// =========================
+export const ReviewSchema = new Schema(
+  {
+    product: {
+      type: Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+      index: true,
+    },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    order: {
+      type: Schema.Types.ObjectId,
+      ref: "Order",
+      required: true,
+    },
+    rating: {
+      type: Number,
+      required: true,
+      min: 1,
+      max: 5,
+    },
+    comment: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    isApproved: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    approvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+    },
+    approvedAt: Date,
+  },
+  { timestamps: true },
+);
+
+// Compound index: one review per user per product
+ReviewSchema.index({ user: 1, product: 1 }, { unique: true });
+
+// THEN ADD THIS to your exports at the bottom:
+
+// =========================
 // Mongoose Models Export
 // =========================
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
@@ -679,3 +741,6 @@ export const RefundRequest = Refund;
 
 export const SaleConfig =
   mongoose.models.SaleConfig || mongoose.model("SaleConfig", SaleConfigSchema);
+  
+export const Review =
+  mongoose.models.Review || mongoose.model("Review", ReviewSchema);

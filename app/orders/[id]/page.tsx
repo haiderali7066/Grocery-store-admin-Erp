@@ -455,7 +455,7 @@ export default function OrderDetailPage() {
                 <span>Rs. {order.subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-700">
-                <span>GST (17%)</span>
+                <span>GST </span>
                 <span>Rs. {order.gstAmount.toFixed(2)}</span>
               </div>
               <div className="border-t pt-2 flex justify-between font-bold text-lg text-green-700">

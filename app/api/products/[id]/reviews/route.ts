@@ -1,25 +1,45 @@
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/products/[id]/reviews/route.ts
+
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Review } from "@/lib/models";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    await connectDB();
+
+    const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const approved = searchParams.get('approved') === 'true';
+    const approvedOnly = searchParams.get("approved") === "true";
 
-    // In a real app, fetch from database
-    // For now, return empty array
-    const reviews = [];
+    const query: any = { product: id };
+    if (approvedOnly) {
+      query.isApproved = true;
+    }
 
-    return NextResponse.json({
-      reviews: approved ? reviews.filter((r: any) => r.isApproved) : reviews,
-    });
-  } catch (error) {
-    console.error('[v0] Error fetching product reviews:', error);
+    const reviews = await Review.find(query)
+      .populate("user", "name")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formatted = reviews.map((r: any) => ({
+      _id: r._id.toString(),
+      userName: r.user?.name || "Anonymous",
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      isApproved: r.isApproved,
+    }));
+
+    return NextResponse.json({ reviews: formatted });
+  } catch (error: any) {
+    console.error("Error fetching product reviews:", error);
     return NextResponse.json(
-      { message: 'Failed to fetch reviews' },
-      { status: 500 }
+      { error: error.message || "Failed to fetch reviews" },
+      { status: 500 },
     );
   }
 }

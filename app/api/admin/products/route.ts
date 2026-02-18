@@ -4,6 +4,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 
+// ========================================
+// GET ALL PRODUCTS (ADMIN ONLY - NO FILTERS)
+// ========================================
+export async function GET(req: NextRequest) {
+  try {
+    await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // Admin sees ALL products - no stock/visibility/status filters
+    const products = await Product.find()
+      .populate("category")
+      .sort({ createdAt: -1 });
+
+    return NextResponse.json(
+      { products, total: products.length },
+      { status: 200 },
+    );
+  } catch (error) {
+    console.error("[Admin Products GET] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch products" },
+      { status: 500 },
+    );
+  }
+}
+
+// ========================================
+// CREATE PRODUCT
+// ========================================
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -21,7 +59,6 @@ export async function POST(req: NextRequest) {
     // Parse FormData
     const formData = await req.formData();
     const name = formData.get("name") as string;
-    // REMOVED basePrice extraction
     const category = formData.get("category") as string;
     const weight = formData.get("weight") as string;
     const weightUnit = formData.get("weightUnit") as string;
@@ -30,9 +67,8 @@ export async function POST(req: NextRequest) {
     const isFlashSale = formData.get("isFlashSale") === "true";
     const isHot = formData.get("isHot") === "true";
     const isFeatured = formData.get("isFeatured") === "true";
+    const onlineVisible = formData.get("onlineVisible") === "true";
     const image = formData.get("image") as File | null;
-
-    // New fields
     const description = formData.get("description") as string | null;
     const skuInput = formData.get("sku") as string | null;
 
@@ -68,7 +104,7 @@ export async function POST(req: NextRequest) {
       name,
       sku,
       description,
-      retailPrice: 0, // Defaulted to 0 since input was removed
+      retailPrice: 0,
       discount: discount ? parseFloat(discount) : 0,
       discountType: discountType || "percentage",
       category: categoryDoc._id,
@@ -77,7 +113,7 @@ export async function POST(req: NextRequest) {
       mainImage: imageUrl,
       stock: 0,
       status: "active",
-      onlineVisible: true,
+      onlineVisible: onlineVisible,
       posVisible: true,
       isFeatured: isFeatured || false,
       isHot: isHot || false,

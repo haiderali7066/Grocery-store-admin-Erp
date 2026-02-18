@@ -1,13 +1,21 @@
-// app/admin/orders/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, X, Printer, Eye, Trash2, RotateCcw } from "lucide-react";
+import { Check, X, Printer, Eye, Trash2, RotateCcw, DollarSign, Banknote, Wrench } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import PermissionGuard from "@/components/admin/PermissionGuard";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 interface OrderItem {
   product: { name: string } | null;
@@ -33,6 +41,8 @@ interface Order {
   paymentStatus: "pending" | "verified" | "failed";
   orderStatus: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
   paymentMethod: string;
+  codPaymentStatus?: "unpaid" | "paid" | null;
+  codPaidAt?: string;
   createdAt: string;
   screenshot?: string;
   trackingNumber?: string;
@@ -45,11 +55,22 @@ function OrdersContent() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
-  const [trackingInputs, setTrackingInputs] = useState
-    Record<string, { code: string; courier: string }>
-  >({});
+  const [trackingInputs, setTrackingInputs] = useState<Record<string, { code: string; courier: string }>>({});
   const [updatedOrderId, setUpdatedOrderId] = useState<string | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
+  
+  // COD Payment Dialog State
+  const [codDialogOpen, setCodDialogOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [codAmount, setCodAmount] = useState("");
+  const [codNotes, setCodNotes] = useState("");
+  const [isProcessingCod, setIsProcessingCod] = useState(false);
+
+  // Fix COD Status State
+  const [isFixing, setIsFixing] = useState(false);
+
+  // Filter State
+  const [filterStatus, setFilterStatus] = useState<"all" | "unpaid_cod">("all");
 
   const [storeInfo, setStoreInfo] = useState({
     name: "Khas pure foods",
@@ -80,6 +101,29 @@ function OrdersContent() {
       console.error(err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleFixCodStatus = async () => {
+    if (!confirm("Update all COD orders to show unpaid status? This will fix missing COD payment status.")) return;
+    
+    setIsFixing(true);
+    try {
+      const res = await fetch("/api/admin/fix-cod-status", {
+        method: "POST",
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to fix COD status");
+      }
+      
+      const data = await res.json();
+      alert(`✅ ${data.message}\nUpdated ${data.modifiedCount} orders`);
+      fetchOrders(); // Refresh the list
+    } catch (err: any) {
+      alert("Failed: " + err.message);
+    } finally {
+      setIsFixing(false);
     }
   };
 
@@ -114,8 +158,7 @@ function OrdersContent() {
       }
 
       const data = await res.json();
-      alert(data.message); // "Order deleted and stock restored successfully"
-
+      alert(data.message);
       setOrders(orders.filter((order) => order._id !== orderId));
       if (openOrderId === orderId) setOpenOrderId(null);
     } catch (err: any) {
@@ -125,7 +168,6 @@ function OrdersContent() {
     }
   };
 
-  // Approve: verify payment, set processing, save tracking
   const handleApprove = (orderId: string) => {
     const code = trackingInputs[orderId]?.code || `TRK-${Date.now()}`;
     const courier = trackingInputs[orderId]?.courier || "Local Courier";
@@ -137,7 +179,6 @@ function OrdersContent() {
     });
   };
 
-  // Reject: fail payment, cancel order → triggers restock automatically
   const handleReject = (orderId: string) => {
     if (!confirm("Reject this order? Stock will be restored automatically.")) return;
     updateOrder(orderId, {
@@ -147,7 +188,6 @@ function OrdersContent() {
   };
 
   const handleStatusUpdate = (orderId: string, status: string) => {
-    // Warn about restock when cancelling
     if (status === "cancelled") {
       if (!confirm("Cancel this order? Stock will be restored automatically.")) return;
     }
@@ -167,6 +207,53 @@ function OrdersContent() {
       trackingNumber: code || "",
       trackingProvider: courier || "",
     });
+  };
+
+  // COD Payment Handling
+  const handleCodPaymentClick = (order: Order) => {
+    setSelectedOrder(order);
+    setCodAmount(order.total?.toString() || "");
+    setCodNotes("");
+    setCodDialogOpen(true);
+  };
+
+  const handleMarkCodPaid = async () => {
+    if (!selectedOrder) return;
+
+    const amount = parseFloat(codAmount);
+    if (isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+
+    setIsProcessingCod(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${selectedOrder._id}/mark-cod-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount,
+          notes: codNotes,
+        }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to mark as paid");
+      }
+
+      const data = await res.json();
+      alert(`✅ ${data.message}\n\n💰 Profit: Rs. ${data.profit}\n💵 Cash Balance: Rs. ${data.walletBalance.toLocaleString()}`);
+      setCodDialogOpen(false);
+      setSelectedOrder(null);
+      setCodAmount("");
+      setCodNotes("");
+      fetchOrders();
+    } catch (err: any) {
+      alert("Failed: " + err.message);
+    } finally {
+      setIsProcessingCod(false);
+    }
   };
 
   const handlePrint = (order: Order) => {
@@ -202,7 +289,8 @@ function OrdersContent() {
           <hr/>
           <h3>Order #${order.orderNumber}</h3>
           <p>Date: ${new Date(order.createdAt).toLocaleDateString()}</p>
-          <p>Payment Method: ${order.paymentMethod || "-"}</p>
+          <p>Payment Method: ${order.paymentMethod?.toUpperCase() || "-"}</p>
+          ${order.paymentMethod === "cod" ? `<p>COD Status: ${order.codPaymentStatus === "paid" ? "PAID" : "UNPAID"}</p>` : ""}
           <p>Payment Status: ${order.paymentStatus}</p>
           <p>Order Status: ${order.orderStatus}</p>
           <h4>Customer:</h4>
@@ -236,6 +324,8 @@ function OrdersContent() {
       shipped: "bg-purple-100 text-purple-700 border-purple-300",
       delivered: "bg-green-200 text-green-900 border-green-400",
       cancelled: "bg-red-200 text-red-900 border-red-400",
+      unpaid: "bg-orange-100 text-orange-700 border-orange-300",
+      paid: "bg-green-100 text-green-700 border-green-300",
     };
 
     return (
@@ -244,6 +334,26 @@ function OrdersContent() {
       </span>
     );
   };
+
+  // Filter orders - handle null/undefined codPaymentStatus
+  const filteredOrders = orders.filter((order) => {
+    if (filterStatus === "unpaid_cod") {
+      // Show COD orders that are unpaid OR don't have codPaymentStatus set yet
+      return order.paymentMethod === "cod" && 
+             (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus);
+    }
+    return true;
+  });
+
+  // Calculate unpaid COD total - include orders without codPaymentStatus
+  const unpaidCodOrders = orders.filter(
+    (o) => o.paymentMethod === "cod" && 
+           (o.codPaymentStatus === "unpaid" || !o.codPaymentStatus)
+  );
+  const unpaidCodTotal = unpaidCodOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+
+  // Check if there are COD orders that need fixing
+  const needsFixing = orders.some(o => o.paymentMethod === "cod" && !o.codPaymentStatus);
 
   return (
     <div className="space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
@@ -263,12 +373,65 @@ function OrdersContent() {
         </div>
       </Card>
 
-      <div className="flex items-center justify-between">
+      {/* Header with COD Summary */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <h1 className="text-3xl font-bold text-slate-800">Orders Management</h1>
-        <div className="flex items-center gap-2 text-sm text-slate-500 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
-          <RotateCcw className="h-4 w-4 text-blue-500" />
-          Stock auto-restores on cancel/reject/delete
+        
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Unpaid COD Summary */}
+          <Card className="bg-orange-50 border-orange-200 p-4">
+            <div className="flex items-center gap-3">
+              <Banknote className="h-8 w-8 text-orange-600" />
+              <div>
+                <p className="text-xs text-orange-600 font-medium">Unpaid COD Orders</p>
+                <p className="text-2xl font-bold text-orange-900">
+                  Rs. {unpaidCodTotal.toLocaleString()}
+                </p>
+                <p className="text-xs text-orange-600">{unpaidCodOrders.length} orders</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Stock Restore Info */}
+          <div className="flex items-center gap-2 text-sm text-slate-500 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+            <RotateCcw className="h-4 w-4 text-blue-500" />
+            <span>Stock auto-restores on cancel/reject/delete</span>
+          </div>
         </div>
+      </div>
+
+      {/* Filters and Fix Button */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex gap-2">
+          <Button
+            variant={filterStatus === "all" ? "default" : "outline"}
+            onClick={() => setFilterStatus("all")}
+            className={filterStatus === "all" ? "bg-green-700 hover:bg-green-800" : ""}
+          >
+            All Orders ({orders.length})
+          </Button>
+          <Button
+            variant={filterStatus === "unpaid_cod" ? "default" : "outline"}
+            onClick={() => setFilterStatus("unpaid_cod")}
+            className={filterStatus === "unpaid_cod" ? "bg-orange-600 hover:bg-orange-700" : ""}
+          >
+            <Banknote className="h-4 w-4 mr-2" />
+            Unpaid COD ({unpaidCodOrders.length})
+          </Button>
+        </div>
+
+        {/* Fix COD Status Button - Shows if there are COD orders without status */}
+        {needsFixing && (
+          <Button
+            variant="outline"
+            onClick={handleFixCodStatus}
+            disabled={isFixing}
+            className="bg-yellow-50 border-yellow-300 hover:bg-yellow-100"
+          >
+            <Wrench className="h-4 w-4 mr-2" />
+            {isFixing ? "Fixing..." : "Fix COD Status"}
+          </Button>
+        )}
       </div>
 
       <Card className="p-6 shadow-xl border bg-white">
@@ -276,11 +439,13 @@ function OrdersContent() {
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700" />
           </div>
-        ) : orders.length === 0 ? (
-          <p className="text-slate-500 text-center py-8">No orders found</p>
+        ) : filteredOrders.length === 0 ? (
+          <p className="text-slate-500 text-center py-8">
+            {filterStatus === "unpaid_cod" ? "No unpaid COD orders" : "No orders found"}
+          </p>
         ) : (
           <div className="space-y-5">
-            {orders.map((order) => (
+            {filteredOrders.map((order) => (
               <AnimatePresence key={order._id}>
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -291,15 +456,24 @@ function OrdersContent() {
                     className={`p-5 border transition-all ${
                       updatedOrderId === order._id
                         ? "border-blue-500 ring-2 ring-blue-200"
+                        : order.paymentMethod === "cod" && (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus)
+                        ? "border-orange-300 bg-orange-50/30"
                         : "border-slate-200"
                     }`}
                   >
                     {/* Order Header */}
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                       <div>
-                        <p className="font-bold text-lg text-slate-800">
-                          #{order.orderNumber}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-lg text-slate-800">
+                            #{order.orderNumber}
+                          </p>
+                          {order.paymentMethod === "cod" && (
+                            <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                              COD
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-slate-500">
                           Rs. {(order.total ?? 0).toLocaleString()} •{" "}
                           {new Date(order.createdAt).toLocaleDateString()}
@@ -319,6 +493,20 @@ function OrdersContent() {
                       <div className="flex flex-wrap items-center gap-2">
                         {badge(order.paymentStatus)}
                         {badge(order.orderStatus)}
+                        {order.paymentMethod === "cod" && order.codPaymentStatus && (
+                          badge(order.codPaymentStatus)
+                        )}
+
+                        {/* Mark COD as Paid Button */}
+                        {order.paymentMethod === "cod" && (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus) && (
+                          <Button
+                            size="sm"
+                            className="bg-orange-600 hover:bg-orange-700 text-white"
+                            onClick={() => handleCodPaymentClick(order)}
+                          >
+                            <DollarSign className="w-4 h-4 mr-1" /> Mark Paid
+                          </Button>
+                        )}
 
                         <Button
                           size="sm"
@@ -365,6 +553,18 @@ function OrdersContent() {
                             <p className="text-sm font-medium mt-2 text-slate-700">
                               Payment: {order.paymentMethod?.toUpperCase() || "N/A"}
                             </p>
+                            {order.paymentMethod === "cod" && (
+                              <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                <p className="text-sm font-semibold text-orange-900">
+                                  COD Status: {order.codPaymentStatus === "paid" ? "✓ PAID" : "⏱ UNPAID"}
+                                </p>
+                                {order.codPaymentStatus === "paid" && order.codPaidAt && (
+                                  <p className="text-xs text-orange-700 mt-1">
+                                    Received on: {new Date(order.codPaidAt).toLocaleString()}
+                                  </p>
+                                )}
+                              </div>
+                            )}
                           </section>
 
                           <section>
@@ -444,8 +644,8 @@ function OrdersContent() {
                             </Button>
                           </section>
 
-                          {/* Approve / Reject */}
-                          {order.paymentStatus === "pending" && (
+                          {/* Approve / Reject (only for non-COD pending) */}
+                          {order.paymentStatus === "pending" && order.paymentMethod !== "cod" && (
                             <div className="flex gap-3">
                               <Button
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -517,6 +717,73 @@ function OrdersContent() {
           </div>
         )}
       </Card>
+
+      {/* COD Payment Dialog */}
+      <Dialog open={codDialogOpen} onOpenChange={setCodDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mark COD Payment as Received</DialogTitle>
+            <DialogDescription>
+              Record that you have received COD payment for order{" "}
+              <span className="font-bold">#{selectedOrder?.orderNumber}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Amount Received (Rs) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="number"
+                value={codAmount}
+                onChange={(e) => setCodAmount(e.target.value)}
+                placeholder="Enter amount"
+                min="0"
+                step="0.01"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Order Total: Rs. {(selectedOrder?.total || 0).toLocaleString()}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes (Optional)
+              </label>
+              <Textarea
+                value={codNotes}
+                onChange={(e) => setCodNotes(e.target.value)}
+                placeholder="e.g., Collected from TCS Courier on 2024-01-15"
+                rows={3}
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                💡 This will add Rs. {codAmount || "0"} to your Cash wallet and mark the order as paid.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setCodDialogOpen(false)}
+              disabled={isProcessingCod}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={handleMarkCodPaid}
+              disabled={isProcessingCod}
+            >
+              {isProcessingCod ? "Processing..." : "Mark as Paid"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

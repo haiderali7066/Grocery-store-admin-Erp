@@ -4,12 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }, // Type changed to Promise
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
 
-    // In Next.js 15/16, you MUST await params
     const { id } = await params;
 
     if (!id) {
@@ -21,6 +20,28 @@ export async function GET(
     if (!product) {
       return NextResponse.json(
         { message: "Product not found" },
+        { status: 404 },
+      );
+    }
+
+    // For public store endpoints, check if product should be visible
+    // Note: If this is called from admin panel, you may want a separate route
+    // or query param to bypass these checks
+    if (
+      product.status !== "active" ||
+      !product.onlineVisible ||
+      product.stock <= 0
+    ) {
+      return NextResponse.json(
+        {
+          message: "Product not available",
+          reason:
+            product.status !== "active"
+              ? "inactive"
+              : !product.onlineVisible
+                ? "not_listed_online"
+                : "out_of_stock",
+        },
         { status: 404 },
       );
     }

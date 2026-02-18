@@ -1,61 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿// app/api/admin/reviews/route.ts
 
-const reviewsDB: any[] = [];
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/db";
+import { Review } from "@/lib/models";
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    return NextResponse.json({
-      reviews: reviewsDB,
-    });
-  } catch (error) {
-    console.error('[v0] Error fetching reviews:', error);
-    return NextResponse.json(
-      { message: 'Failed to fetch reviews' },
-      { status: 500 }
-    );
-  }
-}
+    await connectDB();
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { productId, productName, userId, userName, rating, comment } = body;
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    const payload = verifyToken(token);
 
-    if (!productId || !userId || !rating || !comment) {
-      return NextResponse.json(
-        { message: 'Missing required fields' },
-        { status: 400 }
-      );
+    if (!payload || payload.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (rating < 1 || rating > 5) {
-      return NextResponse.json(
-        { message: 'Rating must be between 1 and 5' },
-        { status: 400 }
-      );
-    }
+    const reviews = await Review.find()
+      .populate("product", "name")
+      .populate("user", "name email")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const review = {
-      _id: Date.now().toString(),
-      productId,
-      productName,
-      userId,
-      userName,
-      rating: parseInt(rating),
-      comment,
-      isApproved: false,
-      createdAt: new Date().toISOString(),
-    };
+    const formatted = reviews.map((r: any) => ({
+      _id: r._id.toString(),
+      productId: r.product?._id?.toString(),
+      productName: r.product?.name || "Unknown Product",
+      userId: r.user?._id?.toString(),
+      userName: r.user?.name || "Anonymous",
+      userEmail: r.user?.email,
+      rating: r.rating,
+      comment: r.comment,
+      isApproved: r.isApproved,
+      createdAt: r.createdAt,
+    }));
 
-    reviewsDB.push(review);
-    console.log('[v0] Review created:', review._id);
-
-    return NextResponse.json(review, { status: 201 });
-  } catch (error) {
-    console.error('[v0] Error creating review:', error);
+    return NextResponse.json({ reviews: formatted });
+  } catch (error: any) {
+    console.error("Error fetching reviews:", error);
     return NextResponse.json(
-      { message: 'Failed to create review' },
-      { status: 500 }
+      { error: error.message || "Failed to fetch reviews" },
+      { status: 500 },
     );
   }
 }
