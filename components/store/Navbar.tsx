@@ -214,26 +214,26 @@ export function Navbar() {
             <div className="hidden md:flex items-center gap-4 lg:gap-6">
               <Link
                 href="/"
-                className="text-foreground hover:text-primary font-medium text-sm transition-colors"
+                className="text-primary text-lg font-bold hover:text-primary  transition-colors"
               >
                 Home
               </Link>
               <Link
                 href="/products"
-                className="text-foreground hover:text-primary font-medium text-sm transition-colors"
+                className="text-primary text-lg font-bold transition-colors"
               >
                 Products
               </Link>
               <Link
                 href="/sale"
-                className="text-foreground hover:text-primary font-medium text-sm transition-colors"
+                className="text-primary text-lg font-bold transition-colors"
               >
                 Sale
               </Link>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="text-foreground hover:text-primary font-medium text-sm transition-colors">
+                  <button className="text-primary text-lg font-bold transition-colors">
                     Categories
                   </button>
                 </DropdownMenuTrigger>
@@ -241,9 +241,7 @@ export function Navbar() {
                   {categories.length > 0 ? (
                     categories.map((cat) => (
                       <DropdownMenuItem key={cat._id || cat.slug} asChild>
-                        <Link
-                          href={`/products?category=${cat.slug || cat.name.toLowerCase()}`}
-                        >
+                        <Link href={`/products?category=${cat._id}`}>
                           {cat.name}
                         </Link>
                       </DropdownMenuItem>
@@ -358,7 +356,6 @@ export function Navbar() {
               >
                 Sale
               </Link>
-             
 
               <div className="py-2">
                 <span className="block font-medium mb-1 text-muted-foreground text-sm">

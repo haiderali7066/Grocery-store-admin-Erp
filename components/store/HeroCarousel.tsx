@@ -108,7 +108,7 @@ export function HeroCarousel() {
           >
             <div className="relative w-full h-full">
               {/* Background */}
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/80 to-accent/60">
+              <div className="absolute inset-0 ">
                 {banner.imageUrl && (
                   <Image
                     src={banner.imageUrl}

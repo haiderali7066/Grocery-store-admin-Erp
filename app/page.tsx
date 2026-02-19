@@ -327,7 +327,7 @@ export default function Home() {
                 return (
                   <Link
                     key={category._id}
-                    href={`/products?category=${encodeURIComponent(category.name)}`}
+                    href={`/products?category=${category._id}`}
                     className="category-card group block"
                   >
                     <div
@@ -444,7 +444,7 @@ export default function Home() {
         </section>
 
         {/* ── Why Choose Us ── */}
-        <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <span className="section-pill section-pill-orange">
               <Heart className="w-3 h-3" /> Our Promise
@@ -511,7 +511,7 @@ export default function Home() {
               </div>
             ))}
           </div>
-        </section>
+        </section> */}
       </main>
 
       <Footer />
