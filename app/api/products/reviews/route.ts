@@ -3,14 +3,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Review, Order } from "@/lib/models";
-import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+import { verifyToken } from "@/lib/auth";
+import { cookies } from "next/headers";
+
 
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
-    const token = getTokenFromCookie(request.headers.get("cookie") || "");
-    const payload = verifyToken(token);
+   const cookieStore = cookies();
+const token = cookieStore.get("token")?.value;
+
+if (!token) {
+  return NextResponse.json(
+    { error: "Please log in to leave a review" },
+    { status: 401 }
+  );
+}
+
+const payload = verifyToken(token);
+
 
     if (!payload || payload.role !== "user") {
       return NextResponse.json(

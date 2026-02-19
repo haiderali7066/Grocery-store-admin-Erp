@@ -14,6 +14,9 @@ import {
   Package,
   Truck,
   CheckCircle,
+  Star,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
 import { AuthProvider } from "@/components/auth/AuthProvider";
@@ -35,6 +38,7 @@ import {
 
 interface OrderItem {
   product: {
+    _id: string;
     name: string;
     images?: string[];
   } | null;
@@ -67,10 +71,23 @@ export default function OrderDetailPage() {
   const orderId = params.id as string;
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Refund dialog state
   const [showRefundDialog, setShowRefundDialog] = useState(false);
   const [refundReason, setRefundReason] = useState("defective");
   const [refundNotes, setRefundNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Review dialog state
+  const [showReviewDialog, setShowReviewDialog] = useState(false);
+  const [reviewingProduct, setReviewingProduct] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [reviewForm, setReviewForm] = useState({ rating: 5, comment: "" });
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewSuccess, setReviewSuccess] = useState("");
 
   useEffect(() => {
     const fetchOrder = async () => {
@@ -126,25 +143,98 @@ export default function OrderDetailPage() {
     }
   };
 
-  // Check if refund can be requested
+  // Review handlers
+  const openReviewDialog = (productId: string, productName: string) => {
+    setReviewingProduct({ id: productId, name: productName });
+    setReviewForm({ rating: 5, comment: "" });
+    setReviewError("");
+    setReviewSuccess("");
+    setShowReviewDialog(true);
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewingProduct) return;
+
+    setReviewError("");
+    setReviewSuccess("");
+
+    if (!reviewForm.comment.trim()) {
+      setReviewError("Please write a review comment");
+      return;
+    }
+
+    setReviewLoading(true);
+    try {
+     const res = await fetch("/api/products/reviews", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  credentials: "include", // 🔥 THIS IS REQUIRED
+  body: JSON.stringify({
+    productId: reviewingProduct.id,
+    rating: reviewForm.rating,
+    comment: reviewForm.comment.trim(),
+  }),
+});
+
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to submit review");
+      }
+
+      setReviewSuccess(
+        data.message ||
+          "Review submitted successfully! It will appear after admin approval.",
+      );
+      setTimeout(() => {
+        setShowReviewDialog(false);
+      }, 2000);
+    } catch (err: any) {
+      setReviewError(err.message);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const renderStars = (
+    rating: number,
+    interactive = false,
+    onClick?: (r: number) => void,
+  ) => (
+    <div className="flex gap-1 justify-center">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Star
+          key={i}
+          size={interactive ? 32 : 20}
+          className={`${
+            i < rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+          } ${
+            interactive
+              ? "cursor-pointer hover:scale-110 transition-transform"
+              : ""
+          }`}
+          onClick={() => interactive && onClick?.(i + 1)}
+        />
+      ))}
+    </div>
+  );
+
   const canRequestRefund = () => {
     if (!order) return false;
-    if (order.isPOS) return false; // No refunds for walk-in sales
+    if (order.isPOS) return false;
     if (order.orderStatus === "cancelled") return false;
-
-    // Allow refunds for delivered orders
-    if (order.orderStatus === "delivered") return true;
-
-    // Also allow for shipped orders (in transit)
-    if (order.orderStatus === "shipped") return true;
-
+    if (order.orderStatus === "delivered" || order.orderStatus === "shipped")
+      return true;
     return false;
   };
+
+  const canReview = order?.orderStatus === "delivered";
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "pending":
-        return <Package className="h-5 w-5" />;
       case "confirmed":
       case "processing":
         return <Package className="h-5 w-5" />;
@@ -163,7 +253,7 @@ export default function OrderDetailPage() {
         <div className="min-h-screen">
           <Navbar />
           <main className="p-6 text-center">
-            <div className="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
+            <Loader2 className="h-12 w-12 animate-spin text-green-700 mx-auto mb-4" />
             <p>Loading order details...</p>
           </main>
           <Footer />
@@ -187,7 +277,7 @@ export default function OrderDetailPage() {
       <div className="min-h-screen bg-gray-50">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Button variant="outline" asChild className="mb-4">
+          <Button variant="outline" asChild className="mb-4 rounded-xl">
             <Link href="/orders">
               <ArrowLeft className="h-4 w-4 mr-2" /> Back to Orders
             </Link>
@@ -198,7 +288,7 @@ export default function OrderDetailPage() {
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">
-                  Order {order.orderNumber}
+                  Order #{order.orderNumber}
                 </h1>
                 <p className="text-gray-600 mt-1">
                   Placed on {new Date(order.createdAt).toLocaleDateString()}
@@ -227,7 +317,7 @@ export default function OrderDetailPage() {
 
           {/* Refund Button */}
           {canRequestRefund() && (
-            <Card className="p-4 mb-6 bg-orange-50 border-orange-200">
+            <Card className="p-4 mb-6 bg-orange-50 border-orange-200 border">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-orange-900">
@@ -242,12 +332,12 @@ export default function OrderDetailPage() {
                   onOpenChange={setShowRefundDialog}
                 >
                   <DialogTrigger asChild>
-                    <Button className="bg-orange-600 hover:bg-orange-700">
+                    <Button className="bg-orange-600 hover:bg-orange-700 rounded-xl">
                       <RotateCcw className="h-4 w-4 mr-2" />
                       Request Refund
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-md">
+                  <DialogContent className="max-w-md rounded-2xl">
                     <DialogHeader>
                       <DialogTitle>Request Refund</DialogTitle>
                       <DialogDescription>
@@ -304,9 +394,9 @@ export default function OrderDetailPage() {
                         />
                       </div>
 
-                      <Card className="p-3 bg-blue-50 border-blue-200">
-                        <p className="text-xs text-blue-800">
-                          <strong>Refund Policy:</strong>
+                      <Card className="p-3 bg-blue-50 border-blue-200 border">
+                        <p className="text-xs text-blue-800 font-semibold">
+                          Refund Policy:
                         </p>
                         <ul className="text-xs text-blue-700 mt-2 space-y-1 list-disc list-inside">
                           <li>Rs 300 delivery charges will be deducted</li>
@@ -321,14 +411,14 @@ export default function OrderDetailPage() {
                         <Button
                           onClick={handleRefundRequest}
                           disabled={isSubmitting || !refundNotes.trim()}
-                          className="flex-1 bg-orange-600 hover:bg-orange-700"
+                          className="flex-1 bg-orange-600 hover:bg-orange-700 rounded-xl"
                         >
                           {isSubmitting ? "Submitting..." : "Submit Request"}
                         </Button>
                         <Button
                           onClick={() => setShowRefundDialog(false)}
                           variant="outline"
-                          className="flex-1"
+                          className="flex-1 rounded-xl"
                         >
                           Cancel
                         </Button>
@@ -340,37 +430,50 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Items */}
+          {/* Items with Review Buttons */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <h2 className="text-lg font-bold mb-4">Order Items</h2>
             <div className="space-y-3">
               {order.items.map((item, i) => (
                 <div
                   key={i}
-                  className="flex justify-between items-center border-b pb-3 last:border-0"
+                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl"
                 >
-                  <div className="flex items-center space-x-4">
-                    {item.product?.images?.[0] && (
-                      <img
-                        src={item.product.images[0]}
-                        alt={item.product.name}
-                        className="w-16 h-16 object-cover rounded-lg"
-                      />
-                    )}
-                    <div>
-                      <p className="font-semibold">
-                        {item.product?.name || "Product"}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Quantity: {item.quantity}
-                      </p>
-                    </div>
+                  {item.product?.images?.[0] && (
+                    <img
+                      src={item.product.images[0]}
+                      alt={item.product.name}
+                      className="w-16 h-16 object-cover rounded-lg"
+                    />
+                  )}
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900">
+                      {item.product?.name || "Product"}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Quantity: {item.quantity} × Rs.{" "}
+                      {item.price.toLocaleString()}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold">Rs. {item.subtotal}</p>
-                    <p className="text-xs text-gray-500">
-                      Rs. {item.price} each
+                    <p className="font-bold text-gray-900">
+                      Rs. {item.subtotal.toLocaleString()}
                     </p>
+                    {canReview && item.product?._id && (
+                      <Button
+                        onClick={() =>
+                          openReviewDialog(
+                            item.product!._id,
+                            item.product!.name,
+                          )
+                        }
+                        size="sm"
+                        className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1"
+                      >
+                        <Star className="h-3 w-3" />
+                        Write Review
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -379,24 +482,28 @@ export default function OrderDetailPage() {
 
           {/* Tracking Info */}
           {order.trackingNumber && (
-            <Card className="p-6 border-0 shadow-md mb-6 bg-blue-50">
+            <Card className="p-6 border-0 shadow-md mb-6 bg-blue-50 border-blue-200 border">
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <Truck className="h-5 w-5" />
                 Tracking Information
               </h2>
-              <div className="space-y-2">
+              <div className="space-y-2 text-sm">
                 <p>
                   <span className="text-gray-600 font-medium">
                     Tracking Number:{" "}
                   </span>
                   <span className="font-semibold">{order.trackingNumber}</span>
                 </p>
-                <p>
-                  <span className="text-gray-600 font-medium">Provider: </span>
-                  <span className="font-semibold">
-                    {order.trackingProvider}
-                  </span>
-                </p>
+                {order.trackingProvider && (
+                  <p>
+                    <span className="text-gray-600 font-medium">
+                      Provider:{" "}
+                    </span>
+                    <span className="font-semibold">
+                      {order.trackingProvider}
+                    </span>
+                  </p>
+                )}
                 {order.shippedDate && (
                   <p>
                     <span className="text-gray-600 font-medium">
@@ -420,7 +527,7 @@ export default function OrderDetailPage() {
                 {order.trackingURL && (
                   <Button
                     asChild
-                    className="mt-3 w-full bg-blue-600 hover:bg-blue-700"
+                    className="mt-3 w-full bg-blue-600 hover:bg-blue-700 rounded-xl"
                   >
                     <Link href={order.trackingURL} target="_blank">
                       <Truck className="h-4 w-4 mr-2" />
@@ -435,7 +542,7 @@ export default function OrderDetailPage() {
           {/* Shipping Address */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <h2 className="text-lg font-bold mb-4">Shipping Address</h2>
-            <div className="text-gray-700">
+            <div className="text-gray-700 text-sm space-y-1">
               <p>{order.shippingAddress?.street}</p>
               <p>{order.shippingAddress?.city}</p>
               <p>{order.shippingAddress?.province}</p>
@@ -449,13 +556,13 @@ export default function OrderDetailPage() {
           {/* Order Summary */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <h2 className="text-lg font-bold mb-4">Order Summary</h2>
-            <div className="space-y-2">
+            <div className="space-y-2 text-sm">
               <div className="flex justify-between text-gray-700">
                 <span>Subtotal</span>
                 <span>Rs. {order.subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-700">
-                <span>GST </span>
+                <span>GST</span>
                 <span>Rs. {order.gstAmount.toFixed(2)}</span>
               </div>
               <div className="border-t pt-2 flex justify-between font-bold text-lg text-green-700">
@@ -465,11 +572,99 @@ export default function OrderDetailPage() {
             </div>
             <Button
               onClick={downloadInvoice}
-              className="mt-4 w-full bg-green-700 hover:bg-green-800"
+              className="mt-4 w-full bg-green-700 hover:bg-green-800 rounded-xl"
             >
               <Download className="h-4 w-4 mr-2" /> Download Invoice
             </Button>
           </Card>
+
+          {/* Review Dialog */}
+          <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
+            <DialogContent className="rounded-2xl max-w-md">
+              <DialogHeader>
+                <DialogTitle>
+                  Review: {reviewingProduct?.name || "Product"}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmitReview} className="space-y-4 mt-2">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Your Rating
+                  </label>
+                  {renderStars(reviewForm.rating, true, (r) =>
+                    setReviewForm({ ...reviewForm, rating: r }),
+                  )}
+                  <p className="text-center text-xs text-gray-400 mt-2">
+                    {reviewForm.rating === 5
+                      ? "Excellent"
+                      : reviewForm.rating === 4
+                        ? "Good"
+                        : reviewForm.rating === 3
+                          ? "Average"
+                          : reviewForm.rating === 2
+                            ? "Poor"
+                            : "Very Poor"}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Your Review
+                  </label>
+                  <Textarea
+                    placeholder="Share your experience with this product…"
+                    value={reviewForm.comment}
+                    onChange={(e) =>
+                      setReviewForm({ ...reviewForm, comment: e.target.value })
+                    }
+                    className="resize-none"
+                    rows={4}
+                    required
+                  />
+                </div>
+
+                {reviewError && (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    {reviewError}
+                  </div>
+                )}
+
+                {reviewSuccess && (
+                  <div className="flex items-center gap-2 bg-green-50 border border-green-100 text-green-600 px-4 py-3 rounded-xl text-sm">
+                    <CheckCircle className="h-4 w-4 shrink-0" />
+                    {reviewSuccess}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    disabled={reviewLoading}
+                    className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl"
+                  >
+                    {reviewLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Submitting…
+                      </>
+                    ) : (
+                      "Submit Review"
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowReviewDialog(false)}
+                    className="flex-1 rounded-xl"
+                    disabled={reviewLoading}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </main>
         <Footer />
       </div>

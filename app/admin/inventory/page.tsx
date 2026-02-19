@@ -124,7 +124,7 @@ export default function InventoryPage() {
     catch { setInventory([]); } finally { setIsLoading(false); }
   };
   const fetchProducts = async () => {
-    try { const r = await fetch("/api/products"); const d = await r.json(); setProducts(d.products || []); } catch { /* silent */ }
+    try { const r = await fetch("/api/admin/products"); const d = await r.json(); setProducts(d.products || []); } catch { /* silent */ }
   };
   const fetchSuppliers = async () => {
     try { const r = await fetch("/api/admin/suppliers"); const d = await r.json(); setSuppliers(d.suppliers || []); } catch { /* silent */ }
