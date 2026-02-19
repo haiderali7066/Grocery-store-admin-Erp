@@ -1,7 +1,13 @@
 // app/api/admin/refunds/manual/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Refund, Product, Wallet, Transaction, InventoryBatch } from "@/lib/models/index";
+import {
+  Refund,
+  Product,
+  Wallet,
+  Transaction,
+  InventoryBatch,
+} from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
 
@@ -18,25 +24,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const body = await req.json();
-    const { 
-      orderNumber, 
-      reason, 
-      notes, 
-      items, 
-      paymentMethod,
-      orderType 
-    } = body;
+    const { orderNumber, reason, notes, items, paymentMethod, orderType } =
+      body;
 
     if (!orderNumber)
       return NextResponse.json(
         { error: "orderNumber is required" },
-        { status: 400 }
+        { status: 400 },
       );
 
     if (!Array.isArray(items) || items.length === 0)
       return NextResponse.json(
         { error: "At least one item is required" },
-        { status: 400 }
+        { status: 400 },
       );
 
     const session = await mongoose.startSession();
@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
         if (!item.name || !item.returnQty || item.returnQty <= 0)
           throw new Error(`Invalid item: ${JSON.stringify(item)}`);
 
-        const lineTotal = (parseFloat(item.unitPrice) || 0) * parseInt(item.returnQty);
+        const lineTotal =
+          (parseFloat(item.unitPrice) || 0) * parseInt(item.returnQty);
         totalRefundAmount += lineTotal;
 
         returnItems.push({
@@ -70,8 +71,10 @@ export async function POST(req: NextRequest) {
       // Restock items
       for (const item of returnItems) {
         if (item.restock && item.productId) {
-          const product = await Product.findById(item.productId).session(session);
-          
+          const product = await Product.findById(item.productId).session(
+            session,
+          );
+
           if (product) {
             // Add stock back to product
             product.stock += item.returnQty;
@@ -89,10 +92,11 @@ export async function POST(req: NextRequest) {
               taxType: "percent",
               freightPerUnit: 0,
               sellingPrice: product.retailPrice || costPrice * 1.2,
-              profitPerUnit: (product.retailPrice || costPrice * 1.2) - costPrice,
+              profitPerUnit:
+                (product.retailPrice || costPrice * 1.2) - costPrice,
               status: "active",
             });
-            
+
             await batch.save({ session });
           }
         }
@@ -118,7 +122,8 @@ export async function POST(req: NextRequest) {
         card: "card",
       };
 
-      const walletField = walletFieldMap[paymentMethod?.toLowerCase()] || "cash";
+      const walletField =
+        walletFieldMap[paymentMethod?.toLowerCase()] || "cash";
       const currentBalance = (wallet as any)[walletField] || 0;
 
       (wallet as any)[walletField] = currentBalance - totalRefundAmount;
@@ -149,15 +154,22 @@ export async function POST(req: NextRequest) {
             type: "expense",
             category: "Refund",
             amount: totalRefundAmount,
-            source: walletField === "easyPaisa" ? "easypaisa" : walletField === "jazzCash" ? "jazzcash" : walletField,
+            source:
+              walletField === "easyPaisa"
+                ? "easypaisa"
+                : walletField === "jazzCash"
+                  ? "jazzcash"
+                  : walletField,
             reference: refund._id,
             referenceModel: "Refund",
             description: `Manual return for ${orderNumber} (${items.length} items)`,
-            notes: notes || `Refunded Rs. ${totalRefundAmount.toLocaleString()} via ${paymentMethod}. Items restocked.`,
+            notes:
+              notes ||
+              `Refunded Rs. ${totalRefundAmount.toLocaleString()} via ${paymentMethod}. Items restocked.`,
             createdBy: payload.userId,
           },
         ],
-        { session }
+        { session },
       );
 
       await session.commitTransaction();
@@ -165,12 +177,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: true,
-          message: `Return processed successfully! Rs. ${totalRefundAmount.toLocaleString()} refunded and ${returnItems.filter(i => i.restock).length} items restocked.`,
+          message: `Return processed successfully! Rs. ${totalRefundAmount.toLocaleString()} refunded and ${returnItems.filter((i) => i.restock).length} items restocked.`,
           refund,
           refundAmount: totalRefundAmount,
           walletBalance: (wallet as any)[walletField],
         },
-        { status: 201 }
+        { status: 201 },
       );
     } catch (error) {
       await session.abortTransaction();
@@ -181,10 +193,13 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Manual return error:", error);
     return NextResponse.json(
-      { 
-        error: error instanceof Error ? error.message : "Failed to create manual return" 
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create manual return",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
