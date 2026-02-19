@@ -193,15 +193,39 @@ function OrdersContent() {
     }
   };
 
-  const handleApprove = (orderId: string) => {
+  // app/admin/orders/page.tsx - Update the handleApprove function
+
+  const handleApprove = async (orderId: string) => {
     const code = trackingInputs[orderId]?.code || `TRK-${Date.now()}`;
     const courier = trackingInputs[orderId]?.courier || "Local Courier";
-    updateOrder(orderId, {
-      paymentStatus: "verified",
-      orderStatus: "processing",
-      trackingNumber: code,
-      trackingProvider: courier,
-    });
+
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentStatus: "verified",
+          orderStatus: "processing",
+          trackingNumber: code,
+          trackingProvider: courier,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Update failed");
+
+      const data = await res.json();
+
+      // Show success message
+      alert(
+        `✅ Order approved successfully!\n\n💰 Payment added to wallet\n📦 Order moved to processing`,
+      );
+
+      setUpdatedOrderId(orderId);
+      fetchOrders();
+      setTimeout(() => setUpdatedOrderId(null), 1500);
+    } catch (err: any) {
+      alert("Update failed: " + err.message);
+    }
   };
 
   const handleReject = (orderId: string) => {

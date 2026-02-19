@@ -17,6 +17,7 @@ import {
   Star,
   Loader2,
   AlertCircle,
+  Banknote,
 } from "lucide-react";
 import Link from "next/link";
 import { AuthProvider } from "@/components/auth/AuthProvider";
@@ -54,7 +55,9 @@ interface OrderDetail {
   shippingAddress: any;
   subtotal: number;
   gstAmount: number;
+  shippingCost?: number;
   total: number;
+  paymentMethod: string;
   paymentStatus: string;
   orderStatus: string;
   isPOS: boolean;
@@ -72,13 +75,11 @@ export default function OrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Refund dialog state
   const [showRefundDialog, setShowRefundDialog] = useState(false);
   const [refundReason, setRefundReason] = useState("defective");
   const [refundNotes, setRefundNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Review dialog state
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [reviewingProduct, setReviewingProduct] = useState<{
     id: string;
@@ -105,7 +106,9 @@ export default function OrderDetailPage() {
     if (orderId) fetchOrder();
   }, [orderId]);
 
-  const downloadInvoice = () => window.print();
+  const downloadInvoice = () => {
+    window.print();
+  };
 
   const handleRefundRequest = async () => {
     if (!order) return;
@@ -143,7 +146,6 @@ export default function OrderDetailPage() {
     }
   };
 
-  // Review handlers
   const openReviewDialog = (productId: string, productName: string) => {
     setReviewingProduct({ id: productId, name: productName });
     setReviewForm({ rating: 5, comment: "" });
@@ -229,6 +231,7 @@ export default function OrderDetailPage() {
   };
 
   const canReview = order?.orderStatus === "delivered";
+  const isCOD = order?.paymentMethod === "cod";
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -275,7 +278,11 @@ export default function OrderDetailPage() {
       <div className="min-h-screen bg-gray-50">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Button variant="outline" asChild className="mb-4 rounded-xl">
+          <Button
+            variant="outline"
+            asChild
+            className="mb-4 rounded-xl print:hidden"
+          >
             <Link href="/orders">
               <ArrowLeft className="h-4 w-4 mr-2" /> Back to Orders
             </Link>
@@ -315,7 +322,7 @@ export default function OrderDetailPage() {
 
           {/* Refund Button */}
           {canRequestRefund() && (
-            <Card className="p-4 mb-6 bg-orange-50 border-orange-200 border">
+            <Card className="p-4 mb-6 bg-orange-50 border-orange-200 border print:hidden">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <p className="font-semibold text-orange-900">
@@ -465,7 +472,7 @@ export default function OrderDetailPage() {
                           )
                         }
                         size="sm"
-                        className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs"
+                        className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs print:hidden"
                       >
                         <Star className="h-3 w-3" />
                         Review
@@ -524,7 +531,7 @@ export default function OrderDetailPage() {
                 {order.trackingURL && (
                   <Button
                     asChild
-                    className="mt-3 w-full bg-blue-600 hover:bg-blue-700 rounded-xl"
+                    className="mt-3 w-full bg-blue-600 hover:bg-blue-700 rounded-xl print:hidden"
                   >
                     <Link href={order.trackingURL} target="_blank">
                       <Truck className="h-4 w-4 mr-2" />
@@ -550,26 +557,54 @@ export default function OrderDetailPage() {
             </div>
           </Card>
 
-          {/* Order Summary */}
+          {/* Order Summary - MATCHING CHECKOUT */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <h2 className="text-lg font-bold mb-4">Order Summary</h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-gray-700">
+            <div className="space-y-3">
+              <div className="flex justify-between text-gray-700 font-medium">
                 <span>Subtotal</span>
                 <span>Rs. {order.subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-700">
-                <span>GST</span>
+              <div className="flex justify-between text-gray-700 font-medium">
+                <span>Tax </span>
                 <span>Rs. {order.gstAmount.toFixed(2)}</span>
               </div>
-              <div className="border-t pt-2 flex justify-between font-bold text-lg text-green-700">
-                <span>Total</span>
-                <span>Rs. {order.total.toFixed(2)}</span>
+              <div className="flex justify-between text-gray-700 font-medium">
+                <span className="flex items-center gap-1">
+                  <Truck className="h-4 w-4" /> Shipping
+                </span>
+                {(order.shippingCost ?? 0) === 0 ? (
+                  <span className="text-green-600 font-bold">Free</span>
+                ) : (
+                  <span>Rs. {(order.shippingCost ?? 0).toFixed(2)}</span>
+                )}
+              </div>
+
+              {isCOD && (
+                <div className="flex justify-between text-orange-600 font-medium bg-orange-50 -mx-2 px-2 py-2 rounded-lg">
+                  <span className="flex items-center gap-2">
+                    <Banknote className="h-4 w-4" /> Payment Method
+                  </span>
+                  <span className="font-bold">Cash on Delivery</span>
+                </div>
+              )}
+
+              <div className="flex justify-between pt-3 border-t border-gray-200">
+                <span className="text-lg font-black text-gray-900">Total</span>
+                <div className="text-right">
+                  <p className="text-2xl font-black text-green-700">
+                    Rs. {order.total.toFixed(2)}
+                  </p>
+                  <p className="text-[10px] text-gray-400 uppercase font-black mt-1">
+                    {isCOD ? "PAY ON DELIVERY" : "PKR"}
+                  </p>
+                </div>
               </div>
             </div>
+
             <Button
               onClick={downloadInvoice}
-              className="mt-4 w-full bg-green-700 hover:bg-green-800 rounded-xl"
+              className="mt-6 w-full bg-green-700 hover:bg-green-800 rounded-xl print:hidden"
             >
               <Download className="h-4 w-4 mr-2" /> Download Invoice
             </Button>
@@ -665,6 +700,28 @@ export default function OrderDetailPage() {
         </main>
         <Footer />
       </div>
+
+      {/* Print Styles */}
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
+          main,
+          main * {
+            visibility: visible;
+          }
+          main {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+        }
+      `}</style>
     </AuthProvider>
   );
 }

@@ -1,6 +1,6 @@
 // app/api/admin/orders/[id]/route.ts
 import { connectDB } from "@/lib/db";
-import { Order } from "@/lib/models";
+import { Order, Wallet, Transaction, InventoryBatch } from "@/lib/models";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import { restockItems } from "@/lib/services/stockService";
@@ -10,6 +10,41 @@ const isValidObjectId = (id: string) => mongoose.Types.ObjectId.isValid(id);
 
 // Statuses that should trigger a restock
 const RESTOCK_STATUSES = ["cancelled", "failed"];
+
+// Calculate profit for the order based on FIFO cost
+async function calculateOrderProfit(order: any): Promise<number> {
+  let totalProfit = 0;
+
+  for (const item of order.items) {
+    if (!item.product) continue;
+
+    const quantity = item.quantity;
+    const sellingPrice = item.price;
+    let remainingQty = quantity;
+    let totalCost = 0;
+
+    // Get batches in FIFO order to calculate actual cost
+    const batches = await InventoryBatch.find({
+      product: item.product,
+      status: { $in: ["active", "partial", "finished"] },
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    for (const batch of batches) {
+      if (remainingQty <= 0) break;
+
+      const qtyFromBatch = Math.min(remainingQty, batch.quantity);
+      totalCost += qtyFromBatch * (batch.buyingRate || 0);
+      remainingQty -= qtyFromBatch;
+    }
+
+    const itemProfit = sellingPrice * quantity - totalCost;
+    totalProfit += itemProfit;
+  }
+
+  return totalProfit;
+}
 
 export async function GET(req: NextRequest, context: { params: any }) {
   try {
@@ -85,7 +120,9 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
     const body = await req.json();
 
     // Get the current order before updating
-    const existingOrder = (await Order.findById(orderId).lean()) as any;
+    const existingOrder = (await Order.findById(orderId)
+      .populate("items.product")
+      .lean()) as any;
     if (!existingOrder) {
       return NextResponse.json({ message: "Order not found" }, { status: 404 });
     }
@@ -96,10 +133,6 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
     const newPaymentStatus = body.paymentStatus;
 
     // ── Restock Logic ──────────────────────────────────────────────────────
-    // Restock if:
-    // 1. Order status changes TO cancelled
-    // 2. Payment status changes TO failed (rejected)
-    // Don't double-restock if already restocked
     const isAlreadyRestocked =
       RESTOCK_STATUSES.includes(previousOrderStatus) ||
       RESTOCK_STATUSES.includes(previousPaymentStatus);
@@ -124,6 +157,76 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
       );
     }
 
+    // ── Add to Wallet When Approving (paymentStatus -> verified) ──────────
+    const isBeingApproved =
+      newPaymentStatus === "verified" && previousPaymentStatus === "pending";
+
+    if (isBeingApproved) {
+      console.log(`💰 Approving order ${orderId} - Adding to wallet`);
+
+      // Calculate profit
+      const profit = await calculateOrderProfit(existingOrder);
+
+      // Get wallet
+      let wallet = await Wallet.findOne();
+      if (!wallet) {
+        wallet = await Wallet.create({
+          cash: 0,
+          bank: 0,
+          easyPaisa: 0,
+          jazzCash: 0,
+          card: 0,
+        });
+      }
+
+      // Determine which wallet to credit based on payment method
+      const paymentMethod =
+        existingOrder.paymentMethod?.toLowerCase() || "bank";
+      const orderTotal = existingOrder.total || 0;
+      const shippingCost = existingOrder.shippingCost || 0;
+      const amountForWallet = orderTotal - shippingCost; // Exclude shipping
+
+      // Map payment method to wallet field
+      const walletFieldMap: Record<string, keyof typeof wallet> = {
+        bank: "bank",
+        easypaisa: "easyPaisa",
+        jazzcash: "jazzCash",
+        card: "card",
+      };
+
+      const walletField = walletFieldMap[paymentMethod] || "bank";
+
+      // Add to appropriate wallet
+      (wallet as any)[walletField] += amountForWallet;
+      wallet.lastUpdated = new Date();
+      await wallet.save();
+
+      // Create transaction record
+      await Transaction.create({
+        type: "income",
+        category: "Online Order Payment",
+        amount: amountForWallet,
+        source:
+          walletField === "easyPaisa"
+            ? "easypaisa"
+            : walletField === "jazzCash"
+              ? "jazzcash"
+              : walletField,
+        reference: existingOrder._id,
+        referenceModel: "Order",
+        description: `Payment verified for Order #${existingOrder.orderNumber} (Total: Rs. ${orderTotal}, Shipping: Rs. ${shippingCost}, Net: Rs. ${amountForWallet}, Profit: Rs. ${profit.toFixed(2)})`,
+        notes: `Approved online payment via ${paymentMethod.toUpperCase()}. Delivery charges (Rs. ${shippingCost}) excluded from wallet.`,
+        createdBy: payload.userId,
+      });
+
+      // Update order with profit
+      body.profit = profit;
+
+      console.log(
+        `✅ Added Rs. ${amountForWallet} to ${walletField} wallet (Profit: Rs. ${profit})`,
+      );
+    }
+
     // Update the order
     const order = await Order.findByIdAndUpdate(
       orderId,
@@ -131,6 +234,10 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
       { new: true },
     )
       .populate("user", "name email phone")
+      .populate(
+        "items.product",
+        "name retailPrice unitSize unitType discount images",
+      )
       .lean();
 
     return NextResponse.json({ order }, { status: 200 });
@@ -167,7 +274,6 @@ export async function DELETE(req: NextRequest, { params }: { params: any }) {
     }
 
     // ── Restock on Delete ──────────────────────────────────────────────────
-    // Only restock if order was NOT already cancelled/failed (already restocked)
     const alreadyRestocked =
       RESTOCK_STATUSES.includes(order.orderStatus) ||
       RESTOCK_STATUSES.includes(order.paymentStatus);

@@ -570,6 +570,8 @@ export const WalletSchema = new Schema(
 // =========================
 // Transaction Schema
 // =========================
+// lib/models/index.ts - Update TransactionSchema
+
 export const TransactionSchema = new Schema(
   {
     type: {
@@ -588,14 +590,16 @@ export const TransactionSchema = new Schema(
     reference: { type: Schema.Types.ObjectId, refPath: "referenceModel" },
     referenceModel: {
       type: String,
-      enum: ["Order", "POSSale", "Purchase", "Investment", "Refund", "Expense"],
+      enum: ["Order", "POSSale", "Purchase", "Investment", "Refund", "Expense", "Supplier"], // ✅ ADD "Supplier" HERE
     },
     description: String,
     notes: String,
     createdBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
+
+
 
 // =========================
 // SaleConfig Schema

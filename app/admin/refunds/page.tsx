@@ -1,3 +1,4 @@
+// app/admin/refunds/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -21,8 +22,8 @@ import {
   Package,
   ShoppingBag,
   TrendingDown,
-  Trash2,
   RotateCcw,
+  Search,
   AlertCircle,
 } from "lucide-react";
 import {
@@ -34,15 +35,6 @@ import {
 } from "@/components/ui/dialog";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface ReturnItem {
-  productId?: string;
-  name: string;
-  returnQty: number;
-  maxQty: number;
-  unitPrice: number;
-  restock: boolean;
-}
 
 interface RefundRequest {
   _id: string;
@@ -89,6 +81,7 @@ function StatusBadge({ status }: { status: string }) {
     </span>
   );
 }
+
 function TypeBadge({ type }: { type: string }) {
   return type === "online" ? (
     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
@@ -102,16 +95,6 @@ function TypeBadge({ type }: { type: string }) {
     </span>
   );
 }
-
-// ── Empty return item ─────────────────────────────────────────────────────────
-
-const emptyItem = (): ReturnItem => ({
-  name: "",
-  returnQty: 1,
-  maxQty: 99,
-  unitPrice: 0,
-  restock: true,
-});
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -132,17 +115,14 @@ export default function RefundsPage() {
   const [approvalAmount, setApprovalAmount] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Manual return dialog
-  const [showManualReturn, setShowManualReturn] = useState(false);
-  const [manualForm, setManualForm] = useState({
-    orderNumber: "",
-    reason: "defective",
-    notes: "",
-  });
-  // Mode: "whole" = whole-bill amount, "items" = item picker
-  const [returnMode, setReturnMode] = useState<"whole" | "items">("items");
-  const [wholeBillAmount, setWholeBillAmount] = useState("");
-  const [returnItems, setReturnItems] = useState<ReturnItem[]>([emptyItem()]);
+  // Easy Return dialog
+  const [showEasyReturn, setShowEasyReturn] = useState(false);
+  const [searchOrderNumber, setSearchOrderNumber] = useState("");
+  const [searchedOrder, setSearchedOrder] = useState<any>(null);
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [isSearching, setIsSearching] = useState(false);
+  const [returnReason, setReturnReason] = useState("customer_request");
+  const [returnNotes, setReturnNotes] = useState("");
 
   useEffect(() => {
     fetchRefunds();
@@ -189,8 +169,117 @@ export default function RefundsPage() {
     setFilteredRefunds(f);
   }, [refunds, statusFilter, typeFilter, searchTerm]);
 
-  // ── Approve / Reject ───────────────────────────────────────────────────────
+  // ── Search Order ───────────────────────────────────────────────────────────
+  const handleSearchOrder = async () => {
+    if (!searchOrderNumber.trim()) {
+      alert("Please enter an order number");
+      return;
+    }
 
+    setIsSearching(true);
+    try {
+      const res = await fetch(
+        `/api/admin/orders/search?orderNumber=${encodeURIComponent(searchOrderNumber.trim())}`,
+      );
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Order not found");
+      }
+
+      const data = await res.json();
+      setSearchedOrder(data.order);
+      setSelectedItems(new Set());
+    } catch (err: any) {
+      alert(err.message || "Failed to find order");
+      setSearchedOrder(null);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // ── Toggle Item Selection ──────────────────────────────────────────────────
+  const toggleItemSelection = (index: number) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  // ── Calculate Selected Total ───────────────────────────────────────────────
+  const selectedTotal =
+    searchedOrder?.items
+      .filter((_: any, i: number) => selectedItems.has(i))
+      .reduce((sum: number, item: any) => sum + item.subtotal, 0) || 0;
+
+  // ── Handle Easy Return ─────────────────────────────────────────────────────
+  const handleEasyReturn = async () => {
+    if (!searchedOrder) {
+      alert("Please search for an order first");
+      return;
+    }
+
+    if (selectedItems.size === 0) {
+      alert("Please select at least one item to return");
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const selectedItemsData = searchedOrder.items
+        .filter((_: any, i: number) => selectedItems.has(i))
+        .map((item: any) => ({
+          productId: item.productId,
+          name: item.name,
+          returnQty: item.quantity,
+          unitPrice: item.price,
+          restock: true,
+        }));
+
+      const res = await fetch("/api/admin/refunds/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderNumber: searchedOrder.orderNumber,
+          reason: returnReason,
+          notes: returnNotes,
+          items: selectedItemsData,
+          paymentMethod: searchedOrder.paymentMethod || "cash",
+          orderType: searchedOrder.shippingCost > 0 ? "online" : "pos",
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert(
+          `✅ ${data.message}\n\n💰 Refunded: Rs. ${data.refundAmount.toLocaleString()}\n💵 Wallet Balance: Rs. ${data.walletBalance.toLocaleString()}`,
+        );
+        resetEasyReturn();
+        fetchRefunds();
+      } else {
+        alert(`Error: ${data.error || "Failed to process return"}`);
+      }
+    } catch (err) {
+      alert("Error processing return");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const resetEasyReturn = () => {
+    setShowEasyReturn(false);
+    setSearchedOrder(null);
+    setSearchOrderNumber("");
+    setSelectedItems(new Set());
+    setReturnReason("customer_request");
+    setReturnNotes("");
+  };
+
+  // ── Approve / Reject (for online returns) ──────────────────────────────────
   const handleApprove = async () => {
     if (!selectedRefund) return;
     setActionLoading(true);
@@ -248,97 +337,6 @@ export default function RefundsPage() {
     }
   };
 
-  // ── Item-picker helpers ────────────────────────────────────────────────────
-
-  const addItem = () => setReturnItems((prev) => [...prev, emptyItem()]);
-
-  const removeItem = (i: number) =>
-    setReturnItems((prev) =>
-      prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev,
-    );
-
-  const updateItem = (i: number, field: keyof ReturnItem, value: any) =>
-    setReturnItems((prev) =>
-      prev.map((item, idx) => (idx === i ? { ...item, [field]: value } : item)),
-    );
-
-  const itemsTotal = returnItems.reduce(
-    (sum, item) => sum + item.unitPrice * item.returnQty,
-    0,
-  );
-
-  const resetManualForm = () => {
-    setManualForm({ orderNumber: "", reason: "defective", notes: "" });
-    setReturnMode("items");
-    setWholeBillAmount("");
-    setReturnItems([emptyItem()]);
-  };
-
-  // ── Manual return submit ───────────────────────────────────────────────────
-
-  const handleManualReturn = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualForm.orderNumber) {
-      alert("Order/Sale number is required");
-      return;
-    }
-
-    if (returnMode === "whole") {
-      if (!wholeBillAmount || parseFloat(wholeBillAmount) <= 0) {
-        alert("Enter a valid return amount");
-        return;
-      }
-    } else {
-      const valid = returnItems.filter((i) => i.name.trim() && i.returnQty > 0);
-      if (!valid.length) {
-        alert("Add at least one valid item");
-        return;
-      }
-    }
-
-    setActionLoading(true);
-    try {
-      const payload: any = {
-        orderNumber: manualForm.orderNumber,
-        reason: manualForm.reason,
-        notes: manualForm.notes,
-      };
-
-      if (returnMode === "whole") {
-        payload.amount = parseFloat(wholeBillAmount);
-      } else {
-        payload.items = returnItems
-          .filter((i) => i.name.trim() && i.returnQty > 0)
-          .map((i) => ({
-            productId: i.productId || undefined,
-            name: i.name,
-            returnQty: i.returnQty,
-            unitPrice: i.unitPrice,
-            restock: i.restock,
-          }));
-      }
-
-      const res = await fetch("/api/admin/refunds/manual", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        alert(data.message || "Return created successfully!");
-        setShowManualReturn(false);
-        resetManualForm();
-        fetchRefunds();
-      } else {
-        alert(`Error: ${data.error || "Failed to create return"}`);
-      }
-    } catch {
-      alert("Error creating return");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   if (loading)
     return (
       <div className="p-6 text-center">
@@ -361,300 +359,222 @@ export default function RefundsPage() {
             </p>
           </div>
 
-          {/* Manual return dialog */}
-          <Dialog
-            open={showManualReturn}
-            onOpenChange={(v) => {
-              setShowManualReturn(v);
-              if (!v) resetManualForm();
-            }}
-          >
+          {/* Easy Return Dialog */}
+          <Dialog open={showEasyReturn} onOpenChange={setShowEasyReturn}>
             <DialogTrigger asChild>
               <Button className="bg-orange-600 hover:bg-orange-700">
-                <Plus className="h-4 w-4 mr-2" /> POS Manual Return
+                <Plus className="h-4 w-4 mr-2" /> Easy POS Return
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+            <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <RotateCcw className="h-5 w-5 text-orange-600" /> Create
-                  Manual POS Return
+                  <RotateCcw className="h-5 w-5 text-orange-600" /> Easy Return
+                  - Search & Select Items
                 </DialogTitle>
               </DialogHeader>
 
-              <form onSubmit={handleManualReturn} className="space-y-5 mt-2">
-                {/* Order number + reason */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Sale / Order # *
-                    </label>
-                    <Input
-                      value={manualForm.orderNumber}
-                      onChange={(e) =>
-                        setManualForm({
-                          ...manualForm,
-                          orderNumber: e.target.value,
-                        })
-                      }
-                      placeholder="SALE-000123"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Reason *
-                    </label>
-                    <select
-                      value={manualForm.reason}
-                      onChange={(e) =>
-                        setManualForm({ ...manualForm, reason: e.target.value })
-                      }
-                      className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
-                    >
-                      <option value="defective">Defective Product</option>
-                      <option value="wrong_item">Wrong Item</option>
-                      <option value="expired">Expired</option>
-                      <option value="customer_request">Customer Request</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Return mode toggle */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Return Type
+              <div className="space-y-6 mt-4">
+                {/* Step 1: Search Order */}
+                <Card className="p-4 bg-blue-50 border-blue-200">
+                  <label className="block text-sm font-bold mb-2">
+                    Step 1: Find Order
                   </label>
                   <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setReturnMode("items")}
-                      className={`flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-semibold transition-all ${returnMode === "items" ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}
+                    <Input
+                      value={searchOrderNumber}
+                      onChange={(e) => setSearchOrderNumber(e.target.value)}
+                      placeholder="Enter Order Number (e.g., ORD-123 or SALE-456)"
+                      className="flex-1"
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && handleSearchOrder()
+                      }
+                    />
+                    <Button
+                      onClick={handleSearchOrder}
+                      disabled={isSearching || !searchOrderNumber.trim()}
+                      className="bg-blue-600 hover:bg-blue-700"
                     >
-                      📦 Item-by-Item Return
-                      <p className="text-[10px] font-normal mt-0.5 opacity-70">
-                        Pick specific items + qty
-                      </p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setReturnMode("whole")}
-                      className={`flex-1 py-2.5 px-4 rounded-xl border-2 text-sm font-semibold transition-all ${returnMode === "whole" ? "border-orange-500 bg-orange-50 text-orange-700" : "border-gray-200 text-gray-500 hover:border-gray-300"}`}
-                    >
-                      💵 Whole-Bill Amount
-                      <p className="text-[10px] font-normal mt-0.5 opacity-70">
-                        Enter total return amount
-                      </p>
-                    </button>
+                      <Search className="h-4 w-4 mr-2" />
+                      {isSearching ? "Searching..." : "Search"}
+                    </Button>
                   </div>
-                </div>
+                </Card>
 
-                {/* ── ITEM PICKER ── */}
-                {returnMode === "items" && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-semibold text-gray-700">
-                        Return Items
-                      </label>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={addItem}
-                        className="text-orange-600 border-orange-300 hover:bg-orange-50"
-                      >
-                        <Plus className="h-3.5 w-3.5 mr-1" /> Add Item
-                      </Button>
-                    </div>
-
-                    {returnItems.map((item, i) => (
-                      <Card
-                        key={i}
-                        className="p-3 border border-gray-200 bg-gray-50"
-                      >
-                        <div className="grid grid-cols-12 gap-2 items-end">
-                          {/* Item name */}
-                          <div className="col-span-12 sm:col-span-4">
-                            <label className="text-[10px] uppercase font-bold text-gray-400">
-                              Item Name *
-                            </label>
-                            <Input
-                              value={item.name}
-                              onChange={(e) =>
-                                updateItem(i, "name", e.target.value)
-                              }
-                              placeholder="e.g. Rice 5kg"
-                              className="mt-1 h-8 text-sm"
-                              required
-                            />
-                          </div>
-
-                          {/* Qty */}
-                          <div className="col-span-4 sm:col-span-2">
-                            <label className="text-[10px] uppercase font-bold text-gray-400">
-                              Return Qty *
-                            </label>
-                            <Input
-                              type="number"
-                              min="1"
-                              max={item.maxQty}
-                              value={item.returnQty}
-                              onChange={(e) =>
-                                updateItem(
-                                  i,
-                                  "returnQty",
-                                  Math.max(1, parseInt(e.target.value) || 1),
-                                )
-                              }
-                              className="mt-1 h-8 text-sm"
-                            />
-                          </div>
-
-                          {/* Unit price */}
-                          <div className="col-span-4 sm:col-span-3">
-                            <label className="text-[10px] uppercase font-bold text-gray-400">
-                              Unit Price (Rs)
-                            </label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={item.unitPrice}
-                              onChange={(e) =>
-                                updateItem(
-                                  i,
-                                  "unitPrice",
-                                  parseFloat(e.target.value) || 0,
-                                )
-                              }
-                              className="mt-1 h-8 text-sm"
-                            />
-                          </div>
-
-                          {/* Line total */}
-                          <div className="col-span-4 sm:col-span-2">
-                            <label className="text-[10px] uppercase font-bold text-gray-400">
-                              Line Total
-                            </label>
-                            <div className="mt-1 h-8 flex items-center px-2 bg-white border rounded-md text-sm font-bold text-green-700">
-                              Rs {fmt(item.unitPrice * item.returnQty)}
-                            </div>
-                          </div>
-
-                          {/* Delete */}
-                          <div className="col-span-4 sm:col-span-1 flex items-end justify-end pb-0.5">
-                            <button
-                              type="button"
-                              onClick={() => removeItem(i)}
-                              className="text-gray-300 hover:text-red-500 transition-colors p-1"
-                              title="Remove"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
+                {/* Step 2: Display Order & Select Items */}
+                {searchedOrder && (
+                  <>
+                    <Card className="p-4 bg-green-50 border-green-200">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="text-lg font-bold text-green-900">
+                            Order Found: {searchedOrder.orderNumber}
+                          </h3>
+                          <p className="text-sm text-green-700">
+                            Total: Rs. {searchedOrder.total.toLocaleString()} |
+                            Payment:{" "}
+                            {searchedOrder.paymentMethod?.toUpperCase()} | Date:{" "}
+                            {new Date(
+                              searchedOrder.createdAt,
+                            ).toLocaleDateString()}
+                          </p>
                         </div>
-
-                        {/* Restock toggle */}
-                        <div className="mt-2.5 flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            id={`restock-${i}`}
-                            checked={item.restock}
-                            onChange={(e) =>
-                              updateItem(i, "restock", e.target.checked)
-                            }
-                            className="w-4 h-4 accent-orange-500"
-                          />
-                          <label
-                            htmlFor={`restock-${i}`}
-                            className="text-xs font-semibold text-gray-600 cursor-pointer"
-                          >
-                            Add back to inventory stock
-                          </label>
-                          {item.restock && (
-                            <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
-                              +{item.returnQty} stock
-                            </span>
-                          )}
-                        </div>
-                      </Card>
-                    ))}
-
-                    {/* Items total */}
-                    {returnItems.some((i) => i.unitPrice > 0) && (
-                      <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
-                        <span className="text-sm font-bold text-gray-700">
-                          Total Return Amount:
-                        </span>
-                        <span className="text-xl font-black text-orange-700">
-                          Rs {fmt(itemsTotal)}
-                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSearchedOrder(null);
+                            setSelectedItems(new Set());
+                          }}
+                        >
+                          Clear
+                        </Button>
                       </div>
-                    )}
-                  </div>
+
+                      <label className="block text-sm font-bold mb-2 text-green-900">
+                        Step 2: Select Items to Return
+                      </label>
+
+                      <div className="space-y-2">
+                        {searchedOrder.items.map((item: any, index: number) => (
+                          <label
+                            key={index}
+                            className={`flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                              selectedItems.has(index)
+                                ? "border-orange-500 bg-orange-50"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedItems.has(index)}
+                              onChange={() => toggleItemSelection(index)}
+                              className="w-5 h-5 accent-orange-500"
+                            />
+                            <div className="flex-1 grid grid-cols-12 gap-2 items-center">
+                              <div className="col-span-5">
+                                <p className="font-semibold">{item.name}</p>
+                              </div>
+                              <div className="col-span-2 text-center">
+                                <p className="text-sm text-gray-600">
+                                  Qty: {item.quantity}
+                                </p>
+                              </div>
+                              <div className="col-span-2 text-center">
+                                <p className="text-sm text-gray-600">
+                                  @ Rs. {item.price.toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="col-span-3 text-right">
+                                <p className="font-bold text-green-700">
+                                  Rs. {item.subtotal.toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+
+                      {/* Selected total */}
+                      {selectedItems.size > 0 && (
+                        <div className="mt-4 pt-4 border-t border-green-300">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-green-900">
+                              Selected {selectedItems.size} item(s) to return:
+                            </span>
+                            <span className="text-2xl font-black text-orange-700">
+                              Rs. {selectedTotal.toLocaleString()}
+                            </span>
+                          </div>
+                          <p className="text-xs text-green-700 mt-1">
+                            ✓ Stock will be automatically added back to
+                            inventory
+                          </p>
+                        </div>
+                      )}
+                    </Card>
+
+                    {/* Step 3: Return Details */}
+                    <Card className="p-4 bg-gray-50">
+                      <label className="block text-sm font-bold mb-3">
+                        Step 3: Return Details
+                      </label>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-medium mb-1">
+                            Reason *
+                          </label>
+                          <select
+                            value={returnReason}
+                            onChange={(e) => setReturnReason(e.target.value)}
+                            className="w-full px-3 py-2 border rounded-lg text-sm"
+                          >
+                            <option value="defective">Defective Product</option>
+                            <option value="wrong_item">Wrong Item</option>
+                            <option value="expired">Expired</option>
+                            <option value="customer_request">
+                              Customer Request
+                            </option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium mb-1">
+                            Payment Method
+                          </label>
+                          <Input
+                            value={
+                              searchedOrder.paymentMethod?.toUpperCase() ||
+                              "CASH"
+                            }
+                            disabled
+                            className="bg-gray-200"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3">
+                        <label className="block text-xs font-medium mb-1">
+                          Notes (Optional)
+                        </label>
+                        <Textarea
+                          value={returnNotes}
+                          onChange={(e) => setReturnNotes(e.target.value)}
+                          rows={2}
+                          placeholder="Additional notes about this return..."
+                        />
+                      </div>
+                    </Card>
+
+                    {/* Submit Button */}
+                    <Button
+                      onClick={handleEasyReturn}
+                      disabled={actionLoading || selectedItems.size === 0}
+                      className="w-full bg-orange-600 hover:bg-orange-700 py-6 text-lg font-bold"
+                    >
+                      {actionLoading ? (
+                        "Processing..."
+                      ) : (
+                        <>
+                          ✓ Process Return & Restock ({selectedItems.size}{" "}
+                          items, Rs. {selectedTotal.toLocaleString()})
+                        </>
+                      )}
+                    </Button>
+                  </>
                 )}
 
-                {/* ── WHOLE BILL ── */}
-                {returnMode === "whole" && (
-                  <div>
-                    <label className="block text-sm font-medium mb-1">
-                      Total Return Amount (Rs) *
-                    </label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      value={wholeBillAmount}
-                      onChange={(e) => setWholeBillAmount(e.target.value)}
-                      placeholder="e.g. 1500.00"
-                      className="text-lg font-bold"
-                      required
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      This will be recorded as a single POS return without
-                      individual item breakdown.
+                {!searchedOrder && !isSearching && (
+                  <div className="text-center py-8 text-gray-400">
+                    <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-sm">
+                      Enter an order number above to get started
                     </p>
                   </div>
                 )}
-
-                {/* Notes */}
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Notes
-                  </label>
-                  <Textarea
-                    value={manualForm.notes}
-                    onChange={(e) =>
-                      setManualForm({ ...manualForm, notes: e.target.value })
-                    }
-                    rows={2}
-                    placeholder="Optional — e.g. customer brought receipt, item condition noted..."
-                  />
-                </div>
-
-                {/* Restock note for whole-bill mode */}
-                {returnMode === "whole" && (
-                  <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700">
-                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                    <span>
-                      To add stock back to inventory, use{" "}
-                      <strong>Item-by-Item</strong> mode and check the "restock"
-                      box per item.
-                    </span>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  className="w-full bg-orange-600 hover:bg-orange-700 py-5 text-base font-bold"
-                  disabled={actionLoading}
-                >
-                  {actionLoading
-                    ? "Creating..."
-                    : "✓ Create Return & Update Stock"}
-                </Button>
-              </form>
+              </div>
             </DialogContent>
           </Dialog>
         </div>

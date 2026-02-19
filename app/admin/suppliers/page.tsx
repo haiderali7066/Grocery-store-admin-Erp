@@ -1,3 +1,4 @@
+// app/admin/suppliers/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -13,6 +14,7 @@ import {
   History,
   X,
   Building2,
+  DollarSign,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
@@ -21,7 +23,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 interface PurchaseHistory {
   _id: string;
@@ -47,6 +52,7 @@ export default function SuppliersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(
     null,
   );
@@ -57,7 +63,13 @@ export default function SuppliersPage() {
     address: "",
     city: "",
   });
+  const [paymentData, setPaymentData] = useState({
+    amount: "",
+    paymentSource: "cash",
+    notes: "",
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const router = useRouter();
 
@@ -154,6 +166,64 @@ export default function SuppliersPage() {
     } catch (error) {
       console.error("Error deleting supplier:", error);
       alert("Error deleting supplier");
+    }
+  };
+
+  const handlePaySupplier = (supplier: Supplier) => {
+    setSelectedSupplier(supplier);
+    setPaymentData({
+      amount: supplier.balance?.toString() || "",
+      paymentSource: "cash",
+      notes: "",
+    });
+    setIsPaymentOpen(true);
+  };
+
+  const handleSubmitPayment = async () => {
+    if (!selectedSupplier) return;
+
+    const amount = parseFloat(paymentData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid amount");
+      return;
+    }
+
+    if (amount > (selectedSupplier.balance || 0)) {
+      alert(
+        `Amount cannot exceed outstanding balance of Rs. ${formatCurrency(selectedSupplier.balance)}`,
+      );
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    try {
+      const res = await fetch(
+        `/api/admin/suppliers/${selectedSupplier._id}/pay`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(paymentData),
+        },
+      );
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Payment failed");
+      }
+
+      const data = await res.json();
+      alert(
+        `✅ ${data.message}\n\nPrevious Balance: Rs. ${data.supplier.previousBalance.toLocaleString()}\nAmount Paid: Rs. ${data.supplier.amountPaid.toLocaleString()}\nNew Balance: Rs. ${data.supplier.newBalance.toLocaleString()}\n\nWallet Balance (${data.wallet.source}): Rs. ${data.wallet.newBalance.toLocaleString()}`,
+      );
+
+      setIsPaymentOpen(false);
+      setSelectedSupplier(null);
+      setPaymentData({ amount: "", paymentSource: "cash", notes: "" });
+      fetchSuppliers();
+    } catch (err: any) {
+      alert("Payment failed: " + err.message);
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
 
@@ -274,13 +344,25 @@ export default function SuppliersPage() {
                   </div>
                 </div>
 
-                <Button
-                  variant="outline"
-                  className="w-full border-blue-200 text-blue-600 hover:bg-blue-50 font-bold"
-                  onClick={() => fetchSupplierDetails(supplier._id)}
-                >
-                  <History className="h-4 w-4 mr-2" /> View Purchase History
-                </Button>
+                {/* Action Buttons */}
+                <div className="space-y-2">
+                  {(supplier.balance ?? 0) > 0 && (
+                    <Button
+                      className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold"
+                      onClick={() => handlePaySupplier(supplier)}
+                    >
+                      <DollarSign className="h-4 w-4 mr-2" /> Pay Supplier
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    className="w-full border-blue-200 text-blue-600 hover:bg-blue-50 font-bold"
+                    onClick={() => fetchSupplierDetails(supplier._id)}
+                  >
+                    <History className="h-4 w-4 mr-2" /> Purchase History
+                  </Button>
+                </div>
               </div>
             </Card>
           ))}
@@ -380,6 +462,108 @@ export default function SuppliersPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Modal */}
+      <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pay Supplier</DialogTitle>
+            <DialogDescription>
+              Make a payment to{" "}
+              <span className="font-bold">{selectedSupplier?.name}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                <span className="font-bold">Outstanding Balance:</span> Rs.{" "}
+                {formatCurrency(selectedSupplier?.balance)}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Amount (Rs) <span className="text-red-500">*</span>
+              </label>
+              <Input
+                type="number"
+                value={paymentData.amount}
+                onChange={(e) =>
+                  setPaymentData({ ...paymentData, amount: e.target.value })
+                }
+                placeholder="Enter amount"
+                min="0"
+                step="0.01"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Payment Source <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={paymentData.paymentSource}
+                onChange={(e) =>
+                  setPaymentData({
+                    ...paymentData,
+                    paymentSource: e.target.value,
+                  })
+                }
+                className="w-full border rounded-lg px-3 py-2"
+              >
+                <option value="cash">Cash</option>
+                <option value="bank">Bank</option>
+                <option value="easypaisa">EasyPaisa</option>
+                <option value="jazzcash">JazzCash</option>
+                <option value="card">Card</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Select which wallet to deduct from
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Notes (Optional)
+              </label>
+              <Textarea
+                value={paymentData.notes}
+                onChange={(e) =>
+                  setPaymentData({ ...paymentData, notes: e.target.value })
+                }
+                placeholder="e.g., Payment for Invoice #123"
+                rows={3}
+              />
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+              <p className="text-sm text-amber-800">
+                💡 This will deduct Rs. {paymentData.amount || "0"} from your{" "}
+                {paymentData.paymentSource} wallet and reduce the supplier
+                balance.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsPaymentOpen(false)}
+              disabled={isProcessingPayment}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-orange-600 hover:bg-orange-700"
+              onClick={handleSubmitPayment}
+              disabled={isProcessingPayment}
+            >
+              {isProcessingPayment ? "Processing..." : "Make Payment"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

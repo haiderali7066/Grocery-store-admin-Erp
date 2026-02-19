@@ -93,6 +93,11 @@ export async function POST(req: NextRequest, { params }: { params: any }) {
     // Calculate profit
     const profit = await calculateOrderProfit(order);
 
+    // Calculate amount to add to wallet (exclude shipping/delivery cost)
+    // The shipping cost goes to the courier, not to your business
+    const shippingCost = order.shippingCost || 0;
+    const amountForWallet = amount - shippingCost;
+
     // Update order COD status and profit
     order.codPaymentStatus = "paid";
     order.codPaidAt = new Date();
@@ -101,7 +106,7 @@ export async function POST(req: NextRequest, { params }: { params: any }) {
     order.paymentStatus = "verified"; // Also mark payment as verified
     await order.save();
 
-    // Add to wallet (cash by default for COD)
+    // Add to wallet (cash by default for COD) - EXCLUDING delivery charges
     let wallet = await Wallet.findOne();
     if (!wallet) {
       wallet = await Wallet.create({
@@ -113,7 +118,7 @@ export async function POST(req: NextRequest, { params }: { params: any }) {
       });
     }
 
-    wallet.cash += amount;
+    wallet.cash += amountForWallet;
     wallet.lastUpdated = new Date();
     await wallet.save();
 
@@ -121,20 +126,26 @@ export async function POST(req: NextRequest, { params }: { params: any }) {
     await Transaction.create({
       type: "income",
       category: "COD Order Payment",
-      amount,
+      amount: amountForWallet, // Record the net amount (excluding shipping)
       source: "cash",
       reference: order._id,
       referenceModel: "Order",
-      description: `COD payment received for Order #${order.orderNumber} (Profit: Rs. ${profit.toFixed(2)})`,
-      notes: notes || `Collected from courier/rider`,
+      description: `COD payment received for Order #${order.orderNumber} (Total: Rs. ${amount}, Shipping: Rs. ${shippingCost}, Net: Rs. ${amountForWallet}, Profit: Rs. ${profit.toFixed(2)})`,
+      notes:
+        notes ||
+        `Collected from courier/rider. Delivery charges (Rs. ${shippingCost}) excluded from wallet.`,
       createdBy: payload.userId,
     });
 
     return NextResponse.json(
       {
-        message: "COD payment marked as received and added to wallet",
+        message:
+          "COD payment marked as received and added to wallet (excluding delivery charges)",
         order,
         profit: profit.toFixed(2),
+        amountReceived: amount,
+        shippingCost,
+        amountAddedToWallet: amountForWallet,
         walletBalance: wallet.cash,
       },
       { status: 200 },
