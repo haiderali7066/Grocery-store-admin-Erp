@@ -3,33 +3,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Review, Order } from "@/lib/models";
-import { verifyToken } from "@/lib/auth";
-import { cookies } from "next/headers";
-
+import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
 
-   const cookieStore = cookies();
-const token = cookieStore.get("token")?.value;
+    // Get token from cookie
+    const token = getTokenFromCookie(request.headers.get("cookie") || "");
 
-if (!token) {
-  return NextResponse.json(
-    { error: "Please log in to leave a review" },
-    { status: 401 }
-  );
-}
-
-const payload = verifyToken(token);
-
-
-    if (!payload || payload.role !== "user") {
+    if (!token) {
       return NextResponse.json(
         { error: "Please log in to leave a review" },
         { status: 401 },
       );
     }
+
+    const payload = verifyToken(token);
+
+    if (!payload) {
+      return NextResponse.json(
+        { error: "Invalid or expired session. Please log in again." },
+        { status: 401 },
+      );
+    }
+
+    // REMOVED role check - any logged in user with a delivered order can review
+    // The important validation is: do they have a delivered order with this product?
 
     const body = await request.json();
     const { productId, rating, comment } = body;
@@ -59,7 +59,7 @@ const payload = verifyToken(token);
       return NextResponse.json(
         {
           error:
-            "You can only review products from orders that have been delivered",
+            "You can only review products from delivered orders. Please wait until your order is delivered.",
         },
         { status: 403 },
       );

@@ -1,61 +1,50 @@
-import { NextResponse } from "next/server";
+// app/api/products/[id]/reviews/route.ts
+
+import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Review } from "@/lib/models";
-import { getServerSession } from "next-auth"; // or your auth method
 
-export async function POST(request: Request) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     await connectDB();
 
-    // get logged-in user session
-    const session = await getServerSession();
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "You must be logged in to submit a review" },
-        { status: 401 },
-      );
+    const { id } = await params;
+    const { searchParams } = new URL(request.url);
+    const approvedOnly = searchParams.get("approved") === "true";
+
+    const query: any = { product: id };
+
+    // For public product pages, only show approved reviews
+    if (approvedOnly) {
+      query.isApproved = true;
     }
 
-    const { productId, rating, comment, orderId } = await request.json();
+    const reviews = await Review.find(query)
+      .populate("user", "name")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    if (!productId || !rating || !comment || !orderId) {
-      return NextResponse.json(
-        { error: "All fields are required" },
-        { status: 400 },
-      );
-    }
+    const formatted = reviews.map((r: any) => ({
+      _id: r._id.toString(),
+      userName: r.user?.name || "Anonymous",
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      isApproved: r.isApproved,
+    }));
 
-    // Check if user already reviewed this product
-    const existingReview = await Review.findOne({
-      user: session.user.id,
-      product: productId,
+    return NextResponse.json({
+      success: true,
+      reviews: formatted,
+      total: formatted.length,
     });
-
-    if (existingReview) {
-      return NextResponse.json(
-        { error: "You have already reviewed this product" },
-        { status: 400 },
-      );
-    }
-
-    // Create review
-    const newReview = await Review.create({
-      product: productId,
-      user: session.user.id,
-      order: orderId,
-      rating,
-      comment,
-      isApproved: false, // admin approval required
-    });
-
+  } catch (error: any) {
+    console.error("Error fetching product reviews:", error);
     return NextResponse.json(
-      { message: "Review submitted successfully!", review: newReview },
-      { status: 201 },
-    );
-  } catch (err: any) {
-    console.error("Error creating review:", err);
-    return NextResponse.json(
-      { error: "Something went wrong" },
+      { error: error.message || "Failed to fetch reviews" },
       { status: 500 },
     );
   }

@@ -7,6 +7,7 @@ import { Navbar } from "@/components/store/Navbar";
 import { Footer } from "@/components/store/Footer";
 import { useCart } from "@/components/cart/CartProvider";
 import { Button } from "@/components/ui/button";
+import { ProductReviews } from "@/components/store/ProductReviews";
 import {
   Plus,
   Minus,
@@ -59,7 +60,6 @@ function ProductDetailContent() {
     try {
       const res = await fetch(`/api/products/${productId}`);
 
-      // Safety Check: If response is HTML (the <!DOCTYPE error source)
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         throw new Error(
@@ -152,8 +152,8 @@ function ProductDetailContent() {
           Back to browsing
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 bg-white p-4 sm:p-10 rounded-[2.5rem] shadow-sm border border-gray-100">
-          {/* Image Section - Using aspect-square to avoid portrait stretching */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 bg-white p-4 sm:p-10 rounded-[2.5rem] shadow-sm border border-gray-100 mb-12">
+          {/* Image Section */}
           <div className="relative aspect-square rounded-3xl overflow-hidden bg-gray-50 border border-gray-100 group">
             <Image
               src={
@@ -284,6 +284,11 @@ function ProductDetailContent() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Reviews Section */}
+        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-4 sm:p-10">
+          <ProductReviews productId={product._id} productName={product.name} />
         </div>
       </main>
 

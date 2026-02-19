@@ -4,7 +4,17 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Check, X, Printer, Eye, Trash2, RotateCcw, DollarSign, Banknote, Wrench } from "lucide-react";
+import {
+  Check,
+  X,
+  Printer,
+  Eye,
+  Trash2,
+  RotateCcw,
+  DollarSign,
+  Banknote,
+  Wrench,
+} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import PermissionGuard from "@/components/admin/PermissionGuard";
 import {
@@ -39,7 +49,13 @@ interface Order {
   gstAmount?: number;
   shippingCost?: number;
   paymentStatus: "pending" | "verified" | "failed";
-  orderStatus: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
+  orderStatus:
+    | "pending"
+    | "confirmed"
+    | "processing"
+    | "shipped"
+    | "delivered"
+    | "cancelled";
   paymentMethod: string;
   codPaymentStatus?: "unpaid" | "paid" | null;
   codPaidAt?: string;
@@ -55,10 +71,12 @@ function OrdersContent() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
-  const [trackingInputs, setTrackingInputs] = useState<Record<string, { code: string; courier: string }>>({});
+  const [trackingInputs, setTrackingInputs] = useState<
+    Record<string, { code: string; courier: string }>
+  >({});
   const [updatedOrderId, setUpdatedOrderId] = useState<string | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
-  
+
   // COD Payment Dialog State
   const [codDialogOpen, setCodDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -89,7 +107,8 @@ function OrdersContent() {
       const data = await res.json();
       setOrders(data.orders || []);
 
-      const initialTracking: Record<string, { code: string; courier: string }> = {};
+      const initialTracking: Record<string, { code: string; courier: string }> =
+        {};
       data.orders?.forEach((o: Order) => {
         initialTracking[o._id] = {
           code: o.trackingNumber || "",
@@ -105,18 +124,23 @@ function OrdersContent() {
   };
 
   const handleFixCodStatus = async () => {
-    if (!confirm("Update all COD orders to show unpaid status? This will fix missing COD payment status.")) return;
-    
+    if (
+      !confirm(
+        "Update all COD orders to show unpaid status? This will fix missing COD payment status.",
+      )
+    )
+      return;
+
     setIsFixing(true);
     try {
       const res = await fetch("/api/admin/fix-cod-status", {
         method: "POST",
       });
-      
+
       if (!res.ok) {
         throw new Error("Failed to fix COD status");
       }
-      
+
       const data = await res.json();
       alert(`✅ ${data.message}\nUpdated ${data.modifiedCount} orders`);
       fetchOrders(); // Refresh the list
@@ -144,7 +168,8 @@ function OrdersContent() {
   };
 
   const handleDelete = async (orderId: string) => {
-    if (!confirm("Delete this order? Stock will be restored automatically.")) return;
+    if (!confirm("Delete this order? Stock will be restored automatically."))
+      return;
 
     setDeletingOrderId(orderId);
     try {
@@ -180,7 +205,8 @@ function OrdersContent() {
   };
 
   const handleReject = (orderId: string) => {
-    if (!confirm("Reject this order? Stock will be restored automatically.")) return;
+    if (!confirm("Reject this order? Stock will be restored automatically."))
+      return;
     updateOrder(orderId, {
       paymentStatus: "failed",
       orderStatus: "cancelled",
@@ -189,12 +215,17 @@ function OrdersContent() {
 
   const handleStatusUpdate = (orderId: string, status: string) => {
     if (status === "cancelled") {
-      if (!confirm("Cancel this order? Stock will be restored automatically.")) return;
+      if (!confirm("Cancel this order? Stock will be restored automatically."))
+        return;
     }
     updateOrder(orderId, { orderStatus: status });
   };
 
-  const handleTrackingChange = (orderId: string, field: string, value: string) => {
+  const handleTrackingChange = (
+    orderId: string,
+    field: string,
+    value: string,
+  ) => {
     setTrackingInputs((prev) => ({
       ...prev,
       [orderId]: { ...prev[orderId], [field]: value },
@@ -228,14 +259,17 @@ function OrdersContent() {
 
     setIsProcessingCod(true);
     try {
-      const res = await fetch(`/api/admin/orders/${selectedOrder._id}/mark-cod-paid`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount,
-          notes: codNotes,
-        }),
-      });
+      const res = await fetch(
+        `/api/admin/orders/${selectedOrder._id}/mark-cod-paid`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount,
+            notes: codNotes,
+          }),
+        },
+      );
 
       if (!res.ok) {
         const error = await res.json();
@@ -243,7 +277,9 @@ function OrdersContent() {
       }
 
       const data = await res.json();
-      alert(`✅ ${data.message}\n\n💰 Profit: Rs. ${data.profit}\n💵 Cash Balance: Rs. ${data.walletBalance.toLocaleString()}`);
+      alert(
+        `✅ ${data.message}\n\n💰 Profit: Rs. ${data.profit}\n💵 Cash Balance: Rs. ${data.walletBalance.toLocaleString()}`,
+      );
       setCodDialogOpen(false);
       setSelectedOrder(null);
       setCodAmount("");
@@ -264,7 +300,7 @@ function OrdersContent() {
           <td>${item.quantity}</td>
           <td>Rs. ${(item.price ?? 0).toLocaleString()}</td>
           <td>Rs. ${(item.subtotal ?? 0).toLocaleString()}</td>
-        </tr>`
+        </tr>`,
       )
       .join("");
 
@@ -329,7 +365,9 @@ function OrdersContent() {
     };
 
     return (
-      <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${styles[status] || "bg-gray-100 text-gray-600"}`}>
+      <span
+        className={`px-3 py-1 rounded-full text-xs font-semibold border ${styles[status] || "bg-gray-100 text-gray-600"}`}
+      >
         {status}
       </span>
     );
@@ -339,33 +377,45 @@ function OrdersContent() {
   const filteredOrders = orders.filter((order) => {
     if (filterStatus === "unpaid_cod") {
       // Show COD orders that are unpaid OR don't have codPaymentStatus set yet
-      return order.paymentMethod === "cod" && 
-             (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus);
+      return (
+        order.paymentMethod === "cod" &&
+        (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus)
+      );
     }
     return true;
   });
 
   // Calculate unpaid COD total - include orders without codPaymentStatus
   const unpaidCodOrders = orders.filter(
-    (o) => o.paymentMethod === "cod" && 
-           (o.codPaymentStatus === "unpaid" || !o.codPaymentStatus)
+    (o) =>
+      o.paymentMethod === "cod" &&
+      (o.codPaymentStatus === "unpaid" || !o.codPaymentStatus),
   );
-  const unpaidCodTotal = unpaidCodOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+  const unpaidCodTotal = unpaidCodOrders.reduce(
+    (sum, o) => sum + (o.total || 0),
+    0,
+  );
 
   // Check if there are COD orders that need fixing
-  const needsFixing = orders.some(o => o.paymentMethod === "cod" && !o.codPaymentStatus);
+  const needsFixing = orders.some(
+    (o) => o.paymentMethod === "cod" && !o.codPaymentStatus,
+  );
 
   return (
     <div className="space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
       {/* Store Info */}
       <Card className="p-6 shadow-lg border bg-white">
-        <h2 className="text-2xl font-bold mb-4 text-slate-700">Store Info (for invoices)</h2>
+        <h2 className="text-2xl font-bold mb-4 text-slate-700">
+          Store Info (for invoices)
+        </h2>
         <div className="grid md:grid-cols-2 gap-4">
           {Object.keys(storeInfo).map((key) => (
             <Input
               key={key}
               value={storeInfo[key as keyof typeof storeInfo]}
-              onChange={(e) => setStoreInfo({ ...storeInfo, [key]: e.target.value })}
+              onChange={(e) =>
+                setStoreInfo({ ...storeInfo, [key]: e.target.value })
+              }
               placeholder={key}
               className="bg-slate-50"
             />
@@ -376,18 +426,22 @@ function OrdersContent() {
       {/* Header with COD Summary */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <h1 className="text-3xl font-bold text-slate-800">Orders Management</h1>
-        
+
         <div className="flex flex-wrap items-center gap-3">
           {/* Unpaid COD Summary */}
           <Card className="bg-orange-50 border-orange-200 p-4">
             <div className="flex items-center gap-3">
               <Banknote className="h-8 w-8 text-orange-600" />
               <div>
-                <p className="text-xs text-orange-600 font-medium">Unpaid COD Orders</p>
+                <p className="text-xs text-orange-600 font-medium">
+                  Unpaid COD Orders
+                </p>
                 <p className="text-2xl font-bold text-orange-900">
                   Rs. {unpaidCodTotal.toLocaleString()}
                 </p>
-                <p className="text-xs text-orange-600">{unpaidCodOrders.length} orders</p>
+                <p className="text-xs text-orange-600">
+                  {unpaidCodOrders.length} orders
+                </p>
               </div>
             </div>
           </Card>
@@ -406,14 +460,20 @@ function OrdersContent() {
           <Button
             variant={filterStatus === "all" ? "default" : "outline"}
             onClick={() => setFilterStatus("all")}
-            className={filterStatus === "all" ? "bg-green-700 hover:bg-green-800" : ""}
+            className={
+              filterStatus === "all" ? "bg-green-700 hover:bg-green-800" : ""
+            }
           >
             All Orders ({orders.length})
           </Button>
           <Button
             variant={filterStatus === "unpaid_cod" ? "default" : "outline"}
             onClick={() => setFilterStatus("unpaid_cod")}
-            className={filterStatus === "unpaid_cod" ? "bg-orange-600 hover:bg-orange-700" : ""}
+            className={
+              filterStatus === "unpaid_cod"
+                ? "bg-orange-600 hover:bg-orange-700"
+                : ""
+            }
           >
             <Banknote className="h-4 w-4 mr-2" />
             Unpaid COD ({unpaidCodOrders.length})
@@ -441,7 +501,9 @@ function OrdersContent() {
           </div>
         ) : filteredOrders.length === 0 ? (
           <p className="text-slate-500 text-center py-8">
-            {filterStatus === "unpaid_cod" ? "No unpaid COD orders" : "No orders found"}
+            {filterStatus === "unpaid_cod"
+              ? "No unpaid COD orders"
+              : "No orders found"}
           </p>
         ) : (
           <div className="space-y-5">
@@ -456,9 +518,11 @@ function OrdersContent() {
                     className={`p-5 border transition-all ${
                       updatedOrderId === order._id
                         ? "border-blue-500 ring-2 ring-blue-200"
-                        : order.paymentMethod === "cod" && (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus)
-                        ? "border-orange-300 bg-orange-50/30"
-                        : "border-slate-200"
+                        : order.paymentMethod === "cod" &&
+                            (order.codPaymentStatus === "unpaid" ||
+                              !order.codPaymentStatus)
+                          ? "border-orange-300 bg-orange-50/30"
+                          : "border-slate-200"
                     }`}
                   >
                     {/* Order Header */}
@@ -493,27 +557,29 @@ function OrdersContent() {
                       <div className="flex flex-wrap items-center gap-2">
                         {badge(order.paymentStatus)}
                         {badge(order.orderStatus)}
-                        {order.paymentMethod === "cod" && order.codPaymentStatus && (
-                          badge(order.codPaymentStatus)
-                        )}
+                        {order.paymentMethod === "cod" &&
+                          order.codPaymentStatus &&
+                          badge(order.codPaymentStatus)}
 
                         {/* Mark COD as Paid Button */}
-                        {order.paymentMethod === "cod" && (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus) && (
-                          <Button
-                            size="sm"
-                            className="bg-orange-600 hover:bg-orange-700 text-white"
-                            onClick={() => handleCodPaymentClick(order)}
-                          >
-                            <DollarSign className="w-4 h-4 mr-1" /> Mark Paid
-                          </Button>
-                        )}
+                        {order.paymentMethod === "cod" &&
+                          (order.codPaymentStatus === "unpaid" ||
+                            !order.codPaymentStatus) && (
+                            <Button
+                              size="sm"
+                              className="bg-orange-600 hover:bg-orange-700 text-white"
+                              onClick={() => handleCodPaymentClick(order)}
+                            >
+                              <DollarSign className="w-4 h-4 mr-1" /> Mark Paid
+                            </Button>
+                          )}
 
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() =>
                             setOpenOrderId(
-                              openOrderId === order._id ? null : order._id
+                              openOrderId === order._id ? null : order._id,
                             )
                           }
                         >
@@ -535,7 +601,9 @@ function OrdersContent() {
                           disabled={deletingOrderId === order._id}
                         >
                           <Trash2 className="w-4 h-4 mr-1" />
-                          {deletingOrderId === order._id ? "Deleting..." : "Delete"}
+                          {deletingOrderId === order._id
+                            ? "Deleting..."
+                            : "Delete"}
                         </Button>
                       </div>
                     </div>
@@ -546,29 +614,45 @@ function OrdersContent() {
                         {/* LEFT SIDE */}
                         <div className="space-y-6">
                           <section>
-                            <h3 className="font-semibold text-slate-700 mb-2">Customer Info</h3>
+                            <h3 className="font-semibold text-slate-700 mb-2">
+                              Customer Info
+                            </h3>
                             <p className="text-sm">{order.user?.name || "-"}</p>
-                            <p className="text-xs text-slate-500">{order.user?.email || "-"}</p>
-                            <p className="text-xs text-slate-500">{order.user?.phone || "-"}</p>
+                            <p className="text-xs text-slate-500">
+                              {order.user?.email || "-"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {order.user?.phone || "-"}
+                            </p>
                             <p className="text-sm font-medium mt-2 text-slate-700">
-                              Payment: {order.paymentMethod?.toUpperCase() || "N/A"}
+                              Payment:{" "}
+                              {order.paymentMethod?.toUpperCase() || "N/A"}
                             </p>
                             {order.paymentMethod === "cod" && (
                               <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                                 <p className="text-sm font-semibold text-orange-900">
-                                  COD Status: {order.codPaymentStatus === "paid" ? "✓ PAID" : "⏱ UNPAID"}
+                                  COD Status:{" "}
+                                  {order.codPaymentStatus === "paid"
+                                    ? "✓ PAID"
+                                    : "⏱ UNPAID"}
                                 </p>
-                                {order.codPaymentStatus === "paid" && order.codPaidAt && (
-                                  <p className="text-xs text-orange-700 mt-1">
-                                    Received on: {new Date(order.codPaidAt).toLocaleString()}
-                                  </p>
-                                )}
+                                {order.codPaymentStatus === "paid" &&
+                                  order.codPaidAt && (
+                                    <p className="text-xs text-orange-700 mt-1">
+                                      Received on:{" "}
+                                      {new Date(
+                                        order.codPaidAt,
+                                      ).toLocaleString()}
+                                    </p>
+                                  )}
                               </div>
                             )}
                           </section>
 
                           <section>
-                            <h3 className="font-semibold text-slate-700 mb-2">Order Items</h3>
+                            <h3 className="font-semibold text-slate-700 mb-2">
+                              Order Items
+                            </h3>
                             <div className="overflow-x-auto rounded-lg border">
                               <table className="w-full text-sm">
                                 <thead className="bg-slate-100 text-slate-600">
@@ -576,21 +660,27 @@ function OrdersContent() {
                                     <th className="p-2 text-left">Item</th>
                                     <th className="p-2 text-center">Qty</th>
                                     <th className="p-2 text-center">Price</th>
-                                    <th className="p-2 text-center">Subtotal</th>
+                                    <th className="p-2 text-center">
+                                      Subtotal
+                                    </th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {order.items.map((item, idx) => (
                                     <tr key={idx} className="border-t">
                                       <td className="p-2">
-                                        {item.product?.name || "Deleted Product"}
+                                        {item.product?.name ||
+                                          "Deleted Product"}
                                       </td>
-                                      <td className="p-2 text-center">{item.quantity}</td>
+                                      <td className="p-2 text-center">
+                                        {item.quantity}
+                                      </td>
                                       <td className="p-2 text-center">
                                         Rs. {(item.price ?? 0).toLocaleString()}
                                       </td>
                                       <td className="p-2 text-center">
-                                        Rs. {(item.subtotal ?? 0).toLocaleString()}
+                                        Rs.{" "}
+                                        {(item.subtotal ?? 0).toLocaleString()}
                                       </td>
                                     </tr>
                                   ))}
@@ -600,38 +690,57 @@ function OrdersContent() {
                             <div className="mt-3 space-y-1 text-sm bg-slate-50 rounded-lg p-3">
                               <div className="flex justify-between">
                                 <span>Subtotal</span>
-                                <span>Rs. {(order.subtotal ?? 0).toLocaleString()}</span>
+                                <span>
+                                  Rs. {(order.subtotal ?? 0).toLocaleString()}
+                                </span>
                               </div>
                               <div className="flex justify-between">
                                 <span>GST</span>
-                                <span>Rs. {(order.gstAmount ?? 0).toLocaleString()}</span>
+                                <span>
+                                  Rs. {(order.gstAmount ?? 0).toLocaleString()}
+                                </span>
                               </div>
                               <div className="flex justify-between">
                                 <span>Shipping</span>
-                                <span>Rs. {(order.shippingCost ?? 0).toLocaleString()}</span>
+                                <span>
+                                  Rs.{" "}
+                                  {(order.shippingCost ?? 0).toLocaleString()}
+                                </span>
                               </div>
                               <div className="flex justify-between font-bold border-t pt-1">
                                 <span>Total</span>
-                                <span>Rs. {(order.total ?? 0).toLocaleString()}</span>
+                                <span>
+                                  Rs. {(order.total ?? 0).toLocaleString()}
+                                </span>
                               </div>
                             </div>
                           </section>
 
                           <section>
-                            <h3 className="font-semibold text-slate-700 mb-2">Tracking Info</h3>
+                            <h3 className="font-semibold text-slate-700 mb-2">
+                              Tracking Info
+                            </h3>
                             <div className="flex gap-2">
                               <Input
                                 placeholder="Tracking Number"
                                 value={trackingInputs[order._id]?.code || ""}
                                 onChange={(e) =>
-                                  handleTrackingChange(order._id, "code", e.target.value)
+                                  handleTrackingChange(
+                                    order._id,
+                                    "code",
+                                    e.target.value,
+                                  )
                                 }
                               />
                               <Input
                                 placeholder="Courier"
                                 value={trackingInputs[order._id]?.courier || ""}
                                 onChange={(e) =>
-                                  handleTrackingChange(order._id, "courier", e.target.value)
+                                  handleTrackingChange(
+                                    order._id,
+                                    "courier",
+                                    e.target.value,
+                                  )
                                 }
                               />
                             </div>
@@ -645,22 +754,24 @@ function OrdersContent() {
                           </section>
 
                           {/* Approve / Reject (only for non-COD pending) */}
-                          {order.paymentStatus === "pending" && order.paymentMethod !== "cod" && (
-                            <div className="flex gap-3">
-                              <Button
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                onClick={() => handleApprove(order._id)}
-                              >
-                                <Check className="w-4 h-4 mr-1" /> Approve
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                onClick={() => handleReject(order._id)}
-                              >
-                                <X className="w-4 h-4 mr-1" /> Reject & Restock
-                              </Button>
-                            </div>
-                          )}
+                          {order.paymentStatus === "pending" &&
+                            order.paymentMethod !== "cod" && (
+                              <div className="flex gap-3">
+                                <Button
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  onClick={() => handleApprove(order._id)}
+                                >
+                                  <Check className="w-4 h-4 mr-1" /> Approve
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  onClick={() => handleReject(order._id)}
+                                >
+                                  <X className="w-4 h-4 mr-1" /> Reject &
+                                  Restock
+                                </Button>
+                              </div>
+                            )}
 
                           {/* Status Update */}
                           <div>
@@ -674,15 +785,22 @@ function OrdersContent() {
                               }
                               className="border rounded px-3 py-2 text-sm w-full max-w-xs"
                             >
-                              {["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"].map(
-                                (s) => (
-                                  <option key={s} value={s}>
-                                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                                  </option>
-                                )
-                              )}
+                              {[
+                                "pending",
+                                "confirmed",
+                                "processing",
+                                "shipped",
+                                "delivered",
+                                "cancelled",
+                              ].map((s) => (
+                                <option key={s} value={s}>
+                                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                                </option>
+                              ))}
                             </select>
-                            {["cancelled", "failed"].includes(order.orderStatus) && (
+                            {["cancelled", "failed"].includes(
+                              order.orderStatus,
+                            ) && (
                               <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
                                 <RotateCcw className="h-3 w-3" />
                                 Stock has been automatically restored
@@ -693,7 +811,9 @@ function OrdersContent() {
 
                         {/* RIGHT SIDE - Payment Screenshot */}
                         <div>
-                          <h3 className="font-semibold text-slate-700 mb-2">Payment Proof</h3>
+                          <h3 className="font-semibold text-slate-700 mb-2">
+                            Payment Proof
+                          </h3>
                           {order.screenshot ? (
                             <img
                               src={order.screenshot}
@@ -761,7 +881,8 @@ function OrdersContent() {
 
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm text-blue-800">
-                💡 This will add Rs. {codAmount || "0"} to your Cash wallet and mark the order as paid.
+                💡 This will add Rs. {codAmount || "0"} to your Cash wallet and
+                mark the order as paid.
               </p>
             </div>
           </div>

@@ -166,17 +166,15 @@ export default function OrderDetailPage() {
 
     setReviewLoading(true);
     try {
-     const res = await fetch("/api/products/reviews", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  credentials: "include", // 🔥 THIS IS REQUIRED
-  body: JSON.stringify({
-    productId: reviewingProduct.id,
-    rating: reviewForm.rating,
-    comment: reviewForm.comment.trim(),
-  }),
-});
-
+      const res = await fetch("/api/products/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: reviewingProduct.id,
+          rating: reviewForm.rating,
+          comment: reviewForm.comment.trim(),
+        }),
+      });
 
       const data = await res.json();
 
@@ -318,7 +316,7 @@ export default function OrderDetailPage() {
           {/* Refund Button */}
           {canRequestRefund() && (
             <Card className="p-4 mb-6 bg-orange-50 border-orange-200 border">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <p className="font-semibold text-orange-900">
                     Not satisfied with your order?
@@ -332,7 +330,7 @@ export default function OrderDetailPage() {
                   onOpenChange={setShowRefundDialog}
                 >
                   <DialogTrigger asChild>
-                    <Button className="bg-orange-600 hover:bg-orange-700 rounded-xl">
+                    <Button className="bg-orange-600 hover:bg-orange-700 rounded-xl whitespace-nowrap">
                       <RotateCcw className="h-4 w-4 mr-2" />
                       Request Refund
                     </Button>
@@ -443,20 +441,19 @@ export default function OrderDetailPage() {
                     <img
                       src={item.product.images[0]}
                       alt={item.product.name}
-                      className="w-16 h-16 object-cover rounded-lg"
+                      className="w-16 h-16 object-cover rounded-lg shrink-0"
                     />
                   )}
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <p className="font-semibold text-gray-900">
                       {item.product?.name || "Product"}
                     </p>
                     <p className="text-sm text-gray-500">
-                      Quantity: {item.quantity} × Rs.{" "}
-                      {item.price.toLocaleString()}
+                      Qty: {item.quantity} × Rs. {item.price.toLocaleString()}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-900">
+                  <div className="text-right shrink-0">
+                    <p className="font-bold text-gray-900 whitespace-nowrap">
                       Rs. {item.subtotal.toLocaleString()}
                     </p>
                     {canReview && item.product?._id && (
@@ -468,10 +465,10 @@ export default function OrderDetailPage() {
                           )
                         }
                         size="sm"
-                        className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1"
+                        className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs"
                       >
                         <Star className="h-3 w-3" />
-                        Write Review
+                        Review
                       </Button>
                     )}
                   </div>
