@@ -126,7 +126,7 @@ export function HeroCarousel() {
               </div>
 
               {/* Content Overlay */}
-              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/50 to-transparent">
+              <div className="absolute inset-0 flex items-center justify-center ">
                 <div className="text-center text-white px-6 sm:px-12 max-w-5xl">
                   {banner.title && (
                     <h2 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold mb-4 md:mb-6 drop-shadow-2xl tracking-tight leading-tight">
