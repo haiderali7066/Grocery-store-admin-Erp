@@ -5,25 +5,34 @@ import mongoose, { Schema } from "mongoose";
 // =========================
 export const UserSchema = new Schema(
   {
-    name: { type: String, required: true },
+    name: {
+      type: String,
+      required: true,
+    },
+
     email: {
       type: String,
       required: true,
       unique: true,
       lowercase: true,
+      trim: true,
     },
+
     password: {
       type: String,
       required: true,
       select: false,
     },
+
     phone: String,
+
     role: {
       type: String,
       enum: ["user", "staff", "manager", "accountant", "admin"],
       default: "user",
       index: true,
     },
+
     addresses: [
       {
         label: String,
@@ -35,10 +44,23 @@ export const UserSchema = new Schema(
         isDefault: Boolean,
       },
     ],
+
     profileImage: String,
+
     isActive: {
       type: Boolean,
       default: true,
+    },
+
+    // ✅ Password Reset OTP Fields
+    resetOTP: {
+      type: String,
+      select: false,
+    },
+
+    resetOTPExpire: {
+      type: Date,
+      select: false,
     },
   },
   { timestamps: true },
@@ -254,6 +276,7 @@ export const POSSaleSchema = new Schema(
   {
     saleNumber: { type: String, required: true, unique: true },
     customerName: { type: String, default: "Walk-in Customer" },
+    customer: { type: Schema.Types.ObjectId, ref: "User", default: null }, // ← NEW
     cashier: { type: Schema.Types.ObjectId, ref: "User" },
     items: [
       {
@@ -264,22 +287,31 @@ export const POSSaleSchema = new Schema(
         },
         name: { type: String, required: true },
         quantity: { type: Number, required: true },
-        price: { type: Number, required: true }, // Selling price
-        costPrice: { type: Number }, // Cost for profit calculation
+        price: { type: Number, required: true },
+        costPrice: { type: Number },
         batchId: { type: Schema.Types.ObjectId, ref: "InventoryBatch" },
+        taxRate: { type: Number, default: 0 }, // ← NEW
+        taxAmount: { type: Number, default: 0 }, // ← NEW
         total: { type: Number, required: true },
       },
     ],
     subtotal: { type: Number, required: true },
-    tax: { type: Number, required: true }, // GST amount
-    gstAmount: { type: Number }, // Alias for tax
+    discount: { type: Number, default: 0 }, // ← NEW
+    discountType: {
+      type: String,
+      enum: ["percentage", "fixed"],
+      default: "percentage",
+    }, // ← NEW
+    discountValue: { type: Number, default: 0 }, // ← NEW
+    tax: { type: Number, required: true },
+    gstAmount: { type: Number },
     totalAmount: { type: Number, required: true },
-    total: { type: Number }, // Alias for totalAmount
+    total: { type: Number },
     amountPaid: { type: Number, required: true },
     change: { type: Number, default: 0 },
     paymentMethod: {
       type: String,
-      enum: ["cash", "card", "manual"],
+      enum: ["cash", "card", "online", "manual"], // ← added "online"
       required: true,
     },
     paymentStatus: {

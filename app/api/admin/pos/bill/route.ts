@@ -1,3 +1,4 @@
+// app/api/admin/pos/bill/route.ts
 import { connectDB } from "@/lib/db";
 import {
   POSSale,
@@ -5,6 +6,7 @@ import {
   InventoryBatch,
   Transaction,
   Wallet,
+  User,
 } from "@/lib/models/index";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
@@ -26,6 +28,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       customerName,
+      customerId, // NEW: Selected customer ID
       items,
       billDiscountType,
       billDiscountValue,
@@ -53,18 +56,17 @@ export async function POST(req: NextRequest) {
       if (!product) {
         return NextResponse.json(
           { error: `Product not found: ${cartItem.productId}` },
-          { status: 404 },
+          { status: 404 }
         );
       }
 
       if (product.stock < cartItem.quantity) {
         return NextResponse.json(
           { error: `Insufficient stock for ${product.name}` },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
-      // Per-item pricing: price × qty + tax (no per-item discount)
       const basePrice = cartItem.price * cartItem.quantity;
       const taxAmount = basePrice * (cartItem.taxRate / 100);
       const itemTotal = basePrice + taxAmount;
@@ -79,7 +81,7 @@ export async function POST(req: NextRequest) {
       if (batches.length === 0) {
         return NextResponse.json(
           { error: `No inventory batches found for ${product.name}` },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
@@ -115,7 +117,7 @@ export async function POST(req: NextRequest) {
       if (remainingQty > 0) {
         return NextResponse.json(
           { error: `Insufficient inventory batches for ${product.name}` },
-          { status: 400 },
+          { status: 400 }
         );
       }
 
@@ -145,15 +147,15 @@ export async function POST(req: NextRequest) {
     // Calculate totals
     const subtotal = processedItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
-      0,
+      0
     );
     const totalTax = processedItems.reduce(
       (sum, item) => sum + item.taxAmount,
-      0,
+      0
     );
     const subtotalWithTax = subtotal + totalTax;
 
-    // Apply bill-level discount (server-side recalculation for safety)
+    // Apply bill-level discount
     const discountValue = parseFloat(billDiscountValue) || 0;
     const billDiscountAmountServer =
       billDiscountType === "percentage"
@@ -163,13 +165,14 @@ export async function POST(req: NextRequest) {
     const total = Math.max(0, subtotalWithTax - billDiscountAmountServer);
     const change = amountPaid - total;
 
-    // Profit: total revenue minus cost of goods minus discount
+    // Profit: total revenue minus cost of goods
     const totalProfit = total - totalCostOfGoods;
 
     // Create POS Sale
     const posSale = new POSSale({
       saleNumber,
       customerName: customerName || "Walk-in Customer",
+      customer: customerId || null, // NEW: Link to customer if selected
       cashier: payload.userId,
       items: processedItems,
       subtotal,
@@ -202,6 +205,9 @@ export async function POST(req: NextRequest) {
         break;
       case "card":
         wallet.card = (wallet.card || 0) + amountPaid;
+        break;
+      case "online":
+        wallet.bank = (wallet.bank || 0) + amountPaid;
         break;
     }
     wallet.lastUpdated = new Date();
@@ -237,7 +243,7 @@ export async function POST(req: NextRequest) {
         costOfGoods: totalCostOfGoods,
         createdAt: posSale.createdAt,
       },
-      { status: 201 },
+      { status: 201 }
     );
   } catch (error) {
     console.error("POS bill error:", error);
@@ -245,7 +251,7 @@ export async function POST(req: NextRequest) {
       {
         error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

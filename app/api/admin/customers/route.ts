@@ -1,8 +1,7 @@
 // app/api/admin/customers/route.ts
-
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { User, Order } from "@/lib/models";
+import { User, Order, POSSale } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 function requireAdmin(req: NextRequest) {
@@ -43,28 +42,52 @@ export async function GET(req: NextRequest) {
       User.countDocuments(query),
     ]);
 
-    // Attach aggregated order stats
     const userIds = users.map((u: any) => u._id);
-    const orderStats = await Order.aggregate([
+
+    // Online order stats
+    const onlineStats = await Order.aggregate([
       { $match: { user: { $in: userIds } } },
       {
         $group: {
           _id: "$user",
-          totalOrders: { $sum: 1 },
-          totalSpent: { $sum: "$total" },
+          onlineOrders: { $sum: 1 },
+          onlineSpent: { $sum: "$total" },
         },
       },
     ]);
-    const statsMap = Object.fromEntries(
-      orderStats.map((s: any) => [s._id.toString(), s]),
+
+    // POS sale stats — only linked sales (customer field set)
+    const posStats = await POSSale.aggregate([
+      { $match: { customer: { $in: userIds } } },
+      {
+        $group: {
+          _id: "$customer",
+          posOrders: { $sum: 1 },
+          posSpent: { $sum: { $ifNull: ["$total", "$totalAmount"] } },
+        },
+      },
+    ]);
+
+    const onlineMap = Object.fromEntries(
+      onlineStats.map((s: any) => [s._id.toString(), s]),
+    );
+    const posMap = Object.fromEntries(
+      posStats.map((s: any) => [s._id.toString(), s]),
     );
 
-    const customers = users.map((u: any) => ({
-      ...u,
-      _id: u._id.toString(),
-      totalOrders: statsMap[u._id.toString()]?.totalOrders || 0,
-      totalSpent: statsMap[u._id.toString()]?.totalSpent || 0,
-    }));
+    const customers = users.map((u: any) => {
+      const uid = u._id.toString();
+      const online = onlineMap[uid];
+      const pos = posMap[uid];
+      return {
+        ...u,
+        _id: uid,
+        totalOrders: (online?.onlineOrders || 0) + (pos?.posOrders || 0),
+        totalSpent: (online?.onlineSpent || 0) + (pos?.posSpent || 0),
+        onlineOrders: online?.onlineOrders || 0,
+        posOrders: pos?.posOrders || 0,
+      };
+    });
 
     return NextResponse.json({ customers, total, page, limit });
   } catch (error: any) {
