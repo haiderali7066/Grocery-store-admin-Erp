@@ -1,8 +1,9 @@
 // app/api/admin/customers/[id]/orders/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Order, POSSale } from "@/lib/models";
+import { POSSale, User } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+import mongoose from "mongoose";
 
 function requireAdmin(req: NextRequest) {
   const token = getTokenFromCookie(req.headers.get("cookie") || "");
@@ -23,59 +24,98 @@ export async function GET(
 
     const { id } = await params;
 
-    // Fetch online orders
-    const onlineOrders = await Order.find({ user: id })
-      .populate("items.product", "name mainImage")
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid customer ID" }, { status: 400 });
+    }
+
+    const objectId = new mongoose.Types.ObjectId(id);
+    const customer = await User.findById(objectId).select("name phone addresses").lean() as any;
+
+    // Query by ObjectId + name fallback for legacy/unlinked sales
+    const posQuery: any[] = [{ customer: objectId }];
+    if (customer?.name) {
+      posQuery.push({
+        customer: null,
+        customerName: { $regex: `^${customer.name}$`, $options: "i" },
+      });
+    }
+
+    const posSales = await POSSale.find({ $or: posQuery })
       .sort({ createdAt: -1 })
       .lean();
 
-    // Fetch POS sales
-    const posSales = await POSSale.find({ customer: id })
-      .sort({ createdAt: -1 })
-      .lean();
+    const formattedSales = (posSales as any[]).map((s) => {
+      // Split items into active and returned
+      const activeItems = (s.items || []).filter((i: any) => !i.returned);
+      const returnedItems = (s.items || []).filter((i: any) => i.returned);
 
-    // Format online orders
-    const formattedOnlineOrders = (onlineOrders as any[]).map((o) => ({
-      _id: o._id.toString(),
-      orderNumber: o.orderNumber,
-      type: "online",
-      total: o.total,
-      orderStatus: o.orderStatus,
-      paymentStatus: o.paymentStatus,
-      paymentMethod: o.paymentMethod,
-      createdAt: o.createdAt,
-      items: (o.items || []).map((i: any) => ({
-        name: i.product?.name || "Product",
-        quantity: i.quantity,
-        price: i.price,
-      })),
-    }));
+      // Recalculate totals from active items only
+      const activeSubtotal = activeItems.reduce(
+        (sum: number, i: any) => sum + i.price * i.quantity,
+        0,
+      );
+      const activeTax = activeItems.reduce(
+        (sum: number, i: any) => sum + (i.taxAmount ?? 0),
+        0,
+      );
+      const activeTotal = activeItems.reduce(
+        (sum: number, i: any) => sum + (i.total ?? i.price * i.quantity),
+        0,
+      );
 
-    // Format POS sales
-    const formattedPosSales = (posSales as any[]).map((s) => ({
-      _id: s._id.toString(),
-      orderNumber: s.saleNumber,
-      type: "pos",
-      total: s.total || s.totalAmount,
-      orderStatus: "completed",
-      paymentStatus: s.paymentStatus || "completed",
-      paymentMethod: s.paymentMethod,
-      createdAt: s.createdAt,
-      items: (s.items || []).map((i: any) => ({
-        name: i.name || "Item",
-        quantity: i.quantity,
-        price: i.price,
-      })),
-    }));
+      return {
+        _id: s._id.toString(),
+        saleNumber: s.saleNumber,
+        // Use recalculated totals if any items returned, else original
+        total: returnedItems.length > 0 ? activeTotal : (s.total ?? s.totalAmount ?? 0),
+        subtotal: returnedItems.length > 0 ? activeSubtotal : (s.subtotal ?? 0),
+        tax: returnedItems.length > 0 ? activeTax : (s.tax ?? s.gstAmount ?? 0),
+        originalTotal: s.total ?? s.totalAmount ?? 0,
+        discount: s.discount ?? 0,
+        amountPaid: s.amountPaid ?? 0,
+        change: s.change ?? 0,
+        paymentMethod: s.paymentMethod,
+        paymentStatus: s.paymentStatus ?? "completed",
+        createdAt: s.createdAt,
+        hasReturns: returnedItems.length > 0,
+        returnedCount: returnedItems.length,
+        // Active items only
+        items: activeItems.map((i: any) => ({
+          name: i.name || "Item",
+          quantity: i.quantity,
+          price: i.price,
+          taxRate: i.taxRate ?? 0,
+          taxAmount: i.taxAmount ?? 0,
+          total: i.total ?? i.price * i.quantity,
+        })),
+        // Returned items shown separately
+        returnedItems: returnedItems.map((i: any) => ({
+          name: i.name || "Item",
+          quantity: i.quantity,
+          price: i.price,
+          returnedAt: i.returnedAt,
+          returnedQty: i.returnedQty ?? i.quantity,
+        })),
+      };
+    });
 
-    // Combine and sort by date
-    const allOrders = [...formattedOnlineOrders, ...formattedPosSales].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
+    // Only include sales that still have active items
+    const salesWithItems = formattedSales.filter((s) => s.items.length > 0);
 
-    return NextResponse.json({ orders: allOrders });
+    const totalSpent = salesWithItems.reduce((s, o) => s + o.total, 0);
+    const stats = {
+      totalSales: salesWithItems.length,
+      totalSpent,
+      totalItems: salesWithItems.reduce(
+        (s, o) => s + o.items.reduce((a: number, i: any) => a + i.quantity, 0),
+        0,
+      ),
+      avgOrder: salesWithItems.length > 0 ? totalSpent / salesWithItems.length : 0,
+    };
+
+    return NextResponse.json({ sales: salesWithItems, stats });
   } catch (error: any) {
+    console.error("Customer orders error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

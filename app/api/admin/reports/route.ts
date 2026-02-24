@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     const period = searchParams.get("period") || "monthly";
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
+    const includeDetail = searchParams.get("detail") === "true";
 
     let start = moment().startOf("month").toDate();
     let end = moment().endOf("day").toDate();
@@ -32,49 +33,106 @@ export async function GET(req: NextRequest) {
 
     const matchQuery = { createdAt: { $gte: start, $lte: end } };
 
-    // Optimized Aggregation
-    const [financialStats, expenseStats, inventoryValue] = await Promise.all([
-      // 1. Calculate Revenue & COGS from both Online and POS
-      Promise.all([
-        Order.aggregate([
-          { $match: { ...matchQuery, orderStatus: { $ne: "cancelled" } } },
+    // Aggregation + optional detail queries
+    const [financialStats, expenseStats, inventoryValue, onlineOrders, posSales] =
+      await Promise.all([
+        // 1. Revenue & COGS aggregations
+        Promise.all([
+          Order.aggregate([
+            { $match: { ...matchQuery, orderStatus: { $ne: "cancelled" } } },
+            {
+              $group: {
+                _id: null,
+                rev: { $sum: "$subtotal" },
+                profit: { $sum: "$profit" },
+              },
+            },
+          ]),
+          POSSale.aggregate([
+            { $match: { ...matchQuery, paymentStatus: "completed" } },
+            {
+              $group: {
+                _id: null,
+                rev: { $sum: "$subtotal" },
+                cogs: { $sum: "$costOfGoods" },
+              },
+            },
+          ]),
+        ]),
+
+        // 2. Expense Breakdown
+        Expense.aggregate([
+          { $match: { date: { $gte: start, $lte: end } } },
+          { $group: { _id: "$category", total: { $sum: "$amount" } } },
+        ]),
+
+        // 3. Current Inventory Value
+        InventoryBatch.aggregate([
+          { $match: { status: { $ne: "finished" } } },
           {
             $group: {
               _id: null,
-              rev: { $sum: "$subtotal" },
-              profit: { $sum: "$profit" },
+              total: {
+                $sum: { $multiply: ["$remainingQuantity", "$buyingRate"] },
+              },
             },
           },
         ]),
-        POSSale.aggregate([
-          { $match: { ...matchQuery, paymentStatus: "completed" } },
-          {
-            $group: {
-              _id: null,
-              rev: { $sum: "$subtotal" },
-              cogs: { $sum: "$costOfGoods" },
-            },
-          },
-        ]),
-      ]),
-      // 2. Expense Breakdown
-      Expense.aggregate([
-        { $match: { date: { $gte: start, $lte: end } } },
-        { $group: { _id: "$category", total: { $sum: "$amount" } } },
-      ]),
-      // 3. Current Inventory Value
-      InventoryBatch.aggregate([
-        { $match: { status: { $ne: "finished" } } },
-        {
-          $group: {
-            _id: null,
-            total: {
-              $sum: { $multiply: ["$remainingQuantity", "$buyingRate"] },
-            },
-          },
-        },
-      ]),
-    ]);
+
+        // 4. Online orders detail (if requested)
+        includeDetail
+          ? Order.find(
+              { ...matchQuery, orderStatus: { $ne: "cancelled" } },
+              {
+                orderNumber: 1,
+                subtotal: 1,
+                profit: 1,
+                createdAt: 1,
+                orderStatus: 1,
+                "shippingAddress.name": 1,
+              }
+            )
+              .sort({ createdAt: -1 })
+              .lean()
+              .then((orders) =>
+                orders.map((o: any) => ({
+                  _id: o._id.toString(),
+                  orderNumber: o.orderNumber,
+                  subtotal: o.subtotal,
+                  profit: o.profit,
+                  createdAt: o.createdAt,
+                  orderStatus: o.orderStatus,
+                  customerName: o.shippingAddress?.name || null,
+                }))
+              )
+          : Promise.resolve([]),
+
+        // 5. POS sales detail (if requested)
+        includeDetail
+          ? POSSale.find(
+              { ...matchQuery, paymentStatus: "completed" },
+              {
+                subtotal: 1,
+                costOfGoods: 1,
+                createdAt: 1,
+                paymentMethod: 1,
+                items: 1,
+              }
+            )
+              .sort({ createdAt: -1 })
+              .lean()
+              .then((sales) =>
+                sales.map((s: any) => ({
+                  _id: s._id.toString(),
+                  subtotal: s.subtotal,
+                  costOfGoods: s.costOfGoods,
+                  createdAt: s.createdAt,
+                  paymentMethod: s.paymentMethod,
+                  items: s.items,
+                }))
+              )
+          : Promise.resolve([]),
+      ]);
 
     const online = financialStats[0][0] || { rev: 0, profit: 0 };
     const pos = financialStats[1][0] || { rev: 0, cogs: 0 };
@@ -83,7 +141,7 @@ export async function GET(req: NextRequest) {
     const totalCOGS = online.rev - online.profit + pos.cogs;
     const totalExpenses = expenseStats.reduce(
       (acc, curr) => acc + curr.total,
-      0,
+      0
     );
     const grossProfit = totalRevenue - totalCOGS;
     const netProfit = grossProfit - totalExpenses;
@@ -109,6 +167,12 @@ export async function GET(req: NextRequest) {
           amount: e.total,
         })),
       },
+      ...(includeDetail && {
+        detail: {
+          onlineOrders,
+          posSales,
+        },
+      }),
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

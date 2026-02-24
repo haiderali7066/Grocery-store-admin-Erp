@@ -10,6 +10,7 @@ import {
 } from "@/lib/models/index";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+import mongoose from "mongoose";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       customerName,
-      customerId, // NEW: Selected customer ID
+      customerId,
       items,
       billDiscountType,
       billDiscountValue,
@@ -36,6 +37,10 @@ export async function POST(req: NextRequest) {
       paymentMethod,
       amountPaid,
     } = body;
+
+    // ── Debug log (remove after confirming it works) ──
+    console.log("[POS Bill] customerId received:", customerId);
+    console.log("[POS Bill] customerName received:", customerName);
 
     if (!items || items.length === 0) {
       return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
@@ -56,14 +61,14 @@ export async function POST(req: NextRequest) {
       if (!product) {
         return NextResponse.json(
           { error: `Product not found: ${cartItem.productId}` },
-          { status: 404 }
+          { status: 404 },
         );
       }
 
       if (product.stock < cartItem.quantity) {
         return NextResponse.json(
           { error: `Insufficient stock for ${product.name}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -81,7 +86,7 @@ export async function POST(req: NextRequest) {
       if (batches.length === 0) {
         return NextResponse.json(
           { error: `No inventory batches found for ${product.name}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -117,7 +122,7 @@ export async function POST(req: NextRequest) {
       if (remainingQty > 0) {
         return NextResponse.json(
           { error: `Insufficient inventory batches for ${product.name}` },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -133,11 +138,11 @@ export async function POST(req: NextRequest) {
         name: product.name,
         quantity: cartItem.quantity,
         price: cartItem.price,
+        taxRate: cartItem.taxRate ?? 0,       // ← FIXED
+        taxAmount: taxAmount,                  // ← FIXED
         discountType: "percentage",
         discountValue: 0,
         discountAmount: 0,
-        taxRate: cartItem.taxRate,
-        taxAmount: taxAmount,
         total: itemTotal,
         costPrice: itemCostPrice,
         batchId: usedBatches[0]?.batchId,
@@ -147,11 +152,11 @@ export async function POST(req: NextRequest) {
     // Calculate totals
     const subtotal = processedItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
-      0
+      0,
     );
     const totalTax = processedItems.reduce(
       (sum, item) => sum + item.taxAmount,
-      0
+      0,
     );
     const subtotalWithTax = subtotal + totalTax;
 
@@ -164,19 +169,25 @@ export async function POST(req: NextRequest) {
 
     const total = Math.max(0, subtotalWithTax - billDiscountAmountServer);
     const change = amountPaid - total;
-
-    // Profit: total revenue minus cost of goods
     const totalProfit = total - totalCostOfGoods;
+
+    // ── Resolve customer ObjectId ─────────────────────────────────────────
+    let customerObjectId: mongoose.Types.ObjectId | null = null;
+    if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
+      customerObjectId = new mongoose.Types.ObjectId(customerId);
+    }
 
     // Create POS Sale
     const posSale = new POSSale({
       saleNumber,
       customerName: customerName || "Walk-in Customer",
-      customer: customerId || null, // NEW: Link to customer if selected
+      customer: customerObjectId,              // ← FIXED: proper ObjectId or null
       cashier: payload.userId,
       items: processedItems,
       subtotal,
       discount: billDiscountAmountServer,
+      discountType: billDiscountType || "percentage",
+      discountValue: discountValue,
       tax: totalTax,
       gstAmount: totalTax,
       totalAmount: total,
@@ -192,6 +203,10 @@ export async function POST(req: NextRequest) {
     });
 
     await posSale.save();
+
+    // ── Debug: confirm what was saved ────────────────────────────────────
+    console.log("[POS Bill] Sale saved:", posSale.saleNumber);
+    console.log("[POS Bill] customer field saved as:", posSale.customer);
 
     // Update wallet
     let wallet = await Wallet.findOne();
@@ -218,7 +233,7 @@ export async function POST(req: NextRequest) {
       type: "income",
       category: "POS Sale",
       amount: total,
-      source: paymentMethod,
+      source: paymentMethod === "online" ? "bank" : paymentMethod,
       reference: posSale._id,
       referenceModel: "POSSale",
       description: `POS Sale ${saleNumber} - ${customerName || "Walk-in Customer"}`,
@@ -231,6 +246,7 @@ export async function POST(req: NextRequest) {
         message: "Sale completed successfully",
         saleNumber: posSale.saleNumber,
         customerName: posSale.customerName,
+        customerId: posSale.customer,
         items: processedItems,
         subtotal,
         discount: billDiscountAmountServer,
@@ -243,7 +259,7 @@ export async function POST(req: NextRequest) {
         costOfGoods: totalCostOfGoods,
         createdAt: posSale.createdAt,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("POS bill error:", error);
@@ -251,7 +267,7 @@ export async function POST(req: NextRequest) {
       {
         error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

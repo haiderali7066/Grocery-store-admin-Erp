@@ -98,7 +98,7 @@ CategorySchema.pre("validate", function () {
 });
 
 // =========================
-// Product Schema (UPDATED - retailPrice not required, set from inventory)
+// Product Schema
 // =========================
 export const ProductSchema = new Schema(
   {
@@ -107,8 +107,8 @@ export const ProductSchema = new Schema(
     category: { type: Schema.Types.ObjectId, ref: "Category", required: true },
     brand: String,
     description: String,
-    retailPrice: { type: Number, default: 0 }, // Set from active inventory batch
-    lastBuyingRate: { type: Number, default: 0 }, // Stores the latest Landed Cost
+    retailPrice: { type: Number, default: 0 },
+    lastBuyingRate: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     discountType: {
       type: String,
@@ -169,6 +169,8 @@ export const BundleSchema = new Schema(
     },
     gst: { type: Number, default: 17 },
     isActive: { type: Boolean, default: true },
+    // ✅ NEW: tag this bundle to appear on the flash sale page
+    isFlashSale: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -184,14 +186,14 @@ export const SupplierSchema = new Schema(
     address: String,
     city: String,
     contact: String,
-    balance: { type: Number, default: 0 }, // Positive = we owe them, Negative = Credit
+    balance: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true },
 );
 
 // =========================
-// Purchase Schema (UPDATED)
+// Purchase Schema
 // =========================
 export const PurchaseSchema = new Schema(
   {
@@ -206,23 +208,23 @@ export const PurchaseSchema = new Schema(
           required: true,
         },
         quantity: { type: Number, required: true },
-        buyingRate: { type: Number, required: true }, // Base Price
+        buyingRate: { type: Number, required: true },
         taxType: {
           type: String,
           enum: ["percent", "fixed"],
           default: "percent",
         },
         taxValue: { type: Number, default: 0 },
-        freightPerUnit: { type: Number, default: 0 }, // Added freight per unit
-        unitCostWithTax: { type: Number, required: true }, // Landed Cost (base + tax + freight)
-        sellingPrice: { type: Number, required: true }, // Selling price for this batch
+        freightPerUnit: { type: Number, default: 0 },
+        unitCostWithTax: { type: Number, required: true },
+        sellingPrice: { type: Number, required: true },
         batchNumber: { type: Schema.Types.ObjectId, ref: "InventoryBatch" },
         expiryDate: Date,
       },
     ],
-    totalAmount: { type: Number, required: true }, // Bill Total
-    amountPaid: { type: Number, default: 0 }, // Actual cash paid
-    balanceDue: { type: Number, default: 0 }, // Remaining to be added to Supplier balance
+    totalAmount: { type: Number, required: true },
+    amountPaid: { type: Number, default: 0 },
+    balanceDue: { type: Number, default: 0 },
     paymentMethod: {
       type: String,
       enum: ["cash", "bank", "cheque", "easypaisa", "jazzcash"],
@@ -244,22 +246,25 @@ export const PurchaseSchema = new Schema(
 );
 
 // =========================
-// InventoryBatch Schema (UPDATED - added freight and selling price)
+// InventoryBatch Schema
+// FIX: Added isReturn field (was being set in manual route but not in schema,
+//      causing Mongoose to silently drop it)
 // =========================
 export const InventoryBatchSchema = new Schema(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
-    quantity: { type: Number, required: true }, // Original quantity purchased
-    remainingQuantity: { type: Number, required: true }, // Used for FIFO stock deduction
-    buyingRate: { type: Number, required: true }, // Full Landed Cost (base + tax + freight)
-    baseRate: { type: Number }, // Price before tax
+    quantity: { type: Number, required: true },
+    remainingQuantity: { type: Number, required: true },
+    buyingRate: { type: Number, required: true },
+    baseRate: { type: Number },
     taxValue: { type: Number },
     taxType: { type: String, enum: ["percent", "fixed"] },
-    freightPerUnit: { type: Number, default: 0 }, // Freight cost per unit
-    sellingPrice: { type: Number, required: true }, // Selling price for this batch
-    profitPerUnit: { type: Number }, // Calculated: sellingPrice - buyingRate
+    freightPerUnit: { type: Number, default: 0 },
+    sellingPrice: { type: Number, required: true },
+    profitPerUnit: { type: Number },
     purchaseReference: { type: Schema.Types.ObjectId, ref: "Purchase" },
     expiry: Date,
+    isReturn: { type: Boolean, default: false }, // ✅ FIX: was silently dropped before
     status: {
       type: String,
       enum: ["active", "partial", "finished"],
@@ -276,7 +281,7 @@ export const POSSaleSchema = new Schema(
   {
     saleNumber: { type: String, required: true, unique: true },
     customerName: { type: String, default: "Walk-in Customer" },
-    customer: { type: Schema.Types.ObjectId, ref: "User", default: null }, // ← NEW
+    customer: { type: Schema.Types.ObjectId, ref: "User", default: null },
     cashier: { type: Schema.Types.ObjectId, ref: "User" },
     items: [
       {
@@ -290,19 +295,26 @@ export const POSSaleSchema = new Schema(
         price: { type: Number, required: true },
         costPrice: { type: Number },
         batchId: { type: Schema.Types.ObjectId, ref: "InventoryBatch" },
-        taxRate: { type: Number, default: 0 }, // ← NEW
-        taxAmount: { type: Number, default: 0 }, // ← NEW
+        taxRate: { type: Number, default: 0 },
+        taxAmount: { type: Number, default: 0 },
         total: { type: Number, required: true },
+        // ✅ FIX: These fields were being set by the manual return route via
+        //    updateOne $set but never declared here. While $set bypasses
+        //    Mongoose schema for writes, having them declared makes reads
+        //    (via .lean()) include them reliably and avoids confusion.
+        returned: { type: Boolean, default: false },
+        returnedAt: { type: Date, default: null },
+        returnedQty: { type: Number, default: 0 },
       },
     ],
     subtotal: { type: Number, required: true },
-    discount: { type: Number, default: 0 }, // ← NEW
+    discount: { type: Number, default: 0 },
     discountType: {
       type: String,
       enum: ["percentage", "fixed"],
       default: "percentage",
-    }, // ← NEW
-    discountValue: { type: Number, default: 0 }, // ← NEW
+    },
+    discountValue: { type: Number, default: 0 },
     tax: { type: Number, required: true },
     gstAmount: { type: Number },
     totalAmount: { type: Number, required: true },
@@ -311,7 +323,7 @@ export const POSSaleSchema = new Schema(
     change: { type: Number, default: 0 },
     paymentMethod: {
       type: String,
-      enum: ["cash", "card", "online", "manual"], // ← added "online"
+      enum: ["cash", "card", "online", "manual"],
       required: true,
     },
     paymentStatus: {
@@ -327,8 +339,9 @@ export const POSSaleSchema = new Schema(
   },
   { timestamps: true },
 );
+
 // =========================
-// Order Schema (UPDATED - Add COD Payment Tracking)
+// Order Schema
 // =========================
 export const OrderSchema = new Schema(
   {
@@ -344,6 +357,10 @@ export const OrderSchema = new Schema(
         discount: Number,
         gst: Number,
         subtotal: Number,
+        // ✅ FIX: Same as POSSale — declare return tracking fields
+        returned: { type: Boolean, default: false },
+        returnedAt: { type: Date, default: null },
+        returnedQty: { type: Number, default: 0 },
       },
     ],
     shippingAddress: {
@@ -368,7 +385,6 @@ export const OrderSchema = new Schema(
       enum: ["pending", "verified", "failed"],
       default: "pending",
     },
-    // NEW: Track COD payment status separately
     codPaymentStatus: {
       type: String,
       enum: ["unpaid", "paid"],
@@ -376,9 +392,9 @@ export const OrderSchema = new Schema(
         return this.paymentMethod === "cod" ? "unpaid" : null;
       },
     },
-    codPaidAt: Date, // When admin marked COD as paid
-    codPaidBy: { type: Schema.Types.ObjectId, ref: "User" }, // Which admin marked it paid
-    screenshot: String, // Optional for COD
+    codPaidAt: Date,
+    codPaidBy: { type: Schema.Types.ObjectId, ref: "User" },
+    screenshot: String,
     invoiceNumber: String,
     orderStatus: {
       type: String,
@@ -394,8 +410,6 @@ export const OrderSchema = new Schema(
     },
     profit: { type: Number, default: 0 },
     isPOS: { type: Boolean, default: false },
-
-    // Tracking fields
     trackingNumber: String,
     trackingProvider: String,
     shippedDate: Date,
@@ -403,7 +417,6 @@ export const OrderSchema = new Schema(
   },
   { timestamps: true },
 );
-
 
 // =========================
 // Payment Schema
@@ -427,20 +440,26 @@ export const PaymentSchema = new Schema(
 );
 
 // =========================
-// Refund Schema (UPDATED)
+// Refund Schema
+// FIX: Added returnItems array — this was the PRIMARY bug causing the entire
+//      return system to break. The manual route saved returnItems on the Refund
+//      document, but since the field wasn't declared here, Mongoose stripped it
+//      silently on every save. The search route then found Refund records but
+//      with empty returnItems, so returnedKeys was always empty, and every item
+//      appeared returnable on every search.
 // =========================
 export const RefundSchema = new Schema(
   {
     order: { type: Schema.Types.ObjectId, ref: "Order" },
-    orderNumber: String, // For manual POS returns
+    orderNumber: { type: String, index: true }, // indexed for fast lookup in search route
     returnType: {
       type: String,
       enum: ["online", "pos_manual"],
       default: "online",
     },
     requestedAmount: { type: Number, required: true },
-    refundedAmount: { type: Number }, // Actual amount refunded (may deduct delivery)
-    deliveryCost: { type: Number, default: 0 }, // Rs 300 for online orders
+    refundedAmount: { type: Number },
+    deliveryCost: { type: Number, default: 0 },
     reason: String,
     status: {
       type: String,
@@ -450,6 +469,18 @@ export const RefundSchema = new Schema(
     approvedBy: { type: Schema.Types.ObjectId, ref: "User" },
     approvedAt: Date,
     notes: String,
+    // ✅ PRIMARY FIX: returnItems was missing from the schema entirely.
+    //    Every refund saved by manual/route.ts had this data stripped by Mongoose.
+    returnItems: [
+      {
+        productId: { type: Schema.Types.ObjectId, ref: "Product", default: null },
+        name: { type: String, required: true },
+        returnQty: { type: Number, required: true },
+        unitPrice: { type: Number, required: true },
+        lineTotal: { type: Number, required: true },
+        restock: { type: Boolean, default: true },
+      },
+    ],
   },
   { timestamps: true },
 );
@@ -470,36 +501,27 @@ export const HeroBannerSchema = new Schema(
 );
 
 // =========================
-// Store Settings Schema (UPDATED - Added YouTube & TikTok)
+// Store Settings Schema
 // =========================
 export const StoreSettingsSchema = new Schema(
   {
-    // Store Info
     storeName: { type: String, default: "Khas Pure Food" },
     storeLogoUrl: String,
     storeDescription: String,
-
-    // Contact Info
     contactEmail: String,
     contactPhone: String,
     address: String,
     city: String,
     country: { type: String, default: "Pakistan" },
-
-    // Social Media (UPDATED)
     facebookUrl: String,
     instagramUrl: String,
     twitterUrl: String,
-    youtubeUrl: String, // NEW
-    tiktokUrl: String, // NEW
+    youtubeUrl: String,
+    tiktokUrl: String,
     whatsappNumber: String,
-
-    // Tax Settings
     taxRate: { type: Number, default: 17 },
     taxName: { type: String, default: "GST" },
     taxEnabled: { type: Boolean, default: true },
-
-    // Payment Methods
     paymentMethods: {
       cod: {
         enabled: { type: Boolean, default: true },
@@ -527,8 +549,6 @@ export const StoreSettingsSchema = new Schema(
         accountName: String,
       },
     },
-
-    // Hero Banners
     heroBanners: [
       {
         title: String,
@@ -539,11 +559,7 @@ export const StoreSettingsSchema = new Schema(
         sortOrder: { type: Number, default: 0 },
       },
     ],
-
-    // Business Hours
     businessHours: String,
-
-    // Shipping
     freeShippingThreshold: { type: Number, default: 0 },
     shippingCost: { type: Number, default: 0 },
   },
@@ -602,8 +618,6 @@ export const WalletSchema = new Schema(
 // =========================
 // Transaction Schema
 // =========================
-// lib/models/index.ts - Update TransactionSchema
-
 export const TransactionSchema = new Schema(
   {
     type: {
@@ -622,7 +636,7 @@ export const TransactionSchema = new Schema(
     reference: { type: Schema.Types.ObjectId, refPath: "referenceModel" },
     referenceModel: {
       type: String,
-      enum: ["Order", "POSSale", "Purchase", "Investment", "Refund", "Expense", "Supplier"], // ✅ ADD "Supplier" HERE
+      enum: ["Order", "POSSale", "Purchase", "Investment", "Refund", "Expense", "Supplier"],
     },
     description: String,
     notes: String,
@@ -630,8 +644,6 @@ export const TransactionSchema = new Schema(
   },
   { timestamps: true }
 );
-
-
 
 // =========================
 // SaleConfig Schema
@@ -681,7 +693,7 @@ export const InvestmentSchema = new Schema(
 );
 
 // =========================
-// Review Schema - ADD THIS to your lib/models/index.ts file
+// Review Schema
 // =========================
 export const ReviewSchema = new Schema(
   {
@@ -726,10 +738,7 @@ export const ReviewSchema = new Schema(
   { timestamps: true },
 );
 
-// Compound index: one review per user per product
 ReviewSchema.index({ user: 1, product: 1 }, { unique: true });
-
-// THEN ADD THIS to your exports at the bottom:
 
 // =========================
 // Mongoose Models Export
@@ -777,6 +786,6 @@ export const RefundRequest = Refund;
 
 export const SaleConfig =
   mongoose.models.SaleConfig || mongoose.model("SaleConfig", SaleConfigSchema);
-  
+
 export const Review =
   mongoose.models.Review || mongoose.model("Review", ReviewSchema);
