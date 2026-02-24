@@ -62,10 +62,17 @@ export const UserSchema = new Schema(
       type: Date,
       select: false,
     },
+
+    // ✅ Stores plain-text password for admin visibility only.
+    // Updated whenever admin creates or resets a staff password.
+    // Never used for authentication — bcrypt hash in `password` handles that.
+    tempPassword: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true },
 );
-
 // =========================
 // Category Schema
 // =========================
