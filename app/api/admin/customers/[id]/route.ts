@@ -1,7 +1,8 @@
-// app/api/admin/customers/[id]/orders/route.ts
+// app/api/admin/customers/[id]/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Order, POSSale, User } from "@/lib/models";
+import { User } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
 
@@ -12,9 +13,9 @@ function requireAdmin(req: NextRequest) {
   return payload;
 }
 
-export async function GET(
+export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> },
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
@@ -25,99 +26,88 @@ export async function GET(
     const { id } = await params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid customer ID" }, { status: 400 });
+    }
+
+    const { name, email, phone, addresses } = await req.json();
+
+    // Validate required fields
+    if (!name || !email) {
       return NextResponse.json(
-        { error: "Invalid customer ID" },
-        { status: 400 },
+        { error: "Name and email are required" },
+        { status: 400 }
       );
     }
 
-    const objectId = new mongoose.Types.ObjectId(id);
-
-    // Get customer name for name-based fallback (legacy sales without customer field)
-    const customer = (await User.findById(objectId)
-      .select("name")
-      .lean()) as any;
-
-    // Fetch online orders
-    const onlineOrders = await Order.find({ user: objectId })
-      .populate("items.product", "name mainImage")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    // Fetch POS sales — ObjectId match + name fallback for pre-linking sales
-    const posQuery: any[] = [{ customer: objectId }];
-    if (customer?.name) {
-      posQuery.push({ customer: null, customerName: customer.name });
+    // Check if email is already taken by another user
+    const existing = await User.findOne({
+      email: email.toLowerCase(),
+      _id: { $ne: id },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: "Email already in use" },
+        { status: 409 }
+      );
     }
 
-    const posSales = await POSSale.find({ $or: posQuery })
-      .sort({ createdAt: -1 })
-      .lean();
+    // Update the customer
+    const updatedUser = await User.findByIdAndUpdate(
+      id,
+      {
+        name,
+        email: email.toLowerCase(),
+        phone: phone || "",
+        addresses: addresses || [],
+      },
+      { new: true, runValidators: true }
+    ).select("-password");
 
-    // Format online orders
-    const formattedOnlineOrders = (onlineOrders as any[]).map((o) => ({
-      _id: o._id.toString(),
-      orderNumber: o.orderNumber,
-      type: "online" as const,
-      total: o.total ?? 0,
-      subtotal: o.subtotal ?? 0,
-      tax: o.gstAmount ?? 0,
-      discount: o.discount ?? 0,
-      shippingCost: o.shippingCost ?? 0,
-      orderStatus: o.orderStatus,
-      paymentStatus: o.paymentStatus,
-      paymentMethod: o.paymentMethod,
-      createdAt: o.createdAt,
-      items: (o.items || []).map((i: any) => ({
-        name: i.product?.name || "Product",
-        quantity: i.quantity,
-        price: i.price,
-        subtotal: i.subtotal ?? i.price * i.quantity,
-      })),
-    }));
+    if (!updatedUser) {
+      return NextResponse.json(
+        { error: "Customer not found" },
+        { status: 404 }
+      );
+    }
 
-    // Format POS sales
-    const formattedPosSales = (posSales as any[]).map((s) => ({
-      _id: s._id.toString(),
-      orderNumber: s.saleNumber,
-      type: "pos" as const,
-      total: s.total ?? s.totalAmount ?? 0,
-      subtotal: s.subtotal ?? 0,
-      tax: s.tax ?? s.gstAmount ?? 0,
-      discount: s.discount ?? 0,
-      amountPaid: s.amountPaid ?? 0,
-      change: s.change ?? 0,
-      orderStatus: "completed",
-      paymentStatus: s.paymentStatus ?? "completed",
-      paymentMethod: s.paymentMethod,
-      createdAt: s.createdAt,
-      items: (s.items || []).map((i: any) => ({
-        name: i.name || "Item",
-        quantity: i.quantity,
-        price: i.price,
-        taxRate: i.taxRate ?? 0,
-        taxAmount: i.taxAmount ?? 0,
-        subtotal: i.total ?? i.price * i.quantity,
-      })),
-    }));
-
-    const allOrders = [...formattedOnlineOrders, ...formattedPosSales].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-
-    const stats = {
-      totalOrders: allOrders.length,
-      onlineCount: formattedOnlineOrders.length,
-      posCount: formattedPosSales.length,
-      totalSpent: allOrders.reduce((s, o) => s + o.total, 0),
-      totalOnlineSpent: formattedOnlineOrders.reduce((s, o) => s + o.total, 0),
-      totalPosSpent: formattedPosSales.reduce((s, o) => s + o.total, 0),
-    };
-
-    return NextResponse.json({ orders: allOrders, stats });
+    return NextResponse.json({ customer: updatedUser }, { status: 200 });
   } catch (error: any) {
-    console.error("Customer orders error:", error);
+    console.error("PATCH customer error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await connectDB();
+    if (!requireAdmin(req)) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json({ error: "Invalid customer ID" }, { status: 400 });
+    }
+
+    const deletedUser = await User.findByIdAndDelete(id);
+
+    if (!deletedUser) {
+      return NextResponse.json(
+        { error: "Customer not found" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      { message: "Customer deleted successfully" },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("DELETE customer error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

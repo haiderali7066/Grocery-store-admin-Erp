@@ -2,7 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { POSSale, Wallet, Transaction, Product, InventoryBatch, Refund } from "@/lib/models";
+import { POSSale, Order, Wallet, Transaction, Product, InventoryBatch, Refund } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
 function auth(req: NextRequest) {
@@ -15,12 +15,19 @@ function auth(req: NextRequest) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
     if (!auth(req)) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    const sale = await POSSale.findById(params.id).populate("cashier", "name").lean();
+    
+    const { id } = await params;
+    
+    let sale = await POSSale.findById(id).populate("cashier", "name").lean();
+    if (!sale) {
+      sale = await Order.findById(id).lean();
+    }
+    
     if (!sale) return NextResponse.json({ message: "Sale not found" }, { status: 404 });
     return NextResponse.json({ sale }, { status: 200 });
   } catch (err) {
@@ -29,21 +36,31 @@ export async function GET(
 }
 
 // ── DELETE — reverses stock, wallet, and transaction ─────────────────────────
+// Handles both POSSale and Order (isPOS: true) models
 // Correctly accounts for items already returned via the refund system
-// so stock is never double-restored.
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
     if (!auth(req)) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-    const sale = await POSSale.findById(params.id);
+    const { id } = await params;
+
+    // ── Try POSSale first, then Order ────────────────────────────────────
+    let sale: any = await POSSale.findById(id);
+    let sourceModel = "POSSale";
+    
+    if (!sale) {
+      sale = await Order.findById(id);
+      if (sale) sourceModel = "Order";
+    }
+    
     if (!sale) return NextResponse.json({ message: "Sale not found" }, { status: 404 });
 
-    const saleNumber = (sale as any).saleNumber;
+    const saleNumber = sale.saleNumber || sale.orderNumber;
     const saleAmount = sale.totalAmount || sale.total || 0;
     const paymentMethod = sale.paymentMethod?.toLowerCase() || "cash";
 
@@ -138,23 +155,27 @@ export async function DELETE(
     // ── 4. Delete transaction record ──────────────────────────────────────
     await Transaction.deleteOne({
       $or: [
-        { reference: sale._id, referenceModel: "POSSale" },
+        { reference: sale._id, referenceModel: sourceModel },
         { reference: sale._id },
       ],
     });
 
     // ── 5. Delete any associated completed refund records for this sale ───
-    // Since the sale is being voided entirely, clean up refund records too
     if (saleNumber) {
       await Refund.deleteMany({ orderNumber: saleNumber });
     }
 
-    // ── 6. Delete the sale ────────────────────────────────────────────────
-    await POSSale.findByIdAndDelete(params.id);
+    // ── 6. Delete the sale from the appropriate model ────────────────────
+    if (sourceModel === "POSSale") {
+      await POSSale.findByIdAndDelete(id);
+    } else {
+      await Order.findByIdAndDelete(id);
+    }
 
     return NextResponse.json({
       message: "Sale deleted. Stock restored and wallet refunded.",
       reversed: {
+        sourceModel,
         totalSaleAmount: saleAmount,
         alreadyRefundedAmount,
         walletRestoreAmount,

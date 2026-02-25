@@ -433,7 +433,7 @@ export default function InvestmentPage() {
             Rs. {data.remainingBalance.toLocaleString()}
           </p>
         </Card>
-        <Card className="p-6 border-0 shadow-md bg-orange-50">
+        {/* <Card className="p-6 border-0 shadow-md bg-orange-50">
           <div className="flex items-center gap-3 mb-2">
             <TrendingDown className="h-5 w-5 text-orange-600" />
             <p className="text-sm font-medium text-gray-600">
@@ -443,7 +443,7 @@ export default function InvestmentPage() {
           <p className="text-3xl font-black text-orange-600">
             Rs. {usedAmount.toLocaleString()}
           </p>
-        </Card>
+        </Card> */}
       </div>
 
       {/* History */}

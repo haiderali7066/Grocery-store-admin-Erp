@@ -45,14 +45,16 @@ async function applyWalletDelta(method: string, delta: number) {
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
     if (!auth(req))
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-    const purchase = await Purchase.findById(params.id)
+    const { id } = await params;
+
+    const purchase = await Purchase.findById(id)
       .populate("supplier", "name email phone")
       .populate("products.product", "name sku retailPrice")
       .lean();
@@ -72,7 +74,7 @@ export async function GET(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
@@ -80,7 +82,9 @@ export async function DELETE(
     if (!payload)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-    const purchase = await Purchase.findById(params.id);
+    const { id } = await params;
+
+    const purchase = await Purchase.findById(id);
     if (!purchase)
       return NextResponse.json({ message: "Purchase not found" }, { status: 404 });
 
@@ -126,7 +130,7 @@ export async function DELETE(
     await Transaction.deleteOne({ reference: purchase._id, referenceModel: "Purchase" });
 
     // ── 5. Delete the purchase ────────────────────────────────────────────
-    await Purchase.findByIdAndDelete(params.id);
+    await Purchase.findByIdAndDelete(id);
 
     return NextResponse.json({ message: "Purchase deleted and all changes reversed" }, { status: 200 });
   } catch (err) {
@@ -148,7 +152,7 @@ export async function DELETE(
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await connectDB();
@@ -156,7 +160,9 @@ export async function PUT(
     if (!payload)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
-    const purchase = await Purchase.findById(params.id);
+    const { id } = await params;
+
+    const purchase = await Purchase.findById(id);
     if (!purchase)
       return NextResponse.json({ message: "Purchase not found" }, { status: 404 });
 
