@@ -1,41 +1,42 @@
-// app/api/orders/route.ts
+// FILE PATH: app/api/orders/route.ts
 import { connectDB } from "@/lib/db";
-import { Order, StoreSettings } from "@/lib/models";
+import { Order, Product, InventoryBatch } from "@/lib/models";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
-import {
-  deductStock,
-  checkStockAvailability,
-} from "@/lib/services/stockService";
 
-function generateOrderNumber() {
-  return `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+// Generate sequential order number
+async function generateOrderNumber(): Promise<string> {
+  const count = await Order.countDocuments();
+  return `ORD-${String(count + 1).padStart(5, "0")}`;
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    await connectDB();
+// Deduct stock using FIFO batches
+async function deductStock(productId: string, quantity: number) {
+  let remaining = quantity;
 
-    const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token)
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  const batches = await InventoryBatch.find({
+    product: productId,
+    status: { $in: ["active", "partial"] },
+  }).sort({ createdAt: 1 });
 
-    const payload = verifyToken(token);
-    if (!payload)
-      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
+  for (const batch of batches) {
+    if (remaining <= 0) break;
 
-    const query = payload.role === "admin" ? {} : { user: payload.userId };
-    const orders = await Order.find(query)
-      .populate("user", "name email phone")
-      .populate("items.product", "name retailPrice unitSize unitType")
-      .sort({ createdAt: -1 })
-      .lean();
+    const deduct = Math.min(remaining, batch.remainingQuantity);
+    batch.remainingQuantity -= deduct;
+    remaining -= deduct;
 
-    return NextResponse.json({ orders }, { status: 200 });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ message: "Server error" }, { status: 500 });
+    if (batch.remainingQuantity === 0) {
+      batch.status = "finished";
+    } else {
+      batch.status = "partial";
+    }
+
+    await batch.save();
   }
+
+  // Update product stock
+  await Product.findByIdAndUpdate(productId, { $inc: { stock: -quantity } });
 }
 
 export async function POST(req: NextRequest) {
@@ -43,128 +44,141 @@ export async function POST(req: NextRequest) {
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token)
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-
     const payload = verifyToken(token);
-    if (!payload)
-      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
 
-    const { items, shippingAddress, paymentMethod, screenshot } =
-      await req.json();
-
-    // Load store settings for server-side validation
-    const settings = (await StoreSettings.findOne().lean()) as any;
-
-    // Validate payment method
-    const knownMethods = ["cod", "bank", "easypaisa", "jazzcash", "walkin"];
-    if (!knownMethods.includes(paymentMethod)) {
-      return NextResponse.json(
-        { message: "Invalid payment method" },
-        { status: 400 },
-      );
+    if (!payload) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    if (paymentMethod !== "walkin" && settings?.paymentMethods) {
-      const methodConfig = settings.paymentMethods[paymentMethod];
-      if (!methodConfig?.enabled) {
+    const body = await req.json();
+
+    const {
+      userId,
+      items,
+      shippingAddress,
+      subtotal,
+      gstAmount,
+      taxRate,
+      taxName,
+      taxEnabled,
+      shippingCost,
+      total,
+      paymentMethod,
+      screenshot,
+      // ✅ Hybrid COD fields — MUST be captured here or they're lost forever
+      codDeliveryCharge,
+      codDeliveryScreenshot,
+    } = body;
+
+    if (!items || items.length === 0) {
+      return NextResponse.json({ message: "No items in order" }, { status: 400 });
+    }
+
+    if (!paymentMethod) {
+      return NextResponse.json({ message: "Payment method required" }, { status: 400 });
+    }
+
+    // Validate stock availability before creating order
+    for (const item of items) {
+      const productId = item.product || item.id;
+      const product = await Product.findById(productId);
+      if (!product) {
         return NextResponse.json(
-          { message: `Payment method "${paymentMethod}" is not available.` },
+          { message: `Product not found: ${productId}` },
+          { status: 400 },
+        );
+      }
+      if (product.stock < item.quantity) {
+        return NextResponse.json(
+          { message: `Insufficient stock for ${product.name}. Available: ${product.stock}` },
           { status: 400 },
         );
       }
     }
 
-    if (paymentMethod !== "cod" && paymentMethod !== "walkin" && !screenshot) {
-      return NextResponse.json(
-        { message: "Payment screenshot is required for online payments" },
-        { status: 400 },
-      );
-    }
+    const orderNumber = await generateOrderNumber();
 
-    // Server-side tax recalculation
-    const storeTaxEnabled: boolean = settings?.taxEnabled ?? true;
-    const storeTaxRate: number = settings?.taxRate ?? 17;
-    const storeShippingCost: number = settings?.shippingCost ?? 0;
-    const storeFreeShippingThreshold: number =
-      settings?.freeShippingThreshold ?? 0;
+    // Build order items
+    const orderItems = items.map((item: any) => ({
+      product: item.product || item.id,
+      quantity: item.quantity,
+      weight: item.weight || null,
+      price: item.price,
+      discount: item.discount || 0,
+      gst: item.gst || 0,
+      subtotal: item.price * item.quantity,
+    }));
 
-    const serverSubtotal: number = items.reduce(
-      (sum: number, i: any) => sum + i.price * i.quantity,
-      0,
-    );
-
-    const serverTaxAmount: number = storeTaxEnabled
-      ? items.reduce((sum: number, i: any) => {
-          const rate = i.gst != null ? i.gst : storeTaxRate;
-          return sum + (i.price * i.quantity * rate) / 100;
-        }, 0)
-      : 0;
-
-    const serverShipping: number =
-      storeFreeShippingThreshold > 0 &&
-      serverSubtotal >= storeFreeShippingThreshold
-        ? 0
-        : storeShippingCost;
-
-    const serverTotal: number =
-      serverSubtotal + serverTaxAmount + serverShipping;
-
-    // Check stock availability
-    const stockCheck = await checkStockAvailability(
-      items.map((i: any) => ({ productId: i.id, quantity: i.quantity })),
-    );
-    if (!stockCheck.available) {
-      return NextResponse.json(
-        { message: "Insufficient stock for one or more items" },
-        { status: 400 },
-      );
-    }
-
-    // Create order with proper COD status initialization
+    // ✅ Build the full order document — COD fields saved here
     const orderData: any = {
-      orderNumber: generateOrderNumber(),
-      user: payload.userId,
-      items: items.map((item: any) => ({
-        product: item.id,
-        quantity: item.quantity,
-        price: item.price,
-        subtotal: item.price * item.quantity,
-      })),
+      orderNumber,
+      user: userId,
+      items: orderItems,
       shippingAddress,
-      subtotal: serverSubtotal,
-      gstAmount: serverTaxAmount,
-      shippingCost: serverShipping,
+      subtotal: subtotal || 0,
+      gstAmount: gstAmount || 0,
       discount: 0,
-      total: serverTotal,
+      shippingCost: shippingCost || 0,
+      total: total || 0,
       paymentMethod,
       paymentStatus: "pending",
-      orderStatus: paymentMethod === "cod" ? "pending" : "pending",
+      orderStatus: "pending",
       screenshot: screenshot || null,
     };
 
-    // Initialize COD payment status for COD orders
+    // ✅ Hybrid COD fields — only set when paymentMethod is cod
     if (paymentMethod === "cod") {
       orderData.codPaymentStatus = "unpaid";
+      // Save the advance delivery charge amount (0 if pure COD)
+      orderData.codDeliveryCharge = codDeliveryCharge || 0;
+      // Save the EasyPaisa screenshot URL (null if no advance required)
+      orderData.codDeliveryScreenshot = codDeliveryScreenshot || null;
+      orderData.codDeliveryPaid = false;
     }
 
-    const order = new Order(orderData);
-    await order.save();
+    const order = await Order.create(orderData);
 
-    // Deduct stock after order creation
-    await deductStock(
-      items.map((i: any) => ({ productId: i.id, quantity: i.quantity })),
-    );
+    // Deduct stock for each item (FIFO)
+    for (const item of items) {
+      const productId = item.product || item.id;
+      await deductStock(productId, item.quantity);
+    }
 
-    return NextResponse.json(
-      { message: "Order placed successfully", order },
-      { status: 201 },
-    );
-  } catch (err) {
-    console.error("Order creation error:", err);
-    return NextResponse.json(
-      { message: "Server error. Please try again." },
-      { status: 500 },
-    );
+    // Populate for response
+    const populatedOrder = await Order.findById(order._id)
+      .populate("user", "name email phone")
+      .populate("items.product", "name retailPrice unitSize unitType")
+      .lean();
+
+    return NextResponse.json({ order: populatedOrder }, { status: 201 });
+  } catch (err: any) {
+    console.error("Create order error:", err);
+    return NextResponse.json({ message: err.message || "Server error" }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    await connectDB();
+
+    const token = getTokenFromCookie(req.headers.get("cookie") || "");
+    const payload = verifyToken(token);
+
+    if (!payload) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    // Users can only see their own orders
+    const filter = payload.role === "admin" ? {} : { user: payload.userId };
+
+    const orders = await Order.find(filter)
+      .populate("items.product", "name retailPrice unitSize unitType mainImage")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return NextResponse.json({ orders }, { status: 200 });
+  } catch (err: any) {
+    console.error("Fetch orders error:", err);
+    return NextResponse.json({ message: "Server error" }, { status: 500 });
   }
 }

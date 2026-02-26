@@ -5,17 +5,19 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
-import { Mail, ArrowLeft } from "lucide-react";
+import { Mail, ArrowLeft, Loader2 } from "lucide-react";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
     setIsLoading(true);
 
     try {
@@ -27,15 +29,18 @@ export default function ForgotPassword() {
         body: JSON.stringify({ email }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(
-          data.message || "Failed to send OTP. Please try again.",
-        );
+        throw new Error(data.message || "Failed to send OTP. Please try again.");
       }
 
-      // Encode the email for safety in the URL
-      router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+      setSuccess("✅ OTP sent to your email! Check your inbox.");
+      
+      // Redirect to reset password page after 2 seconds
+      setTimeout(() => {
+        router.push(`/reset-password?email=${encodeURIComponent(email)}`);
+      }, 2000);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
     } finally {
@@ -50,15 +55,21 @@ export default function ForgotPassword() {
           <div className="inline-flex items-center justify-center w-12 h-12 bg-green-700 rounded-lg mb-4">
             <span className="text-white font-bold text-lg">KPF</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-800">Forgot Password</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Forgot Password?</h1>
           <p className="text-gray-600 mt-2">
-            Enter your email to receive an OTP to reset your password.
+            No worries! We'll send you an OTP to reset your password.
           </p>
         </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6">
+            {success}
           </div>
         )}
 
@@ -77,16 +88,27 @@ export default function ForgotPassword() {
                 placeholder="you@example.com"
                 className="pl-10"
                 required
+                disabled={isLoading}
               />
             </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Enter the email address associated with your account
+            </p>
           </div>
 
           <Button
             type="submit"
-            disabled={isLoading}
-            className="w-full bg-green-700 hover:bg-green-800 text-white py-2 rounded-lg font-semibold"
+            disabled={isLoading || !email}
+            className="w-full bg-green-700 hover:bg-green-800 text-white py-2 rounded-lg font-semibold gap-2"
           >
-            {isLoading ? "Sending OTP..." : "Send OTP"}
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sending OTP...
+              </>
+            ) : (
+              "Send OTP"
+            )}
           </Button>
         </form>
 

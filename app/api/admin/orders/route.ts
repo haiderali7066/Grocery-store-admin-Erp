@@ -1,4 +1,4 @@
-// app/api/admin/orders/route.ts
+// FILE PATH: app/api/admin/orders/route.ts
 import { connectDB } from "@/lib/db";
 import { Order } from "@/lib/models";
 import { NextRequest, NextResponse } from "next/server";
@@ -15,12 +15,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
+    // ✅ No field projection on Order itself — lean() returns ALL fields
+    // including codDeliveryCharge, codDeliveryScreenshot, codDeliveryPaid
     const orders = await Order.find({})
       .populate("user", "name email phone")
-      .populate(
-        "items.product",
-        "name retailPrice unitSize unitType discount image",
-      )
+      .populate("items.product", "name retailPrice unitSize unitType discount image")
       .sort({ createdAt: -1 })
       .lean();
 

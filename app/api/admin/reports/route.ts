@@ -33,7 +33,6 @@ export async function GET(req: NextRequest) {
 
     const matchQuery = { createdAt: { $gte: start, $lte: end } };
 
-    // Aggregation + optional detail queries
     const [financialStats, expenseStats, inventoryValue, onlineOrders, posSales] =
       await Promise.all([
         // 1. Revenue & COGS aggregations
@@ -90,8 +89,11 @@ export async function GET(req: NextRequest) {
                 createdAt: 1,
                 orderStatus: 1,
                 "shippingAddress.name": 1,
+                // ✅ Include items for online orders too
+                items: 1,
               }
             )
+              .populate("items.product", "name sku")
               .sort({ createdAt: -1 })
               .lean()
               .then((orders) =>
@@ -103,11 +105,19 @@ export async function GET(req: NextRequest) {
                   createdAt: o.createdAt,
                   orderStatus: o.orderStatus,
                   customerName: o.shippingAddress?.name || null,
+                  items: (o.items || []).map((item: any) => ({
+                    name: item.product?.name || item.name || "Unknown Item",
+                    sku: item.product?.sku || null,
+                    quantity: item.quantity || 0,
+                    price: item.price || 0,
+                    subtotal: item.subtotal ?? (item.price || 0) * (item.quantity || 0),
+                  })),
                 }))
               )
           : Promise.resolve([]),
 
         // 5. POS sales detail (if requested)
+        // ✅ Populate cashier name and items.product for item names
         includeDetail
           ? POSSale.find(
               { ...matchQuery, paymentStatus: "completed" },
@@ -117,18 +127,31 @@ export async function GET(req: NextRequest) {
                 createdAt: 1,
                 paymentMethod: 1,
                 items: 1,
+                saleNumber: 1,
+                cashier: 1,
               }
             )
+              .populate("cashier", "name")
+              .populate("items.product", "name sku")
               .sort({ createdAt: -1 })
               .lean()
               .then((sales) =>
                 sales.map((s: any) => ({
                   _id: s._id.toString(),
+                  saleNumber: s.saleNumber || null,
+                  cashierName: s.cashier?.name || null,
                   subtotal: s.subtotal,
                   costOfGoods: s.costOfGoods,
                   createdAt: s.createdAt,
                   paymentMethod: s.paymentMethod,
-                  items: s.items,
+                  // ✅ Map items with populated product name
+                  items: (s.items || []).map((item: any) => ({
+                    name: item.product?.name || item.name || "Unknown Item",
+                    sku: item.product?.sku || null,
+                    quantity: item.quantity || 0,
+                    price: item.price || 0,
+                    subtotal: item.subtotal ?? (item.price || 0) * (item.quantity || 0),
+                  })),
                 }))
               )
           : Promise.resolve([]),

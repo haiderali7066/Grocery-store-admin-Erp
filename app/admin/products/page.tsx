@@ -34,8 +34,7 @@ interface Product {
   discountType: "percentage" | "fixed";
   stock: number;
   category: string;
-  weight: number;
-  weightUnit: string;
+  unitType: string;
   status: string;
   isNewArrival: boolean;
   isHot: boolean;
@@ -58,7 +57,6 @@ export default function ProductsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
   const [editingId, setEditingId] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
@@ -67,10 +65,9 @@ export default function ProductsPage() {
     sku: "",
     description: "",
     discount: "",
-    discountType: "percentage" as const,
+    discountType: "percentage" as "percentage" | "fixed",
     category: "",
-    weight: "",
-    weightUnit: "kg",
+    unitType: "",
     isFlashSale: false,
     isHot: false,
     isFeatured: false,
@@ -85,14 +82,13 @@ export default function ProductsPage() {
 
   const fetchProducts = async () => {
     try {
-      // Use admin endpoint to see ALL products (no filters)
-      const response = await fetch("/api/admin/products");
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch("/api/admin/products");
+      if (res.ok) {
+        const data = await res.json();
         setProducts(data.products || []);
       }
-    } catch (error) {
-      console.error("Failed to fetch products:", error);
+    } catch (err) {
+      console.error("Failed to fetch products:", err);
     } finally {
       setIsLoading(false);
     }
@@ -100,58 +96,40 @@ export default function ProductsPage() {
 
   const fetchCategories = async () => {
     try {
-      const response = await fetch("/api/categories");
-      if (response.ok) {
-        const data = await response.json();
+      const res = await fetch("/api/categories");
+      if (res.ok) {
+        const data = await res.json();
         setCategories(data.categories || []);
       }
-    } catch (error) {
-      console.error("Failed to fetch categories:", error);
+    } catch (err) {
+      console.error("Failed to fetch categories:", err);
     }
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (!file.type.startsWith("image/")) {
-        alert("Please select an image file");
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        alert("Image size should be less than 5MB");
-        return;
-      }
-
-      setFormData({ ...formData, image: file });
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Please select an image file"); return; }
+    if (file.size > 5 * 1024 * 1024) { alert("Image size must be less than 5MB"); return; }
+    setFormData(f => ({ ...f, image: file }));
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
   const removeImage = () => {
-    setFormData({ ...formData, image: null });
+    setFormData(f => ({ ...f, image: null }));
     setImagePreview(null);
   };
 
   const resetForm = () => {
     setEditingId(null);
     setFormData({
-      name: "",
-      sku: "",
-      description: "",
-      discount: "",
-      discountType: "percentage",
-      category: "",
-      weight: "",
-      weightUnit: "kg",
-      isFlashSale: false,
-      isHot: false,
-      isFeatured: false,
-      onlineVisible: true,
-      image: null,
+      name: "", sku: "", description: "",
+      discount: "", discountType: "percentage",
+      category: "", unitType: "",
+      isFlashSale: false, isHot: false, isFeatured: false,
+      onlineVisible: true, image: null,
     });
     setImagePreview(null);
   };
@@ -164,9 +142,8 @@ export default function ProductsPage() {
       description: product.description || "",
       discount: product.discount?.toString() || "",
       discountType: product.discountType || "percentage",
-      category: product.category,
-      weight: (product as any).unitSize?.toString() || "",
-      weightUnit: (product as any).unitType || "kg",
+      category: typeof product.category === "object" ? (product.category as any)._id : product.category,
+      unitType: product.unitType || "",
       isFlashSale: product.isNewArrival,
       isHot: product.isHot,
       isFeatured: product.isFeatured,
@@ -179,52 +156,41 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.unitType.trim()) {
+      alert("Please enter a unit type (e.g. 500ml, 1kg, per box)");
+      return;
+    }
     setIsUploading(true);
-
     try {
-      const submitData = new FormData();
-      submitData.append("name", formData.name);
-      submitData.append("sku", formData.sku);
-      submitData.append("description", formData.description);
-      submitData.append("discount", formData.discount);
-      submitData.append("discountType", formData.discountType);
-      submitData.append("category", formData.category);
-      submitData.append("weight", formData.weight);
-      submitData.append("weightUnit", formData.weightUnit);
-      submitData.append("isFlashSale", formData.isFlashSale.toString());
-      submitData.append("isHot", formData.isHot.toString());
-      submitData.append("isFeatured", formData.isFeatured.toString());
-      submitData.append("onlineVisible", formData.onlineVisible.toString());
+      const fd = new FormData();
+      fd.append("name", formData.name);
+      fd.append("sku", formData.sku);
+      fd.append("description", formData.description);
+      fd.append("discount", formData.discount);
+      fd.append("discountType", formData.discountType);
+      fd.append("category", formData.category);
+      fd.append("unitType", formData.unitType.trim());
+      fd.append("isFlashSale", formData.isFlashSale.toString());
+      fd.append("isHot", formData.isHot.toString());
+      fd.append("isFeatured", formData.isFeatured.toString());
+      fd.append("onlineVisible", formData.onlineVisible.toString());
+      if (formData.image) fd.append("image", formData.image);
 
-      if (formData.image) {
-        submitData.append("image", formData.image);
-      }
-
-      const url = editingId
-        ? `/api/admin/products/${editingId}`
-        : "/api/admin/products";
+      const url = editingId ? `/api/admin/products/${editingId}` : "/api/admin/products";
       const method = editingId ? "PUT" : "POST";
 
-      const response = await fetch(url, {
-        method: method,
-        body: submitData,
-      });
-
-      if (response.ok) {
+      const res = await fetch(url, { method, body: fd });
+      if (res.ok) {
         setIsDialogOpen(false);
         resetForm();
         fetchProducts();
-        alert(
-          editingId
-            ? "Product updated successfully!"
-            : "Product created successfully!",
-        );
+        alert(editingId ? "Product updated!" : "Product created!");
       } else {
-        const errorData = await response.json();
-        alert(`Failed to save product: ${errorData.error || "Unknown error"}`);
+        const err = await res.json();
+        alert(`Failed: ${err.error || "Unknown error"}`);
       }
-    } catch (error) {
-      console.error("Failed to save product:", error);
+    } catch (err) {
+      console.error(err);
       alert("Failed to save product. Please try again.");
     } finally {
       setIsUploading(false);
@@ -232,330 +198,159 @@ export default function ProductsPage() {
   };
 
   const handleDelete = async (productId: string) => {
-    if (!confirm("Are you sure you want to delete this product?")) {
-      return;
-    }
-
+    if (!confirm("Are you sure you want to delete this product?")) return;
     try {
-      const response = await fetch(`/api/admin/products/${productId}`, {
-        method: "DELETE",
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        alert("Product deleted successfully!");
-        fetchProducts();
-      } else {
-        alert(`Failed to delete: ${data.error || "Unknown error"}`);
-      }
-    } catch (error) {
-      console.error("Failed to delete product:", error);
-      alert("Error deleting product. Check console for details.");
+      const res = await fetch(`/api/admin/products/${productId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) { alert("Product deleted!"); fetchProducts(); }
+      else alert(`Failed to delete: ${data.error || "Unknown error"}`);
+    } catch (err) {
+      console.error(err);
+      alert("Error deleting product.");
     }
   };
 
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()),
+  const filteredProducts = products.filter(p =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Products</h1>
           <p className="text-gray-600">Manage your store products</p>
         </div>
-        <Dialog
-          open={isDialogOpen}
-          onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) resetForm();
-          }}
-        >
+
+        <Dialog open={isDialogOpen} onOpenChange={open => { setIsDialogOpen(open); if (!open) resetForm(); }}>
           <DialogTrigger asChild>
-            <Button
-              className="bg-green-700 hover:bg-green-800"
-              onClick={resetForm}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
+            <Button className="bg-green-700 hover:bg-green-800" onClick={resetForm}>
+              <Plus className="h-4 w-4 mr-2" /> Add Product
             </Button>
           </DialogTrigger>
+
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>
-                {editingId ? "Edit Product" : "Add New Product"}
-              </DialogTitle>
+              <DialogTitle>{editingId ? "Edit Product" : "Add New Product"}</DialogTitle>
             </DialogHeader>
+
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* Name */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Product Name *
-                </label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  required
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
+                <Input value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))} required />
               </div>
 
+              {/* SKU */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  SKU (Stock Keeping Unit)
-                </label>
-                <Input
-                  value={formData.sku}
-                  onChange={(e) =>
-                    setFormData({ ...formData, sku: e.target.value })
-                  }
-                  placeholder="Leave empty to auto-generate"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">SKU</label>
+                <Input value={formData.sku} onChange={e => setFormData(f => ({ ...f, sku: e.target.value }))} placeholder="Leave empty to auto-generate" />
               </div>
 
+              {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  placeholder="Enter product description..."
-                  rows={3}
-                  className="resize-none"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <Textarea value={formData.description} onChange={e => setFormData(f => ({ ...f, description: e.target.value }))} rows={3} className="resize-none" placeholder="Product description..." />
               </div>
 
-              {/* Image Upload */}
+              {/* Image */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Product Image
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
                 {!imagePreview ? (
                   <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-green-500 transition-colors">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="hidden"
-                      id="image-upload"
-                    />
-                    <label
-                      htmlFor="image-upload"
-                      className="cursor-pointer flex flex-col items-center"
-                    >
+                    <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" id="image-upload" />
+                    <label htmlFor="image-upload" className="cursor-pointer flex flex-col items-center">
                       <Upload className="h-12 w-12 text-gray-400 mb-2" />
-                      <span className="text-sm text-gray-600">
-                        Click to upload product image
-                      </span>
+                      <span className="text-sm text-gray-600">Click to upload image</span>
                     </label>
                   </div>
                 ) : (
                   <div className="relative border-2 border-gray-300 rounded-lg p-2">
                     <div className="relative w-full h-48">
-                      <Image
-                        src={imagePreview}
-                        alt="Preview"
-                        fill
-                        className="object-contain"
-                        unoptimized
-                      />
+                      <Image src={imagePreview} alt="Preview" fill className="object-contain" unoptimized />
                     </div>
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600"
-                    >
+                    <button type="button" onClick={removeImage} className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
                 )}
               </div>
 
+              {/* Category */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Category *
-                </label>
-                <select
-                  value={formData.category}
-                  onChange={(e) =>
-                    setFormData({ ...formData, category: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                  required
-                >
+                <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                <select value={formData.category} onChange={e => setFormData(f => ({ ...f, category: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" required>
                   <option value="">Select a category</option>
-                  {categories.map((cat) => (
-                    <option key={cat._id} value={cat._id}>
-                      {cat.name}
-                    </option>
-                  ))}
+                  {categories.map(cat => <option key={cat._id} value={cat._id}>{cat.name}</option>)}
                 </select>
               </div>
 
+              {/* Discount */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Discount Amount
-                  </label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.discount}
-                    onChange={(e) =>
-                      setFormData({ ...formData, discount: e.target.value })
-                    }
-                    placeholder="0"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Discount Amount</label>
+                  <Input type="number" step="0.01" value={formData.discount} onChange={e => setFormData(f => ({ ...f, discount: e.target.value }))} placeholder="0" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Discount Type
-                  </label>
-                  <select
-                    value={formData.discountType}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        discountType: e.target.value as any,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Discount Type</label>
+                  <select value={formData.discountType} onChange={e => setFormData(f => ({ ...f, discountType: e.target.value as any }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg">
                     <option value="percentage">Percentage (%)</option>
                     <option value="fixed">Fixed (Rs)</option>
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Weight/Quantity *
-                  </label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.weight}
-                    onChange={(e) =>
-                      setFormData({ ...formData, weight: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Unit *
-                  </label>
-                  <select
-                    value={formData.weightUnit}
-                    onChange={(e) =>
-                      setFormData({ ...formData, weightUnit: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    <option value="kg">kg</option>
-                    <option value="g">g</option>
-                    <option value="liter">liter</option>
-                    <option value="ml">ml</option>
-                    <option value="piece">piece</option>
-                  </select>
-                </div>
+              {/* Unit Type — free text only */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unit Type *</label>
+                <Input
+                  value={formData.unitType}
+                  onChange={e => setFormData(f => ({ ...f, unitType: e.target.value }))}
+                  placeholder="e.g. 500ml, 1kg, per box, 6 pieces"
+                  required
+                />
               </div>
 
               <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800">
-                  💡 Stock will be added during inventory purchases.
-                </p>
+                <p className="text-sm text-blue-800">💡 Stock and price are set through inventory purchases.</p>
               </div>
 
+              {/* Tags & Visibility */}
               <div className="space-y-3 border-t pt-4">
-                <p className="text-sm font-medium text-gray-700">
-                  Product Tags & Visibility
-                </p>
+                <p className="text-sm font-medium text-gray-700">Product Tags & Visibility</p>
 
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.isFlashSale}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        isFlashSale: e.target.checked,
-                      })
-                    }
-                    className="rounded"
-                  />
+                  <input type="checkbox" checked={formData.isFlashSale} onChange={e => setFormData(f => ({ ...f, isFlashSale: e.target.checked }))} className="rounded" />
                   <Zap className="h-4 w-4 text-orange-600" />
                   <span className="text-sm font-medium">Flash Sale</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.isHot}
-                    onChange={(e) =>
-                      setFormData({ ...formData, isHot: e.target.checked })
-                    }
-                    className="rounded"
-                  />
+                  <input type="checkbox" checked={formData.isHot} onChange={e => setFormData(f => ({ ...f, isHot: e.target.checked }))} className="rounded" />
                   <Fire className="h-4 w-4 text-red-600" />
                   <span className="text-sm font-medium">Hot Product</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.isFeatured}
-                    onChange={(e) =>
-                      setFormData({ ...formData, isFeatured: e.target.checked })
-                    }
-                    className="rounded"
-                  />
+                  <input type="checkbox" checked={formData.isFeatured} onChange={e => setFormData(f => ({ ...f, isFeatured: e.target.checked }))} className="rounded" />
                   <span className="text-sm font-medium">Featured</span>
                 </label>
 
-                {/* NEW: Online Visible Toggle */}
                 <label className="flex items-center gap-2 cursor-pointer p-3 bg-green-50 rounded-lg border border-green-200">
-                  <input
-                    type="checkbox"
-                    checked={formData.onlineVisible}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        onlineVisible: e.target.checked,
-                      })
-                    }
-                    className="rounded accent-green-600"
-                  />
+                  <input type="checkbox" checked={formData.onlineVisible} onChange={e => setFormData(f => ({ ...f, onlineVisible: e.target.checked }))} className="rounded accent-green-600" />
                   <Globe className="h-4 w-4 text-green-600" />
                   <div className="flex-1">
-                    <span className="text-sm font-semibold text-green-900">
-                      List in Online Store
-                    </span>
-                    <p className="text-xs text-green-700 mt-0.5">
-                      Show this product on your website store
-                    </p>
+                    <span className="text-sm font-semibold text-green-900">List in Online Store</span>
+                    <p className="text-xs text-green-700 mt-0.5">Show this product on your website</p>
                   </div>
                 </label>
               </div>
 
-              <Button
-                type="submit"
-                className="w-full bg-green-700 hover:bg-green-800"
-                disabled={categories.length === 0 || isUploading}
-              >
-                {isUploading
-                  ? editingId
-                    ? "Updating..."
-                    : "Creating..."
-                  : editingId
-                    ? "Update Product"
-                    : "Create Product"}
+              <Button type="submit" className="w-full bg-green-700 hover:bg-green-800" disabled={categories.length === 0 || isUploading}>
+                {isUploading ? (editingId ? "Updating..." : "Creating...") : (editingId ? "Update Product" : "Create Product")}
               </Button>
             </form>
           </DialogContent>
@@ -563,17 +358,12 @@ export default function ProductsPage() {
       </div>
 
       {/* Search */}
-      <div className="flex gap-2">
-        <Search className="h-5 w-5 text-gray-400 absolute mt-3 ml-3" />
-        <Input
-          placeholder="Search products..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      <div className="relative">
+        <Search className="h-5 w-5 text-gray-400 absolute top-3 left-3" />
+        <Input placeholder="Search products..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
       </div>
 
-      {/* Products Table */}
+      {/* Table */}
       <Card className="p-6 border-0 shadow-md overflow-x-auto">
         {isLoading ? (
           <p>Loading products...</p>
@@ -581,39 +371,18 @@ export default function ProductsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Image
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Name
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Price
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Tags
-                </th>
-                <th className="text-left py-3 px-4 font-medium text-gray-600">
-                  Actions
-                </th>
+                {["Image", "Name", "Unit", "Price", "Stock", "Tags", "Actions"].map(h => (
+                  <th key={h} className="text-left py-3 px-4 font-medium text-gray-600">{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.map((product) => (
-                <tr
-                  key={product._id}
-                  className="border-b border-gray-100 hover:bg-gray-50"
-                >
+              {filteredProducts.map(product => (
+                <tr key={product._id} className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="py-3 px-4">
                     {product.mainImage ? (
                       <div className="relative w-12 h-12">
-                        <Image
-                          src={product.mainImage}
-                          alt={product.name}
-                          fill
-                          className="object-cover rounded"
-                          unoptimized
-                        />
+                        <Image src={product.mainImage} alt={product.name} fill className="object-cover rounded" unoptimized />
                       </div>
                     ) : (
                       <div className="w-12 h-12 bg-gray-200 rounded flex items-center justify-center">
@@ -621,12 +390,10 @@ export default function ProductsPage() {
                       </div>
                     )}
                   </td>
-                  <td className="py-3 px-4 font-medium text-gray-900">
-                    {product.name}
-                  </td>
-                  <td className="py-3 px-4 text-sm">
-                    Rs. {product.retailPrice}
-                  </td>
+                  <td className="py-3 px-4 font-medium text-gray-900">{product.name}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{product.unitType || "—"}</td>
+                  <td className="py-3 px-4 text-sm">Rs. {product.retailPrice}</td>
+                  <td className="py-3 px-4 text-sm">{product.stock}</td>
                   <td className="py-3 px-4">
                     <div className="flex gap-1 flex-wrap">
                       {product.onlineVisible ? (
@@ -649,26 +416,16 @@ export default function ProductsPage() {
                         </span>
                       )}
                       {product.isFeatured && (
-                        <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">
-                          Featured
-                        </span>
+                        <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-medium">Featured</span>
                       )}
                     </div>
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(product)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(product)}>
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDelete(product._id)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(product._id)}>
                         <Trash2 className="h-4 w-4 text-red-600" />
                       </Button>
                     </div>

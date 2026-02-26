@@ -21,6 +21,7 @@ import {
   Smartphone,
   Banknote,
   Loader2,
+  Info,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -33,6 +34,10 @@ interface PaymentMethodConfig {
   accountNumber?: string;
   bankName?: string;
   iban?: string;
+  // COD-specific
+  codDeliveryCharge?: number;
+  codEasypaisaAccount?: string;
+  codEasypaisaName?: string;
 }
 
 interface StoreSettings {
@@ -91,8 +96,15 @@ export default function CheckoutPage() {
     province: "",
     zipCode: "",
   });
+
+  // For non-COD methods
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // For COD advance delivery charge screenshot (EasyPaisa)
+  const [codScreenshotFile, setCodScreenshotFile] = useState<File | null>(null);
+  const [codPreviewUrl, setCodPreviewUrl] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
 
   // Fetch settings (payment methods, tax, shipping)
@@ -133,35 +145,62 @@ export default function CheckoutPage() {
     }
   };
 
+  const handleCodFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const file = e.target.files[0];
+      setCodScreenshotFile(file);
+      setCodPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const uploadToCloudinary = async (file: File): Promise<string> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+    const cloudRes = await fetch(
+      `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
+      { method: "POST", body: fd },
+    );
+    const cloudData = await cloudRes.json();
+    if (!cloudData.secure_url) throw new Error("Image upload failed");
+    return cloudData.secure_url;
+  };
+
+  const codConfig = settings?.paymentMethods?.cod;
+  const codDeliveryCharge = codConfig?.codDeliveryCharge || 0;
+  const isCOD = paymentMethod === "cod";
+  const hasCodAdvanceCharge = isCOD && codDeliveryCharge > 0;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!user) return router.push("/login");
 
+    // Non-COD: must have screenshot
     if (paymentMethod !== "cod" && !screenshotFile) {
       setError("Please upload a payment screenshot before placing your order.");
+      return;
+    }
+
+    // COD with advance delivery charge: must have EasyPaisa screenshot
+    if (isCOD && codDeliveryCharge > 0 && !codScreenshotFile) {
+      setError(
+        `Please upload your EasyPaisa screenshot for the Rs. ${codDeliveryCharge} delivery charge advance.`,
+      );
       return;
     }
 
     setIsProcessing(true);
     try {
       let screenshotUrl: string | null = null;
+      let codDeliveryScreenshotUrl: string | null = null;
 
       if (paymentMethod !== "cod" && screenshotFile) {
-        const fd = new FormData();
-        fd.append("file", screenshotFile);
-        fd.append(
-          "upload_preset",
-          process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!,
-        );
-        const cloudRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
-          { method: "POST", body: fd },
-        );
-        const cloudData = await cloudRes.json();
-        if (!cloudData.secure_url)
-          throw new Error("Payment proof upload failed");
-        screenshotUrl = cloudData.secure_url;
+        screenshotUrl = await uploadToCloudinary(screenshotFile);
+      }
+
+      if (isCOD && codDeliveryCharge > 0 && codScreenshotFile) {
+        codDeliveryScreenshotUrl = await uploadToCloudinary(codScreenshotFile);
       }
 
       const orderRes = await fetch("/api/orders", {
@@ -186,6 +225,9 @@ export default function CheckoutPage() {
           total,
           paymentMethod,
           screenshot: screenshotUrl,
+          // COD-specific advance delivery charge fields
+          codDeliveryCharge: isCOD ? codDeliveryCharge : 0,
+          codDeliveryScreenshot: codDeliveryScreenshotUrl,
         }),
       });
 
@@ -240,7 +282,6 @@ export default function CheckoutPage() {
   ).filter((k) => settings?.paymentMethods?.[k]?.enabled);
 
   const activePayment = settings?.paymentMethods?.[paymentMethod];
-  const isCOD = paymentMethod === "cod";
 
   return (
     <div className="min-h-screen bg-gray-50/50 flex flex-col">
@@ -347,11 +388,7 @@ export default function CheckoutPage() {
                 <div className="grid grid-cols-3 gap-4 md:col-span-2">
                   {[
                     { name: "city", label: "City", placeholder: "Lahore" },
-                    {
-                      name: "province",
-                      label: "Province",
-                      placeholder: "Punjab",
-                    },
+                    { name: "province", label: "Province", placeholder: "Punjab" },
                     { name: "zipCode", label: "Zip", placeholder: "54000" },
                   ].map(({ name, label, placeholder }) => (
                     <div key={name} className="space-y-2">
@@ -399,7 +436,7 @@ export default function CheckoutPage() {
                 <>
                   {/* Method selector tabs */}
                   <div
-                    className={`grid gap-2 mb-8`}
+                    className="grid gap-2 mb-8"
                     style={{
                       gridTemplateColumns: `repeat(${enabledMethods.length}, minmax(0, 1fr))`,
                     }}
@@ -415,6 +452,8 @@ export default function CheckoutPage() {
                             setPaymentMethod(key);
                             setScreenshotFile(null);
                             setPreviewUrl(null);
+                            setCodScreenshotFile(null);
+                            setCodPreviewUrl(null);
                           }}
                           className={`flex items-center justify-center gap-2 px-3 py-3 rounded-xl border-2 font-bold text-sm transition-all ${
                             isActive
@@ -431,34 +470,186 @@ export default function CheckoutPage() {
                     })}
                   </div>
 
-                  {/* Active method details */}
+                  {/* ── COD: Hybrid — advance delivery charge via EasyPaisa + rest cash ── */}
                   {isCOD ? (
-                    <div className="bg-green-50/50 border border-green-200 rounded-2xl p-6">
-                      <div className="flex gap-4">
-                        <Banknote className="h-8 w-8 text-green-600 shrink-0 mt-1" />
-                        <div>
-                          <p className="font-bold text-green-900 mb-2 text-lg">
-                            {activePayment?.displayName || "Cash on Delivery"}
-                          </p>
-                          <p className="text-sm text-green-700 leading-relaxed mb-3">
-                            {activePayment?.description ||
-                              "Pay with cash when your order is delivered to your doorstep."}
-                          </p>
-                          <div className="bg-white rounded-xl p-4 border border-green-200">
-                            <p className="text-xs font-bold text-green-900 mb-2">
-                              ✓ How it works:
+                    <div className="space-y-5">
+                      {/* Info card */}
+                      <div className="bg-green-50/50 border border-green-200 rounded-2xl p-6">
+                        <div className="flex gap-4">
+                          <Banknote className="h-8 w-8 text-green-600 shrink-0 mt-1" />
+                          <div>
+                            <p className="font-bold text-green-900 mb-2 text-lg">
+                              {activePayment?.displayName || "Cash on Delivery"}
                             </p>
-                            <ul className="text-xs text-green-800 space-y-1">
-                              <li>• Place your order now</li>
-                              <li>• We'll deliver to your address</li>
-                              <li>• Pay the delivery person in cash</li>
-                              <li>• No payment screenshot needed</li>
-                            </ul>
+                            <p className="text-sm text-green-700 leading-relaxed mb-3">
+                              {activePayment?.description ||
+                                "Pay the product amount in cash when your order is delivered."}
+                            </p>
                           </div>
                         </div>
                       </div>
+
+                      {/* How it works breakdown */}
+                      <div className="rounded-2xl border border-gray-200 overflow-hidden">
+                        <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
+                          <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                            How Your Payment Works
+                          </p>
+                        </div>
+                        <div className="divide-y divide-gray-100">
+                          {/* Step 1: Advance delivery charge */}
+                          <div className="flex items-start gap-4 px-5 py-4">
+                            <div className="bg-orange-100 text-orange-700 rounded-full w-7 h-7 flex items-center justify-center font-black text-sm shrink-0 mt-0.5">
+                              1
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-bold text-gray-800">
+                                Pay Delivery Charge Now (Advance)
+                              </p>
+                              {codDeliveryCharge > 0 ? (
+                                <p className="text-sm text-gray-500 mt-0.5">
+                                  Send{" "}
+                                  <span className="font-bold text-orange-600">
+                                    Rs. {codDeliveryCharge}
+                                  </span>{" "}
+                                  via EasyPaisa to{" "}
+                                  <span className="font-semibold">
+                                    {codConfig?.codEasypaisaName || "our account"}
+                                  </span>{" "}
+                                  {codConfig?.codEasypaisaAccount && (
+                                    <span className="font-mono bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded text-orange-700 text-xs">
+                                      {codConfig.codEasypaisaAccount}
+                                    </span>
+                                  )}
+                                  , then upload the screenshot below.
+                                </p>
+                              ) : (
+                                <p className="text-sm text-gray-400 mt-0.5">
+                                  No advance delivery charge configured.
+                                </p>
+                              )}
+                            </div>
+                            {codDeliveryCharge > 0 && (
+                              <div className="text-right shrink-0">
+                                <p className="font-black text-orange-600">
+                                  Rs. {codDeliveryCharge}
+                                </p>
+                                <p className="text-xs text-gray-400">via EasyPaisa</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Step 2: Rest on delivery */}
+                          <div className="flex items-start gap-4 px-5 py-4">
+                            <div className="bg-green-100 text-green-700 rounded-full w-7 h-7 flex items-center justify-center font-black text-sm shrink-0 mt-0.5">
+                              2
+                            </div>
+                            <div className="flex-1">
+                              <p className="font-bold text-gray-800">
+                                Pay Remaining Amount on Delivery
+                              </p>
+                              <p className="text-sm text-gray-500 mt-0.5">
+                                Pay the rider{" "}
+                                <span className="font-bold text-green-700">
+                                  Rs. {Math.max(0, total - codDeliveryCharge).toFixed(0)}
+                                </span>{" "}
+                                in cash when your order arrives.
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-black text-green-700">
+                                Rs. {Math.max(0, total - codDeliveryCharge).toFixed(0)}
+                              </p>
+                              <p className="text-xs text-gray-400">cash on delivery</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* EasyPaisa screenshot upload — only if advance charge is set */}
+                      {codDeliveryCharge > 0 && (
+                        <div>
+                          <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-3">
+                            EasyPaisa Screenshot (Delivery Charge){" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+
+                          {/* EasyPaisa account highlight */}
+                          {codConfig?.codEasypaisaAccount && (
+                            <div className="mb-3 flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+                              <Smartphone className="h-5 w-5 text-orange-500 shrink-0" />
+                              <div className="text-sm">
+                                <span className="font-semibold text-orange-800">
+                                  Send Rs. {codDeliveryCharge} to:{" "}
+                                </span>
+                                <span className="font-mono font-bold text-orange-700 select-all">
+                                  {codConfig.codEasypaisaAccount}
+                                </span>
+                                {codConfig.codEasypaisaName && (
+                                  <span className="text-orange-600 ml-1">
+                                    ({codConfig.codEasypaisaName})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <label
+                            htmlFor="cod-screenshot-upload"
+                            className={`flex flex-col items-center justify-center border-2 border-dashed rounded-3xl p-8 transition-all bg-gray-50 hover:bg-gray-100 cursor-pointer ${
+                              codPreviewUrl
+                                ? "border-orange-300"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <input
+                              id="cod-screenshot-upload"
+                              type="file"
+                              accept="image/*"
+                              onChange={handleCodFileChange}
+                              className="sr-only"
+                            />
+                            {codPreviewUrl ? (
+                              <div className="flex flex-col items-center">
+                                <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border-2 border-white shadow-md">
+                                  <Image
+                                    src={codPreviewUrl}
+                                    alt="COD delivery charge screenshot"
+                                    fill
+                                    className="object-cover"
+                                  />
+                                </div>
+                                <span className="text-sm font-bold text-orange-600">
+                                  ✓ Screenshot uploaded — click to change
+                                </span>
+                              </div>
+                            ) : (
+                              <>
+                                <UploadCloud className="h-10 w-10 text-gray-400 mb-2" />
+                                <p className="text-gray-500 font-medium">
+                                  Upload EasyPaisa payment screenshot
+                                </p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  PNG, JPG (Max 5 MB)
+                                </p>
+                              </>
+                            )}
+                          </label>
+                        </div>
+                      )}
+
+                      {codDeliveryCharge === 0 && (
+                        <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                          <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                          <p className="text-xs text-blue-700">
+                            No advance delivery charge is required for this order. Simply pay the
+                            full amount to the rider on delivery.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : (
+                    /* ── Non-COD payment methods ── */
                     <div className="space-y-6">
                       {/* Account details card */}
                       <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
@@ -478,17 +669,13 @@ export default function CheckoutPage() {
                             )}
                             {activePayment?.accountName && (
                               <p className="text-blue-700">
-                                <span className="font-semibold">
-                                  Account Name:
-                                </span>{" "}
+                                <span className="font-semibold">Account Name:</span>{" "}
                                 {activePayment.accountName}
                               </p>
                             )}
                             {activePayment?.accountNumber && (
                               <p className="text-blue-700">
-                                <span className="font-semibold">
-                                  Account Number:
-                                </span>{" "}
+                                <span className="font-semibold">Account Number:</span>{" "}
                                 <span className="font-mono bg-white px-2 py-0.5 rounded border border-blue-200 select-all">
                                   {activePayment.accountNumber}
                                 </span>
@@ -503,8 +690,7 @@ export default function CheckoutPage() {
                               </p>
                             )}
                             <p className="text-blue-600 pt-1">
-                              Transfer the exact amount and upload your
-                              screenshot below.
+                              Transfer the exact amount and upload your screenshot below.
                             </p>
                           </div>
                         </div>
@@ -577,7 +763,9 @@ export default function CheckoutPage() {
                   {isCOD ? "Placing Order…" : "Validating Payment…"}
                 </span>
               ) : isCOD ? (
-                "Place Order — Pay on Delivery"
+                hasCodAdvanceCharge
+                  ? `Place Order — Rs. ${codDeliveryCharge} advance + rest on delivery`
+                  : "Place Order — Pay on Delivery"
               ) : (
                 "Place Secure Order"
               )}
@@ -647,28 +835,44 @@ export default function CheckoutPage() {
                     )}
                   </div>
 
-                  {isCOD && (
-                    <div className="flex justify-between text-orange-600 font-medium bg-orange-50 -mx-2 px-2 py-2 rounded-lg">
-                      <span className="flex items-center gap-2">
-                        <Banknote className="h-4 w-4" /> Pay on Delivery
-                      </span>
-                      <span className="font-bold">COD</span>
-                    </div>
-                  )}
-
                   <div className="flex justify-between pt-4 border-t border-gray-100">
-                    <span className="text-lg font-black text-gray-900">
-                      Total
-                    </span>
+                    <span className="text-lg font-black text-gray-900">Total</span>
                     <div className="text-right">
                       <p className="text-2xl font-black text-green-700 leading-none">
                         Rs. {total.toFixed(0)}
                       </p>
                       <p className="text-[10px] text-gray-400 uppercase font-black mt-1">
-                        {isCOD ? "PAY ON DELIVERY" : "PKR"}
+                        PKR
                       </p>
                     </div>
                   </div>
+
+                  {/* COD payment breakdown in sidebar */}
+                  {isCOD && hasCodAdvanceCharge && (
+                    <div className="pt-3 border-t border-gray-100 space-y-2">
+                      <p className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                        Payment Breakdown
+                      </p>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-orange-600 font-semibold flex items-center gap-1">
+                          <Smartphone className="h-3.5 w-3.5" />
+                          Advance (EasyPaisa)
+                        </span>
+                        <span className="font-bold text-orange-600">
+                          Rs. {codDeliveryCharge}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-green-700 font-semibold flex items-center gap-1">
+                          <Banknote className="h-3.5 w-3.5" />
+                          Cash on Delivery
+                        </span>
+                        <span className="font-bold text-green-700">
+                          Rs. {Math.max(0, total - codDeliveryCharge).toFixed(0)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -681,7 +885,9 @@ export default function CheckoutPage() {
                   </p>
                   <p className="text-xs text-green-700">
                     {isCOD
-                      ? "Pay only after receiving your order"
+                      ? hasCodAdvanceCharge
+                        ? "Small advance secures your order — rest paid on delivery"
+                        : "Pay only after receiving your order"
                       : "Your data is encrypted and protected"}
                   </p>
                 </div>

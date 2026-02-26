@@ -473,7 +473,7 @@ export default function InvestmentPage() {
                         <p className="font-semibold text-gray-900 text-sm">
                           {inv.description || "Investment"}
                         </p>
-                        <p className="text-xs text-gray-400">
+                        <p className="text-sm text-green-600 ">
                           {inv.source} ·{" "}
                           {new Date(inv.investmentDate).toLocaleDateString(
                             "en-PK",

@@ -5,12 +5,24 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Eye, Download, Printer, User, Search,
+  Eye, Download, Printer, Search,
   Trash2, AlertCircle, X, CheckCircle,
 } from "lucide-react";
 
+interface SaleItem {
+  productId: string | null;
+  name: string;
+  sku?: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
+  returned: boolean;
+  returnedAt: string | null;
+}
+
 interface POSOrder {
   _id: string;
+  source: "POSSale" | "Order";
   orderNumber: string;
   cashierName: string;
   subtotal: number;
@@ -18,7 +30,7 @@ interface POSOrder {
   total: number;
   paymentMethod: string;
   createdAt: string;
-  items: any[];
+  items: SaleItem[];
 }
 
 interface SaleSummary {
@@ -56,9 +68,10 @@ export default function POSReportsPage() {
 
   const fetchPOSOrders = async () => {
     try {
+      // ✅ Use the unified endpoint that populates item names from both POSSale + Order models
       const res = await fetch("/api/admin/pos/sale");
       const data = await res.json();
-      const apiSales = data.sales || data.orders || (Array.isArray(data) ? data : []);
+      const apiSales: POSOrder[] = data.sales || [];
       setOrders(apiSales);
       calculateSummary(apiSales);
     } catch (error) {
@@ -81,7 +94,9 @@ export default function POSReportsPage() {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(o =>
         o.orderNumber?.toLowerCase().includes(term) ||
-        o.cashierName?.toLowerCase().includes(term)
+        o.cashierName?.toLowerCase().includes(term) ||
+        // ✅ Also allow searching by item name
+        o.items?.some(item => item.name?.toLowerCase().includes(term))
       );
     }
     if (dateFrom) filtered = filtered.filter(o => new Date(o.createdAt) >= new Date(dateFrom));
@@ -93,11 +108,17 @@ export default function POSReportsPage() {
   };
 
   const downloadReport = () => {
-    const headers = ["Order #", "Cashier", "Subtotal", "GST", "Total", "Payment", "Date"];
+    const headers = ["Order #", "Cashier", "Items", "Subtotal", "GST", "Total", "Payment", "Date"];
     const rows = filteredOrders.map(o => [
-      o.orderNumber, o.cashierName || "N/A",
-      o.subtotal.toFixed(2), o.gstAmount.toFixed(2), o.total.toFixed(2),
-      o.paymentMethod, new Date(o.createdAt).toLocaleDateString(),
+      o.orderNumber,
+      o.cashierName || "N/A",
+      // ✅ Include item names in CSV export
+      `"${o.items?.map(i => `${i.name} x${i.quantity}`).join("; ") || ""}"`,
+      o.subtotal.toFixed(2),
+      o.gstAmount.toFixed(2),
+      o.total.toFixed(2),
+      o.paymentMethod,
+      new Date(o.createdAt).toLocaleDateString(),
     ]);
     const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -168,9 +189,9 @@ export default function POSReportsPage() {
             <p className="text-gray-600 text-sm">Complete transaction history with user tracking</p>
           </div>
           <div className="flex gap-2 no-print">
-            <Button onClick={() => window.print()} variant="outline" className="rounded-full shadow-sm">
+            {/* <Button onClick={() => window.print()} variant="outline" className="rounded-full shadow-sm">
               <Printer className="h-4 w-4 mr-2" /> Print
-            </Button>
+            </Button> */}
             <Button onClick={downloadReport} className="bg-indigo-600 hover:bg-indigo-700 rounded-full shadow-sm">
               <Download className="h-4 w-4 mr-2" /> Export CSV
             </Button>
@@ -198,10 +219,10 @@ export default function POSReportsPage() {
         <Card className="p-5 border-0 shadow-sm no-print">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="text-xs font-bold text-gray-600 mb-1 block">Search Order or Cashier</label>
+              <label className="text-xs font-bold text-gray-600 mb-1 block">Search Order, Cashier or Item</label>
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                <Input className="pl-9" placeholder="POS-101 or John Doe" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                <Input className="pl-9" placeholder="POS-101, John Doe, or product name" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
               </div>
             </div>
             <div>
@@ -238,7 +259,26 @@ export default function POSReportsPage() {
                         <span className="text-sm text-gray-700 font-medium">{order.cashierName || "System"}</span>
                       </div>
                     </td>
-                    <td className="px-5 py-3 text-sm text-gray-500">{order.items?.length ?? 0} item{order.items?.length !== 1 ? "s" : ""}</td>
+                    {/* ✅ Show item names inline as a compact list */}
+                    <td className="px-5 py-3 text-sm text-gray-600 max-w-[200px]">
+                      {order.items?.length > 0 ? (
+                        <div className="space-y-0.5">
+                          {order.items.slice(0, 2).map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-1 text-xs">
+                              <span className="font-medium text-gray-800 truncate max-w-[130px]">{item.name}</span>
+                              <span className="text-gray-400 shrink-0">×{item.quantity}</span>
+                            </div>
+                          ))}
+                          {order.items.length > 2 && (
+                            <span className="text-[10px] text-indigo-500 font-semibold">
+                              +{order.items.length - 2} more
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3 text-sm text-gray-600">Rs. {order.subtotal?.toFixed(0)}</td>
                     <td className="px-5 py-3 text-sm text-gray-400">Rs. {order.gstAmount?.toFixed(0)}</td>
                     <td className="px-5 py-3 text-sm font-bold text-gray-900">Rs. {order.total?.toFixed(0)}</td>
@@ -310,14 +350,32 @@ export default function POSReportsPage() {
                 </div>
 
                 <div className="bg-gray-50 rounded-xl p-4">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">Itemized List</p>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {selectedOrder.items?.map((item, idx) => (
-                      <div key={idx} className="flex justify-between text-xs">
-                        <span className="text-gray-700">{item.name} <span className="text-gray-400">×{item.quantity}</span></span>
-                        <span className="font-semibold">Rs. {item.subtotal?.toFixed(0)}</span>
-                      </div>
-                    ))}
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-2">
+                    Itemized List ({selectedOrder.items?.length ?? 0} items)
+                  </p>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {selectedOrder.items?.length > 0 ? (
+                      selectedOrder.items.map((item, idx) => (
+                        <div key={idx} className="flex justify-between items-start text-xs gap-2">
+                          <div className="flex-1 min-w-0">
+                            {/* ✅ Item name — populated from API */}
+                            <span className="font-semibold text-gray-800 block truncate">{item.name}</span>
+                            {item.sku && (
+                              <span className="text-gray-400 font-mono">{item.sku}</span>
+                            )}
+                            {item.returned && (
+                              <span className="text-red-500 font-bold"> · Returned</span>
+                            )}
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-gray-500">×{item.quantity}</span>
+                            <span className="font-semibold text-gray-800 ml-2">Rs. {item.subtotal?.toFixed(0)}</span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-gray-400 text-xs italic">No item details available</p>
+                    )}
                   </div>
                 </div>
 

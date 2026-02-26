@@ -1,3 +1,5 @@
+// FILE PATH: lib/models.ts
+
 import mongoose, { Schema } from "mongoose";
 
 // =========================
@@ -73,6 +75,7 @@ export const UserSchema = new Schema(
   },
   { timestamps: true },
 );
+
 // =========================
 // Category Schema
 // =========================
@@ -122,12 +125,8 @@ export const ProductSchema = new Schema(
       enum: ["percentage", "fixed"],
       default: "percentage",
     },
-    unitType: {
-      type: String,
-      enum: ["kg", "g", "liter", "ml", "piece"],
-      required: true,
-    },
-    unitSize: { type: Number, required: true },
+    unitType: { type: String, required: true },
+    unitSize: { type: Number, default: 0 },
     mainImage: String,
     galleryImages: [String],
     posVisible: { type: Boolean, default: true },
@@ -176,7 +175,6 @@ export const BundleSchema = new Schema(
     },
     gst: { type: Number, default: 17 },
     isActive: { type: Boolean, default: true },
-    // ✅ NEW: tag this bundle to appear on the flash sale page
     isFlashSale: { type: Boolean, default: false },
   },
   { timestamps: true },
@@ -254,8 +252,6 @@ export const PurchaseSchema = new Schema(
 
 // =========================
 // InventoryBatch Schema
-// FIX: Added isReturn field (was being set in manual route but not in schema,
-//      causing Mongoose to silently drop it)
 // =========================
 export const InventoryBatchSchema = new Schema(
   {
@@ -271,7 +267,7 @@ export const InventoryBatchSchema = new Schema(
     profitPerUnit: { type: Number },
     purchaseReference: { type: Schema.Types.ObjectId, ref: "Purchase" },
     expiry: Date,
-    isReturn: { type: Boolean, default: false }, // ✅ FIX: was silently dropped before
+    isReturn: { type: Boolean, default: false },
     status: {
       type: String,
       enum: ["active", "partial", "finished"],
@@ -305,10 +301,6 @@ export const POSSaleSchema = new Schema(
         taxRate: { type: Number, default: 0 },
         taxAmount: { type: Number, default: 0 },
         total: { type: Number, required: true },
-        // ✅ FIX: These fields were being set by the manual return route via
-        //    updateOne $set but never declared here. While $set bypasses
-        //    Mongoose schema for writes, having them declared makes reads
-        //    (via .lean()) include them reliably and avoids confusion.
         returned: { type: Boolean, default: false },
         returnedAt: { type: Date, default: null },
         returnedQty: { type: Number, default: 0 },
@@ -349,6 +341,8 @@ export const POSSaleSchema = new Schema(
 
 // =========================
 // Order Schema
+// ✅ UPDATED: Added hybrid COD fields —
+//    codDeliveryCharge, codDeliveryScreenshot, codDeliveryPaid
 // =========================
 export const OrderSchema = new Schema(
   {
@@ -364,7 +358,6 @@ export const OrderSchema = new Schema(
         discount: Number,
         gst: Number,
         subtotal: Number,
-        // ✅ FIX: Same as POSSale — declare return tracking fields
         returned: { type: Boolean, default: false },
         returnedAt: { type: Date, default: null },
         returnedQty: { type: Number, default: 0 },
@@ -392,15 +385,32 @@ export const OrderSchema = new Schema(
       enum: ["pending", "verified", "failed"],
       default: "pending",
     },
+
+    // ── Standard COD fields ──────────────────────────────────────────────
     codPaymentStatus: {
       type: String,
       enum: ["unpaid", "paid"],
-      default: function() {
-        return this.paymentMethod === "cod" ? "unpaid" : null;
+      default: function () {
+        return (this as any).paymentMethod === "cod" ? "unpaid" : null;
       },
     },
     codPaidAt: Date,
     codPaidBy: { type: Schema.Types.ObjectId, ref: "User" },
+
+    // ── ✅ NEW: Hybrid COD fields ────────────────────────────────────────
+    // Amount the customer paid in advance via EasyPaisa at checkout.
+    // 0 = pure COD (no advance required).
+    codDeliveryCharge: { type: Number, default: 0 },
+
+    // Cloudinary URL of the EasyPaisa screenshot uploaded at checkout.
+    // null when codDeliveryCharge is 0 or paymentMethod is not COD.
+    codDeliveryScreenshot: { type: String, default: null },
+
+    // Admin sets true after verifying the EasyPaisa screenshot.
+    // Automatically handled as part of paymentStatus → "verified" flow.
+    codDeliveryPaid: { type: Boolean, default: false },
+    // ────────────────────────────────────────────────────────────────────
+
     screenshot: String,
     invoiceNumber: String,
     orderStatus: {
@@ -448,17 +458,11 @@ export const PaymentSchema = new Schema(
 
 // =========================
 // Refund Schema
-// FIX: Added returnItems array — this was the PRIMARY bug causing the entire
-//      return system to break. The manual route saved returnItems on the Refund
-//      document, but since the field wasn't declared here, Mongoose stripped it
-//      silently on every save. The search route then found Refund records but
-//      with empty returnItems, so returnedKeys was always empty, and every item
-//      appeared returnable on every search.
 // =========================
 export const RefundSchema = new Schema(
   {
     order: { type: Schema.Types.ObjectId, ref: "Order" },
-    orderNumber: { type: String, index: true }, // indexed for fast lookup in search route
+    orderNumber: { type: String, index: true },
     returnType: {
       type: String,
       enum: ["online", "pos_manual"],
@@ -476,8 +480,6 @@ export const RefundSchema = new Schema(
     approvedBy: { type: Schema.Types.ObjectId, ref: "User" },
     approvedAt: Date,
     notes: String,
-    // ✅ PRIMARY FIX: returnItems was missing from the schema entirely.
-    //    Every refund saved by manual/route.ts had this data stripped by Mongoose.
     returnItems: [
       {
         productId: { type: Schema.Types.ObjectId, ref: "Product", default: null },
@@ -509,6 +511,8 @@ export const HeroBannerSchema = new Schema(
 
 // =========================
 // Store Settings Schema
+// ✅ UPDATED: Added hybrid COD fields to paymentMethods.cod —
+//    codDeliveryCharge, codEasypaisaAccount, codEasypaisaName
 // =========================
 export const StoreSettingsSchema = new Schema(
   {
@@ -534,6 +538,13 @@ export const StoreSettingsSchema = new Schema(
         enabled: { type: Boolean, default: true },
         displayName: { type: String, default: "Cash on Delivery" },
         description: String,
+        // ✅ NEW: Hybrid COD — advance delivery charge via EasyPaisa
+        // Set codDeliveryCharge > 0 to require an advance payment at checkout.
+        // Customer sends this amount to codEasypaisaAccount and uploads screenshot.
+        // Remaining order total is collected in cash on delivery.
+        codDeliveryCharge: { type: Number, default: 0 },
+        codEasypaisaAccount: { type: String, default: "" },
+        codEasypaisaName: { type: String, default: "" },
       },
       bank: {
         enabled: { type: Boolean, default: true },
@@ -649,7 +660,7 @@ export const TransactionSchema = new Schema(
     notes: String,
     createdBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // =========================
@@ -690,7 +701,7 @@ export const InvestmentSchema = new Schema(
     remainingBalance: {
       type: Number,
       default: function () {
-        return this.amount;
+        return (this as any).amount;
       },
     },
     status: { type: String, enum: ["active", "exhausted"], default: "active" },
@@ -747,52 +758,67 @@ export const ReviewSchema = new Schema(
 
 ReviewSchema.index({ user: 1, product: 1 }, { unique: true });
 
+
+// lib/models/index.ts or lib/models/StoreInfo.ts
+
+
+const storeInfoSchema = new mongoose.Schema({
+  name: { type: String, default: "Khas pure foods" },
+  address: { type: String, default: "123 Store Street, Lahore, Pakistan" },
+  phone: { type: String, default: "0300-1234567" },
+  email: { type: String, default: "info@khasspurefoods.com" },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+
 // =========================
 // Mongoose Models Export
 // =========================
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
 export const Category =
-  mongoose.models.Category || mongoose.model("Category", CategorySchema);
+mongoose.models.Category || mongoose.model("Category", CategorySchema);
 export const Product =
   mongoose.models.Product || mongoose.model("Product", ProductSchema);
 export const Bundle =
   mongoose.models.Bundle || mongoose.model("Bundle", BundleSchema);
 export const Supplier =
   mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
-export const Purchase =
+  export const Purchase =
   mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
-export const InventoryBatch =
+  export const InventoryBatch =
   mongoose.models.InventoryBatch ||
   mongoose.model("InventoryBatch", InventoryBatchSchema);
 export const POSSale =
-  mongoose.models.POSSale || mongoose.model("POSSale", POSSaleSchema);
+mongoose.models.POSSale || mongoose.model("POSSale", POSSaleSchema);
 export const Order =
-  mongoose.models.Order || mongoose.model("Order", OrderSchema);
+mongoose.models.Order || mongoose.model("Order", OrderSchema);
 export const Payment =
-  mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
+mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
 export const Refund =
   mongoose.models.Refund || mongoose.model("Refund", RefundSchema);
-export const HeroBanner =
+  export const HeroBanner =
   mongoose.models.HeroBanner || mongoose.model("HeroBanner", HeroBannerSchema);
-export const StoreSettings =
+  export const StoreSettings =
   mongoose.models.StoreSettings ||
   mongoose.model("StoreSettings", StoreSettingsSchema);
-export const FBRConfig =
+  export const FBRConfig =
   mongoose.models.FBRConfig || mongoose.model("FBRConfig", FBRConfigSchema);
 export const Expense =
-  mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
+mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
 export const Wallet =
-  mongoose.models.Wallet || mongoose.model("Wallet", WalletSchema);
+mongoose.models.Wallet || mongoose.model("Wallet", WalletSchema);
 export const Transaction =
-  mongoose.models.Transaction ||
-  mongoose.model("Transaction", TransactionSchema);
+mongoose.models.Transaction ||
+mongoose.model("Transaction", TransactionSchema);
 export const Investment =
   mongoose.models.Investment || mongoose.model("Investment", InvestmentSchema);
-
-export const RefundRequest = Refund;
-
+  
+  export const RefundRequest = Refund;
+  
 export const SaleConfig =
   mongoose.models.SaleConfig || mongoose.model("SaleConfig", SaleConfigSchema);
-
+  
 export const Review =
   mongoose.models.Review || mongoose.model("Review", ReviewSchema);
+
+export const StoreInfo = mongoose.models.StoreInfo || mongoose.model("StoreInfo", storeInfoSchema);

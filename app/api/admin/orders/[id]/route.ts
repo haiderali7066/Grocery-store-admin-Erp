@@ -8,10 +8,8 @@ import mongoose from "mongoose";
 
 const isValidObjectId = (id: string) => mongoose.Types.ObjectId.isValid(id);
 
-// Statuses that should trigger a restock
 const RESTOCK_STATUSES = ["cancelled", "failed"];
 
-// Calculate profit for the order based on FIFO cost
 async function calculateOrderProfit(order: any): Promise<number> {
   let totalProfit = 0;
 
@@ -23,7 +21,6 @@ async function calculateOrderProfit(order: any): Promise<number> {
     let remainingQty = quantity;
     let totalCost = 0;
 
-    // Get batches in FIFO order to calculate actual cost
     const batches = await InventoryBatch.find({
       product: item.product,
       status: { $in: ["active", "partial", "finished"] },
@@ -33,14 +30,12 @@ async function calculateOrderProfit(order: any): Promise<number> {
 
     for (const batch of batches) {
       if (remainingQty <= 0) break;
-
       const qtyFromBatch = Math.min(remainingQty, batch.quantity);
       totalCost += qtyFromBatch * (batch.buyingRate || 0);
       remainingQty -= qtyFromBatch;
     }
 
-    const itemProfit = sellingPrice * quantity - totalCost;
-    totalProfit += itemProfit;
+    totalProfit += sellingPrice * quantity - totalCost;
   }
 
   return totalProfit;
@@ -55,44 +50,29 @@ export async function GET(req: NextRequest, context: { params: any }) {
     const orderId = resolvedParams.id;
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token)
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const payload = verifyToken(token);
-    if (!payload)
-      return NextResponse.json({ message: "Invalid token" }, { status: 401 });
+    if (!payload) return NextResponse.json({ message: "Invalid token" }, { status: 401 });
 
     if (!isValidObjectId(orderId))
-      return NextResponse.json(
-        { message: "Invalid order ID" },
-        { status: 400 },
-      );
+      return NextResponse.json({ message: "Invalid order ID" }, { status: 400 });
 
     const order = (await Order.findById(orderId)
       .populate("user", "name email phone")
-      .populate(
-        "items.product",
-        "name retailPrice unitSize unitType discount images",
-      )
+      .populate("items.product", "name retailPrice unitSize unitType discount images")
       .lean()) as any;
 
-    if (!order)
-      return NextResponse.json({ message: "Order not found" }, { status: 404 });
+    if (!order) return NextResponse.json({ message: "Order not found" }, { status: 404 });
 
-    if (
-      payload.role !== "admin" &&
-      order.user?._id.toString() !== payload.userId
-    ) {
+    if (payload.role !== "admin" && order.user?._id.toString() !== payload.userId) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
 
     return NextResponse.json({ order }, { status: 200 });
   } catch (error) {
     console.error("Order fetch error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -111,18 +91,12 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
     const orderId = resolvedParams.id;
 
     if (!isValidObjectId(orderId)) {
-      return NextResponse.json(
-        { message: "Invalid order ID" },
-        { status: 400 },
-      );
+      return NextResponse.json({ message: "Invalid order ID" }, { status: 400 });
     }
 
     const body = await req.json();
 
-    // Get the current order before updating
-    const existingOrder = (await Order.findById(orderId)
-      .populate("items.product")
-      .lean()) as any;
+    const existingOrder = (await Order.findById(orderId).populate("items.product").lean()) as any;
     if (!existingOrder) {
       return NextResponse.json({ message: "Order not found" }, { status: 404 });
     }
@@ -145,10 +119,7 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
         (newPaymentStatus === "failed" && previousPaymentStatus !== "failed"));
 
     if (shouldRestock && existingOrder.items?.length > 0) {
-      console.log(
-        `🔄 Restocking for order ${orderId} - Status: ${newOrderStatus || newPaymentStatus}`,
-      );
-
+      console.log(`🔄 Restocking for order ${orderId}`);
       await restockItems(
         existingOrder.items.map((item: any) => ({
           productId: item.product.toString(),
@@ -157,87 +128,104 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
       );
     }
 
-    // ── Add to Wallet When Approving (paymentStatus -> verified) ──────────
+    // ── Wallet credit when approving a NON-COD order ───────────────────────
+    // For COD orders, wallet credit happens in mark-cod-paid route (cash portion)
+    // and optionally here for the advance EasyPaisa portion (codDeliveryCharge).
     const isBeingApproved =
       newPaymentStatus === "verified" && previousPaymentStatus === "pending";
 
     if (isBeingApproved) {
-      console.log(`💰 Approving order ${orderId} - Adding to wallet`);
-
-      // Calculate profit
+      const isCOD = existingOrder.paymentMethod === "cod";
+      const codDeliveryCharge = existingOrder.codDeliveryCharge || 0;
       const profit = await calculateOrderProfit(existingOrder);
-
-      // Get wallet
-      let wallet = await Wallet.findOne();
-      if (!wallet) {
-        wallet = await Wallet.create({
-          cash: 0,
-          bank: 0,
-          easyPaisa: 0,
-          jazzCash: 0,
-          card: 0,
-        });
-      }
-
-      // Determine which wallet to credit based on payment method
-      const paymentMethod =
-        existingOrder.paymentMethod?.toLowerCase() || "bank";
       const orderTotal = existingOrder.total || 0;
       const shippingCost = existingOrder.shippingCost || 0;
-      const amountForWallet = orderTotal - shippingCost; // Exclude shipping
 
-      // Map payment method to wallet field
-      const walletFieldMap: Record<string, keyof typeof wallet> = {
-        bank: "bank",
-        easypaisa: "easyPaisa",
-        jazzcash: "jazzCash",
-        card: "card",
-      };
+      let wallet = await Wallet.findOne();
+      if (!wallet) {
+        wallet = await Wallet.create({ cash: 0, bank: 0, easyPaisa: 0, jazzCash: 0, card: 0 });
+      }
 
-      const walletField = walletFieldMap[paymentMethod] || "bank";
+      if (isCOD) {
+        // ── Hybrid COD approval ──────────────────────────────────────────
+        // Admin verifies the EasyPaisa screenshot for the advance delivery charge.
+        // Credit only the advance portion to easyPaisa wallet now.
+        // The cash remainder will be credited when mark-cod-paid is called.
+        if (codDeliveryCharge > 0) {
+          console.log(
+            `💰 Approving hybrid COD order ${orderId} — crediting Rs. ${codDeliveryCharge} EasyPaisa advance to wallet`,
+          );
 
-      // Add to appropriate wallet
-      (wallet as any)[walletField] += amountForWallet;
-      wallet.lastUpdated = new Date();
-      await wallet.save();
+          wallet.easyPaisa += codDeliveryCharge;
+          wallet.lastUpdated = new Date();
+          await wallet.save();
 
-      // Create transaction record
-      await Transaction.create({
-        type: "income",
-        category: "Online Order Payment",
-        amount: amountForWallet,
-        source:
-          walletField === "easyPaisa"
-            ? "easypaisa"
-            : walletField === "jazzCash"
-              ? "jazzcash"
-              : walletField,
-        reference: existingOrder._id,
-        referenceModel: "Order",
-        description: `Payment verified for Order #${existingOrder.orderNumber} (Total: Rs. ${orderTotal}, Shipping: Rs. ${shippingCost}, Net: Rs. ${amountForWallet}, Profit: Rs. ${profit.toFixed(2)})`,
-        notes: `Approved online payment via ${paymentMethod.toUpperCase()}. Delivery charges (Rs. ${shippingCost}) excluded from wallet.`,
-        createdBy: payload.userId,
-      });
+          await Transaction.create({
+            type: "income",
+            category: "COD Advance Delivery Charge",
+            amount: codDeliveryCharge,
+            source: "easypaisa",
+            reference: existingOrder._id,
+            referenceModel: "Order",
+            description: `COD advance delivery charge verified for Order #${existingOrder.orderNumber}. Rs. ${codDeliveryCharge} EasyPaisa screenshot confirmed. Remaining Rs. ${(orderTotal - codDeliveryCharge).toFixed(0)} to be collected on delivery.`,
+            notes: `Hybrid COD — advance portion verified. Cash on delivery portion pending rider collection.`,
+            createdBy: payload.userId,
+          });
 
-      // Update order with profit
+          console.log(`✅ Rs. ${codDeliveryCharge} credited to easyPaisa wallet`);
+        } else {
+          // Pure COD — no advance. Don't credit anything here.
+          // Wallet credit happens entirely in mark-cod-paid.
+          console.log(
+            `ℹ️ Pure COD order ${orderId} approved — wallet credit deferred to mark-cod-paid`,
+          );
+        }
+      } else {
+        // ── Non-COD payment (bank / easypaisa / jazzcash) ─────────────────
+        const paymentMethod = existingOrder.paymentMethod?.toLowerCase() || "bank";
+        const amountForWallet = orderTotal - shippingCost;
+
+        const walletFieldMap: Record<string, string> = {
+          bank: "bank",
+          easypaisa: "easyPaisa",
+          jazzcash: "jazzCash",
+          card: "card",
+        };
+        const walletField = walletFieldMap[paymentMethod] || "bank";
+
+        (wallet as any)[walletField] += amountForWallet;
+        wallet.lastUpdated = new Date();
+        await wallet.save();
+
+        await Transaction.create({
+          type: "income",
+          category: "Online Order Payment",
+          amount: amountForWallet,
+          source:
+            walletField === "easyPaisa"
+              ? "easypaisa"
+              : walletField === "jazzCash"
+                ? "jazzcash"
+                : walletField,
+          reference: existingOrder._id,
+          referenceModel: "Order",
+          description: `Payment verified for Order #${existingOrder.orderNumber} (Total: Rs. ${orderTotal}, Shipping: Rs. ${shippingCost}, Net: Rs. ${amountForWallet}, Profit: Rs. ${profit.toFixed(2)})`,
+          notes: `Approved online payment via ${paymentMethod.toUpperCase()}. Delivery charges excluded.`,
+          createdBy: payload.userId,
+        });
+
+        body.profit = profit;
+        console.log(`✅ Added Rs. ${amountForWallet} to ${walletField} wallet`);
+      }
+
+      // Always set profit on approval
       body.profit = profit;
-
-      console.log(
-        `✅ Added Rs. ${amountForWallet} to ${walletField} wallet (Profit: Rs. ${profit})`,
-      );
     }
 
     // Update the order
-    const order = await Order.findByIdAndUpdate(
-      orderId,
-      { $set: body },
-      { new: true },
-    )
+    const order = await Order.findByIdAndUpdate(orderId, { $set: body }, { new: true })
       .populate("user", "name email phone")
-      .populate(
-        "items.product",
-        "name retailPrice unitSize unitType discount images",
-      )
+      .populate("items.product", "name retailPrice unitSize unitType discount images")
       .lean();
 
     return NextResponse.json({ order }, { status: 200 });
@@ -262,10 +250,7 @@ export async function DELETE(req: NextRequest, { params }: { params: any }) {
     const orderId = resolvedParams.id;
 
     if (!isValidObjectId(orderId)) {
-      return NextResponse.json(
-        { message: "Invalid order ID" },
-        { status: 400 },
-      );
+      return NextResponse.json({ message: "Invalid order ID" }, { status: 400 });
     }
 
     const order = (await Order.findById(orderId).lean()) as any;
@@ -273,14 +258,12 @@ export async function DELETE(req: NextRequest, { params }: { params: any }) {
       return NextResponse.json({ message: "Order not found" }, { status: 404 });
     }
 
-    // ── Restock on Delete ──────────────────────────────────────────────────
     const alreadyRestocked =
       RESTOCK_STATUSES.includes(order.orderStatus) ||
       RESTOCK_STATUSES.includes(order.paymentStatus);
 
     if (!alreadyRestocked && order.items?.length > 0) {
       console.log(`🔄 Restocking on delete for order ${orderId}`);
-
       await restockItems(
         order.items.map((item: any) => ({
           productId: item.product.toString(),

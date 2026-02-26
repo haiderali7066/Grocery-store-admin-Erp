@@ -20,6 +20,8 @@ import {
   CheckCircle,
   AlertCircle,
   Truck,
+  Smartphone,
+  Info,
 } from "lucide-react";
 import Image from "next/image";
 import PermissionGuard from "@/components/admin/PermissionGuard";
@@ -43,7 +45,15 @@ interface Settings {
   taxName: string;
   taxEnabled: boolean;
   paymentMethods: {
-    cod: { enabled: boolean; displayName: string; description: string };
+    cod: {
+      enabled: boolean;
+      displayName: string;
+      description: string;
+      // ✅ COD hybrid fields
+      codDeliveryCharge: number;
+      codEasypaisaAccount: string;
+      codEasypaisaName: string;
+    };
     bank: {
       enabled: boolean;
       displayName: string;
@@ -99,7 +109,14 @@ const DEFAULT_SETTINGS: Settings = {
   taxName: "",
   taxEnabled: false,
   paymentMethods: {
-    cod: { enabled: false, displayName: "", description: "" },
+    cod: {
+      enabled: false,
+      displayName: "",
+      description: "",
+      codDeliveryCharge: 0,
+      codEasypaisaAccount: "",
+      codEasypaisaName: "",
+    },
     bank: {
       enabled: false,
       displayName: "",
@@ -136,9 +153,7 @@ function SettingsContent() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string>("");
   const [bannerFiles, setBannerFiles] = useState<{ [key: number]: File }>({});
-  const [bannerPreviews, setBannerPreviews] = useState<{
-    [key: number]: string;
-  }>({});
+  const [bannerPreviews, setBannerPreviews] = useState<{ [key: number]: string }>({});
   const [toast, setToast] = useState<{ type: ToastType; message: string }>({
     type: null,
     message: "",
@@ -160,13 +175,6 @@ function SettingsContent() {
       const data = await res.json();
       if (data.settings) {
         const s = data.settings;
-
-        console.log("✅ Admin Settings Loaded:", {
-          taxEnabled: s.taxEnabled,
-          taxRate: s.taxRate,
-          taxName: s.taxName,
-        });
-
         setSettings({
           storeName: s.storeName || "",
           storeLogoUrl: s.storeLogoUrl || "",
@@ -194,6 +202,9 @@ function SettingsContent() {
               enabled: s.paymentMethods?.cod?.enabled ?? false,
               displayName: s.paymentMethods?.cod?.displayName || "",
               description: s.paymentMethods?.cod?.description || "",
+              codDeliveryCharge: s.paymentMethods?.cod?.codDeliveryCharge ?? 0,
+              codEasypaisaAccount: s.paymentMethods?.cod?.codEasypaisaAccount || "",
+              codEasypaisaName: s.paymentMethods?.cod?.codEasypaisaName || "",
             },
             bank: {
               enabled: s.paymentMethods?.bank?.enabled ?? false,
@@ -242,20 +253,14 @@ function SettingsContent() {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
       setBannerFiles({ ...bannerFiles, [index]: file });
-      setBannerPreviews({
-        ...bannerPreviews,
-        [index]: URL.createObjectURL(file),
-      });
+      setBannerPreviews({ ...bannerPreviews, [index]: URL.createObjectURL(file) });
     }
   };
 
   const uploadImage = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
-    formData.append(
-      "upload_preset",
-      process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!,
-    );
+    formData.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
     const res = await fetch(
       `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
       { method: "POST", body: formData },
@@ -268,9 +273,7 @@ function SettingsContent() {
     setIsSaving(true);
     try {
       let logoUrl = settings.storeLogoUrl;
-      if (logoFile) {
-        logoUrl = await uploadImage(logoFile);
-      }
+      if (logoFile) logoUrl = await uploadImage(logoFile);
 
       const updatedBanners = await Promise.all(
         settings.heroBanners.map(async (banner, index) => {
@@ -361,6 +364,8 @@ function SettingsContent() {
     );
   }
 
+  const cod = settings.paymentMethods.cod;
+
   return (
     <div className="space-y-6 p-6">
       {/* Toast */}
@@ -409,7 +414,7 @@ function SettingsContent() {
           <TabsTrigger value="tax">Tax & Shipping</TabsTrigger>
         </TabsList>
 
-        {/* Store Info Tab */}
+        {/* ── Store Info Tab ── */}
         <TabsContent value="store" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-4">
@@ -424,12 +429,7 @@ function SettingsContent() {
               <div className="flex items-center gap-4">
                 {logoPreview ? (
                   <div className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-gray-200">
-                    <Image
-                      src={logoPreview}
-                      alt="Store Logo"
-                      fill
-                      className="object-cover"
-                    />
+                    <Image src={logoPreview} alt="Store Logo" fill className="object-cover" />
                   </div>
                 ) : (
                   <div className="w-24 h-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs text-center">
@@ -448,16 +448,12 @@ function SettingsContent() {
                     type="button"
                     variant="outline"
                     className="gap-2"
-                    onClick={() =>
-                      document.getElementById("logo-upload")?.click()
-                    }
+                    onClick={() => document.getElementById("logo-upload")?.click()}
                   >
                     <Upload className="h-4 w-4" />
                     {logoPreview ? "Change Logo" : "Upload Logo"}
                   </Button>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Recommended: 200×200px, PNG or JPG
-                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Recommended: 200×200px, PNG or JPG</p>
                   {logoPreview && (
                     <button
                       type="button"
@@ -482,116 +478,71 @@ function SettingsContent() {
                 </label>
                 <Input
                   value={settings.storeName}
-                  onChange={(e) =>
-                    setSettings({ ...settings, storeName: e.target.value })
-                  }
+                  onChange={(e) => setSettings({ ...settings, storeName: e.target.value })}
                   placeholder="Khas Pure Food"
                 />
               </div>
-
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Store Description
                 </label>
                 <Textarea
                   value={settings.storeDescription}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      storeDescription: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setSettings({ ...settings, storeDescription: e.target.value })}
                   placeholder="Brief description of your store..."
                   rows={3}
                 />
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Email
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Email</label>
                   <Input
                     type="email"
                     value={settings.contactEmail}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        contactEmail: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setSettings({ ...settings, contactEmail: e.target.value })}
                     placeholder="info@khaspurefood.com"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Contact Phone
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Phone</label>
                   <Input
                     value={settings.contactPhone}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        contactPhone: e.target.value,
-                      })
-                    }
+                    onChange={(e) => setSettings({ ...settings, contactPhone: e.target.value })}
                     placeholder="+92 300 1234567"
                   />
                 </div>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Address
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
                 <Input
                   value={settings.address}
-                  onChange={(e) =>
-                    setSettings({ ...settings, address: e.target.value })
-                  }
+                  onChange={(e) => setSettings({ ...settings, address: e.target.value })}
                   placeholder="Street address"
                 />
               </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    City
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
                   <Input
                     value={settings.city}
-                    onChange={(e) =>
-                      setSettings({ ...settings, city: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, city: e.target.value })}
                     placeholder="Lahore"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Country
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
                   <Input
                     value={settings.country}
-                    onChange={(e) =>
-                      setSettings({ ...settings, country: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, country: e.target.value })}
                     placeholder="Pakistan"
                   />
                 </div>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Business Hours
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Business Hours</label>
                 <Input
                   value={settings.businessHours}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      businessHours: e.target.value,
-                    })
-                  }
+                  onChange={(e) => setSettings({ ...settings, businessHours: e.target.value })}
                   placeholder="Mon-Sat: 8AM - 10PM"
                 />
               </div>
@@ -599,59 +550,28 @@ function SettingsContent() {
           </Card>
         </TabsContent>
 
-        {/* Social Media Tab */}
+        {/* ── Social Media Tab ── */}
         <TabsContent value="social" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
               <Globe className="h-5 w-5" />
               Social Media Links
             </h2>
-            <p className="text-sm text-gray-500 mb-5">
-              These appear in the footer and about page.
-            </p>
-
+            <p className="text-sm text-gray-500 mb-5">These appear in the footer and about page.</p>
             <div className="space-y-4">
               {[
-                {
-                  key: "facebookUrl",
-                  label: "Facebook URL",
-                  placeholder: "https://facebook.com/yourpage",
-                },
-                {
-                  key: "instagramUrl",
-                  label: "Instagram URL",
-                  placeholder: "https://instagram.com/yourpage",
-                },
-                {
-                  key: "twitterUrl",
-                  label: "Twitter / X URL",
-                  placeholder: "https://twitter.com/yourpage",
-                },
-                {
-                  key: "youtubeUrl",
-                  label: "YouTube Channel URL",
-                  placeholder: "https://youtube.com/@yourchannel",
-                },
-                {
-                  key: "tiktokUrl",
-                  label: "TikTok URL",
-                  placeholder: "https://tiktok.com/@yourusername",
-                },
-                {
-                  key: "whatsappNumber",
-                  label: "WhatsApp Number",
-                  placeholder: "+923001234567 (no spaces)",
-                },
+                { key: "facebookUrl", label: "Facebook URL", placeholder: "https://facebook.com/yourpage" },
+                { key: "instagramUrl", label: "Instagram URL", placeholder: "https://instagram.com/yourpage" },
+                { key: "twitterUrl", label: "Twitter / X URL", placeholder: "https://twitter.com/yourpage" },
+                { key: "youtubeUrl", label: "YouTube Channel URL", placeholder: "https://youtube.com/@yourchannel" },
+                { key: "tiktokUrl", label: "TikTok URL", placeholder: "https://tiktok.com/@yourusername" },
+                { key: "whatsappNumber", label: "WhatsApp Number", placeholder: "+923001234567 (no spaces)" },
               ].map(({ key, label, placeholder }) => (
                 <div key={key}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {label}
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
                   <Input
                     value={(settings as any)[key] || ""}
-                    onChange={(e) =>
-                      setSettings({ ...settings, [key]: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, [key]: e.target.value })}
                     placeholder={placeholder}
                   />
                 </div>
@@ -660,7 +580,7 @@ function SettingsContent() {
           </Card>
         </TabsContent>
 
-        {/* Hero Banners Tab */}
+        {/* ── Hero Banners Tab ── */}
         <TabsContent value="banners" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <div className="flex items-center justify-between mb-2">
@@ -681,35 +601,18 @@ function SettingsContent() {
 
             <div className="space-y-4 mt-4">
               {settings.heroBanners.map((banner, index) => (
-                <Card
-                  key={index}
-                  className="p-4 bg-gray-50 border border-gray-200"
-                >
+                <Card key={index} className="p-4 bg-gray-50 border border-gray-200">
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <span className="font-semibold text-gray-700">
-                        Banner {index + 1}
-                      </span>
+                      <span className="font-semibold text-gray-700">Banner {index + 1}</span>
                       <label className="flex items-center gap-1.5 text-sm cursor-pointer">
                         <input
                           type="checkbox"
                           checked={banner.isActive}
-                          onChange={(e) =>
-                            updateHeroBanner(
-                              index,
-                              "isActive",
-                              e.target.checked,
-                            )
-                          }
+                          onChange={(e) => updateHeroBanner(index, "isActive", e.target.checked)}
                           className="rounded"
                         />
-                        <span
-                          className={
-                            banner.isActive
-                              ? "text-green-600 font-medium"
-                              : "text-gray-400"
-                          }
-                        >
+                        <span className={banner.isActive ? "text-green-600 font-medium" : "text-gray-400"}>
                           {banner.isActive ? "Active" : "Inactive"}
                         </span>
                       </label>
@@ -723,70 +626,43 @@ function SettingsContent() {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Title
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
                       <Input
                         value={banner.title || ""}
-                        onChange={(e) =>
-                          updateHeroBanner(index, "title", e.target.value)
-                        }
+                        onChange={(e) => updateHeroBanner(index, "title", e.target.value)}
                         placeholder="e.g. Fresh Produce Daily"
                       />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Subtitle
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Subtitle</label>
                       <Input
                         value={banner.subtitle || ""}
-                        onChange={(e) =>
-                          updateHeroBanner(index, "subtitle", e.target.value)
-                        }
+                        onChange={(e) => updateHeroBanner(index, "subtitle", e.target.value)}
                         placeholder="e.g. Farm-fresh delivered daily"
                       />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Link (Button URL)
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Link (Button URL)</label>
                       <Input
                         value={banner.link || ""}
-                        onChange={(e) =>
-                          updateHeroBanner(index, "link", e.target.value)
-                        }
+                        onChange={(e) => updateHeroBanner(index, "link", e.target.value)}
                         placeholder="/products or /products?category=fruits"
                       />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Sort Order
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Sort Order</label>
                       <Input
                         type="number"
                         min="0"
                         value={banner.sortOrder ?? index}
-                        onChange={(e) =>
-                          updateHeroBanner(
-                            index,
-                            "sortOrder",
-                            parseInt(e.target.value) || 0,
-                          )
-                        }
+                        onChange={(e) => updateHeroBanner(index, "sortOrder", parseInt(e.target.value) || 0)}
                         placeholder="0"
                       />
                     </div>
-
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Banner Image
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Banner Image</label>
                       <div className="flex items-center gap-4">
                         {(bannerPreviews[index] || banner.imageUrl) && (
                           <div className="relative w-40 h-24 rounded-lg overflow-hidden border-2 border-gray-200 shrink-0">
@@ -810,18 +686,12 @@ function SettingsContent() {
                             type="button"
                             variant="outline"
                             className="gap-2"
-                            onClick={() =>
-                              document
-                                .getElementById(`banner-upload-${index}`)
-                                ?.click()
-                            }
+                            onClick={() => document.getElementById(`banner-upload-${index}`)?.click()}
                           >
                             <Upload className="h-4 w-4" />
                             {banner.imageUrl ? "Change Image" : "Upload Image"}
                           </Button>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Recommended: 1920×600px, JPG or PNG
-                          </p>
+                          <p className="text-xs text-gray-500 mt-1">Recommended: 1920×600px</p>
                           {(bannerPreviews[index] || banner.imageUrl) && (
                             <button
                               type="button"
@@ -845,20 +715,17 @@ function SettingsContent() {
                   </div>
                 </Card>
               ))}
-
               {settings.heroBanners.length === 0 && (
                 <div className="text-center py-12 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
                   <ImageIcon className="h-10 w-10 mx-auto mb-3 opacity-40" />
-                  <p className="text-sm">
-                    No banners yet. Click &quot;Add Banner&quot; to create one.
-                  </p>
+                  <p className="text-sm">No banners yet. Click &quot;Add Banner&quot; to create one.</p>
                 </div>
               )}
             </div>
           </Card>
         </TabsContent>
 
-        {/* Payment Methods Tab */}
+        {/* ── Payment Methods Tab ── */}
         <TabsContent value="payment" className="space-y-4">
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
@@ -870,27 +737,130 @@ function SettingsContent() {
             </p>
 
             <div className="space-y-6">
-              {/* COD */}
+              {/* ── COD (with hybrid advance delivery charge config) ── */}
               <PaymentSection
                 title="Cash on Delivery (COD)"
-                enabled={settings.paymentMethods.cod.enabled}
+                enabled={cod.enabled}
                 onToggle={(v) => updatePayment("cod", "enabled", v)}
               >
-                <Input
-                  value={settings.paymentMethods.cod.displayName}
-                  onChange={(e) =>
-                    updatePayment("cod", "displayName", e.target.value)
-                  }
-                  placeholder="Display Name (e.g. Cash on Delivery)"
-                />
-                <Textarea
-                  value={settings.paymentMethods.cod.description}
-                  onChange={(e) =>
-                    updatePayment("cod", "description", e.target.value)
-                  }
-                  placeholder="Description shown to customers..."
-                  rows={2}
-                />
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Display Name
+                    </label>
+                    <Input
+                      value={cod.displayName}
+                      onChange={(e) => updatePayment("cod", "displayName", e.target.value)}
+                      placeholder="Cash on Delivery"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Description (shown to customer)
+                    </label>
+                    <Textarea
+                      value={cod.description}
+                      onChange={(e) => updatePayment("cod", "description", e.target.value)}
+                      placeholder="Pay the product amount in cash when your order is delivered."
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* ── Hybrid advance delivery charge section ── */}
+                  <div className="border-t border-dashed border-gray-200 pt-4 space-y-4">
+                    <div className="flex items-start gap-2">
+                      <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">
+                          Advance Delivery Charge (Hybrid COD)
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Customers pay this amount via EasyPaisa before their order ships.
+                          The rest is collected in cash on delivery. Set to{" "}
+                          <strong>0</strong> to disable — customer pays everything on delivery.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Advance Delivery Charge (Rs.)
+                      </label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={cod.codDeliveryCharge}
+                        onChange={(e) =>
+                          updatePayment("cod", "codDeliveryCharge", parseFloat(e.target.value) || 0)
+                        }
+                        placeholder="0 = disabled, e.g. 200"
+                      />
+                    </div>
+
+                    {cod.codDeliveryCharge > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-1">
+                            <Smartphone className="h-3.5 w-3.5 text-green-600" />
+                            EasyPaisa Account Number
+                          </label>
+                          <Input
+                            value={cod.codEasypaisaAccount}
+                            onChange={(e) =>
+                              updatePayment("cod", "codEasypaisaAccount", e.target.value)
+                            }
+                            placeholder="03xx xxxxxxx"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Account Holder Name
+                          </label>
+                          <Input
+                            value={cod.codEasypaisaName}
+                            onChange={(e) =>
+                              updatePayment("cod", "codEasypaisaName", e.target.value)
+                            }
+                            placeholder="Account holder name"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Live preview of what customer will see */}
+                    <div
+                      className={`rounded-xl p-4 border text-sm ${
+                        cod.codDeliveryCharge > 0
+                          ? "bg-orange-50 border-orange-200"
+                          : "bg-gray-50 border-gray-200"
+                      }`}
+                    >
+                      <p className="font-bold text-gray-700 mb-1">
+                        Customer will see:
+                      </p>
+                      {cod.codDeliveryCharge > 0 ? (
+                        <ul className="text-xs text-gray-600 space-y-0.5">
+                          <li>
+                            • Pay{" "}
+                            <strong className="text-orange-600">
+                              Rs. {cod.codDeliveryCharge}
+                            </strong>{" "}
+                            delivery charge via EasyPaisa{" "}
+                            {cod.codEasypaisaAccount && (
+                              <span className="font-mono">({cod.codEasypaisaAccount})</span>
+                            )}{" "}
+                            and upload screenshot
+                          </li>
+                          <li>• Rest of order amount paid to rider in cash on delivery</li>
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-gray-500">
+                          Full order amount paid to rider in cash on delivery. No advance required.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </PaymentSection>
 
               {/* Bank Transfer */}
@@ -902,30 +872,22 @@ function SettingsContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Input
                     value={settings.paymentMethods.bank.bankName}
-                    onChange={(e) =>
-                      updatePayment("bank", "bankName", e.target.value)
-                    }
+                    onChange={(e) => updatePayment("bank", "bankName", e.target.value)}
                     placeholder="Bank Name"
                   />
                   <Input
                     value={settings.paymentMethods.bank.accountName}
-                    onChange={(e) =>
-                      updatePayment("bank", "accountName", e.target.value)
-                    }
+                    onChange={(e) => updatePayment("bank", "accountName", e.target.value)}
                     placeholder="Account Name"
                   />
                   <Input
                     value={settings.paymentMethods.bank.accountNumber}
-                    onChange={(e) =>
-                      updatePayment("bank", "accountNumber", e.target.value)
-                    }
+                    onChange={(e) => updatePayment("bank", "accountNumber", e.target.value)}
                     placeholder="Account Number"
                   />
                   <Input
                     value={settings.paymentMethods.bank.iban}
-                    onChange={(e) =>
-                      updatePayment("bank", "iban", e.target.value)
-                    }
+                    onChange={(e) => updatePayment("bank", "iban", e.target.value)}
                     placeholder="IBAN (optional)"
                   />
                 </div>
@@ -940,20 +902,12 @@ function SettingsContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Input
                     value={settings.paymentMethods.easypaisa.accountName}
-                    onChange={(e) =>
-                      updatePayment("easypaisa", "accountName", e.target.value)
-                    }
+                    onChange={(e) => updatePayment("easypaisa", "accountName", e.target.value)}
                     placeholder="Account Name"
                   />
                   <Input
                     value={settings.paymentMethods.easypaisa.accountNumber}
-                    onChange={(e) =>
-                      updatePayment(
-                        "easypaisa",
-                        "accountNumber",
-                        e.target.value,
-                      )
-                    }
+                    onChange={(e) => updatePayment("easypaisa", "accountNumber", e.target.value)}
                     placeholder="Account Number"
                   />
                 </div>
@@ -968,16 +922,12 @@ function SettingsContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Input
                     value={settings.paymentMethods.jazzcash.accountName}
-                    onChange={(e) =>
-                      updatePayment("jazzcash", "accountName", e.target.value)
-                    }
+                    onChange={(e) => updatePayment("jazzcash", "accountName", e.target.value)}
                     placeholder="Account Name"
                   />
                   <Input
                     value={settings.paymentMethods.jazzcash.accountNumber}
-                    onChange={(e) =>
-                      updatePayment("jazzcash", "accountNumber", e.target.value)
-                    }
+                    onChange={(e) => updatePayment("jazzcash", "accountNumber", e.target.value)}
                     placeholder="Account Number"
                   />
                 </div>
@@ -986,49 +936,36 @@ function SettingsContent() {
           </Card>
         </TabsContent>
 
-        {/* Tax & Shipping Tab */}
+        {/* ── Tax & Shipping Tab ── */}
         <TabsContent value="tax" className="space-y-4">
-          {/* Tax */}
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <Receipt className="h-5 w-5" />
               Tax Settings
             </h2>
-
             <div className="space-y-4">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={settings.taxEnabled}
-                  onChange={(e) =>
-                    setSettings({ ...settings, taxEnabled: e.target.checked })
-                  }
+                  onChange={(e) => setSettings({ ...settings, taxEnabled: e.target.checked })}
                   className="rounded w-4 h-4"
                 />
-                <span className="text-sm font-medium text-gray-700">
-                  Enable Tax
-                </span>
+                <span className="text-sm font-medium text-gray-700">Enable Tax</span>
               </label>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Tax Name
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tax Name</label>
                   <Input
                     value={settings.taxName}
-                    onChange={(e) =>
-                      setSettings({ ...settings, taxName: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, taxName: e.target.value })}
                     placeholder="GST, VAT, etc."
                     disabled={!settings.taxEnabled}
                     className={!settings.taxEnabled ? "opacity-50" : ""}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Tax Rate (%)
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tax Rate (%)</label>
                   <Input
                     type="number"
                     min="0"
@@ -1036,10 +973,7 @@ function SettingsContent() {
                     step="0.01"
                     value={settings.taxRate}
                     onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        taxRate: parseFloat(e.target.value) || 0,
-                      })
+                      setSettings({ ...settings, taxRate: parseFloat(e.target.value) || 0 })
                     }
                     placeholder="17"
                     disabled={!settings.taxEnabled}
@@ -1047,34 +981,26 @@ function SettingsContent() {
                   />
                 </div>
               </div>
-
-              {/* Status Indicator */}
               {settings.taxEnabled ? (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <p className="text-sm text-green-800 font-semibold mb-1">
-                    ✓ Tax Active: {settings.taxName || "Tax"} at{" "}
-                    {settings.taxRate}%
+                    ✓ Tax Active: {settings.taxName || "Tax"} at {settings.taxRate}%
                   </p>
                   <p className="text-xs text-green-700">
-                    Example calculation: Rs. 1,000 subtotal = Rs.{" "}
+                    Example: Rs. 1,000 subtotal = Rs.{" "}
                     {((1000 * settings.taxRate) / 100).toFixed(0)} tax = Rs.{" "}
                     {(1000 + (1000 * settings.taxRate) / 100).toFixed(0)} total
                   </p>
                 </div>
               ) : (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                  <p className="text-sm text-amber-800 font-semibold">
-                    ⚠ Tax Disabled
-                  </p>
-                  <p className="text-xs text-amber-700 mt-1">
-                    No tax will be charged to customers at checkout
-                  </p>
+                  <p className="text-sm text-amber-800 font-semibold">⚠ Tax Disabled</p>
+                  <p className="text-xs text-amber-700 mt-1">No tax charged to customers</p>
                 </div>
               )}
             </div>
           </Card>
 
-          {/* Shipping */}
           <Card className="p-6 border-0 shadow-md">
             <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <Truck className="h-5 w-5" />
@@ -1090,10 +1016,7 @@ function SettingsContent() {
                   min="0"
                   value={settings.shippingCost}
                   onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      shippingCost: parseFloat(e.target.value) || 0,
-                    })
+                    setSettings({ ...settings, shippingCost: parseFloat(e.target.value) || 0 })
                   }
                   placeholder="300"
                 />
@@ -1120,14 +1043,12 @@ function SettingsContent() {
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
                 <p className="text-sm text-blue-800">
                   <strong>Free Shipping Active:</strong> Orders above Rs.{" "}
-                  {settings.freeShippingThreshold.toLocaleString()} get free
-                  shipping
+                  {settings.freeShippingThreshold.toLocaleString()} get free shipping
                 </p>
               </div>
             ) : (
               <p className="text-sm text-gray-500 mt-3">
-                Flat shipping rate of Rs.{" "}
-                {settings.shippingCost.toLocaleString()} on all orders
+                Flat shipping rate of Rs. {settings.shippingCost.toLocaleString()} on all orders
               </p>
             )}
           </Card>
@@ -1137,7 +1058,7 @@ function SettingsContent() {
   );
 }
 
-// Payment section component
+// Payment section toggle wrapper
 function PaymentSection({
   title,
   enabled,
@@ -1158,9 +1079,7 @@ function PaymentSection({
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-gray-800">{title}</h3>
         <label className="flex items-center gap-2 cursor-pointer">
-          <span className="text-sm text-gray-500">
-            {enabled ? "Enabled" : "Disabled"}
-          </span>
+          <span className="text-sm text-gray-500">{enabled ? "Enabled" : "Disabled"}</span>
           <div
             onClick={() => onToggle(!enabled)}
             className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${
@@ -1175,16 +1094,13 @@ function PaymentSection({
           </div>
         </label>
       </div>
-      <div
-        className={`space-y-3 ${!enabled ? "opacity-50 pointer-events-none" : ""}`}
-      >
+      <div className={`space-y-3 ${!enabled ? "opacity-50 pointer-events-none" : ""}`}>
         {children}
       </div>
     </div>
   );
 }
 
-// Main export with PermissionGuard
 export default function SettingsPage() {
   return (
     <PermissionGuard roles={["admin"]}>
