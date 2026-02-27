@@ -204,69 +204,11 @@ export default function Home() {
 
       <main className="flex-1">
         {/* ── Hero ── */}
-        <section className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 md:py-10">
+        <section className="">
           <HeroCarousel />
         </section>
 
-        {/* ── Featured Products ── */}
-        <FeaturedProducts />
-
-        {/* ── Features Strip ── */}
-        <section className="border-y border-green-100 bg-green-50/50 py-6 md:py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-              {[
-                {
-                  icon: Truck,
-                  title: "Free Delivery",
-                  desc: "On orders over Rs. 2,000",
-                  iconBg: "bg-green-100",
-                  iconColor: "text-green-700",
-                },
-                {
-                  icon: Leaf,
-                  title: "100% Fresh",
-                  desc: "Farm-fresh guaranteed",
-                  iconBg: "bg-green-100",
-                  iconColor: "text-green-700",
-                },
-                {
-                  icon: Shield,
-                  title: "Secure Payment",
-                  desc: "Safe transactions",
-                  iconBg: "bg-orange-100",
-                  iconColor: "text-orange-600",
-                },
-                {
-                  icon: Clock,
-                  title: "24/7 Support",
-                  desc: "Always here to help",
-                  iconBg: "bg-orange-100",
-                  iconColor: "text-orange-600",
-                },
-              ].map((f, i) => (
-                <div
-                  key={i}
-                  className="feature-pill flex flex-col sm:flex-row items-center sm:items-start gap-3 p-4 bg-white rounded-2xl border border-green-100"
-                >
-                  <div
-                    className={`shrink-0 w-10 h-10 rounded-xl ${f.iconBg} flex items-center justify-center`}
-                  >
-                    <f.icon className={`h-5 w-5 ${f.iconColor}`} />
-                  </div>
-                  <div className="text-center sm:text-left">
-                    <p className="font-semibold text-sm text-gray-800 leading-tight">
-                      {f.title}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">{f.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── Categories ── */}
+         {/* ── Categories ── */}
         <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-10">
             <div>
@@ -381,6 +323,10 @@ export default function Home() {
           )}
         </section>
 
+        {/* ── Featured Products ── */}
+        <FeaturedProducts />
+
+        
         {/* ── Stats Strip ── */}
         <section className="stats-strip py-10">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -443,75 +389,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ── Why Choose Us ── */}
-        {/* <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <span className="section-pill section-pill-orange">
-              <Heart className="w-3 h-3" /> Our Promise
-            </span>
-            <h2 className="font-display text-3xl md:text-4xl lg:text-[2.8rem] font-bold text-gray-900 leading-tight">
-              Why Choose Khas Pure Food?
-            </h2>
-            <p className="text-gray-500 text-base mt-3 max-w-md mx-auto">
-              Your trusted partner for quality groceries delivered with care
-            </p>
-          </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              {
-                icon: Award,
-                title: "Premium Quality",
-                desc: "Handpicked products meeting the highest purity standards",
-                accent: "#16A34A",
-                bg: "bg-green-50",
-                border: "border-green-100",
-              },
-              {
-                icon: Package,
-                title: "Careful Packaging",
-                desc: "Products packed with care to ensure maximum freshness",
-                accent: "#EA580C",
-                bg: "bg-orange-50",
-                border: "border-orange-100",
-              },
-              {
-                icon: Users,
-                title: "10,000+ Customers",
-                desc: "Join our growing family of satisfied, loyal shoppers",
-                accent: "#16A34A",
-                bg: "bg-green-50",
-                border: "border-green-100",
-              },
-              {
-                icon: Heart,
-                title: "Customer First",
-                desc: "Your satisfaction isn't just our goal — it's our guarantee",
-                accent: "#EA580C",
-                bg: "bg-orange-50",
-                border: "border-orange-100",
-              },
-            ].map((item, idx) => (
-              <div
-                key={idx}
-                className={`why-card p-6 rounded-2xl ${item.bg} border ${item.border}`}
-              >
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
-                  style={{ backgroundColor: item.accent }}
-                >
-                  <item.icon className="h-5 w-5 text-white" />
-                </div>
-                <h3 className="font-bold text-gray-800 text-base mb-2">
-                  {item.title}
-                </h3>
-                <p className="text-gray-500 text-sm leading-relaxed">
-                  {item.desc}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section> */}
+      
+       
       </main>
 
       <Footer />
