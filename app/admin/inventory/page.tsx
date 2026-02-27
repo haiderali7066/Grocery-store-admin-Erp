@@ -2,7 +2,7 @@
 
 // FILE PATH: app/admin/inventory/page.tsx
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -35,6 +35,7 @@ import {
   BarChart3,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   RefreshCcw,
   PackageX,
   PackageCheck,
@@ -130,6 +131,8 @@ type PayMethod = "cash" | "bank" | "easypaisa" | "jazzcash" | "cheque";
 type TabType = "inventory" | "purchases" | "reports";
 type ReportPeriod = "today" | "weekly" | "monthly" | "custom";
 
+const ITEMS_PER_PAGE = 10;
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 const PAY_CFG: Record<PayMethod, { label: string; walletKey: keyof WalletBalances | null; icon: React.ReactNode; pill: string }> = {
@@ -150,6 +153,79 @@ const emptyProductRow = (): PurchaseProduct => ({
   taxValue: "0", freightPerUnit: "0", sellingPrice: "",
 });
 
+// ── Pagination Component ──────────────────────────────────────────────────
+
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="bg-gray-50 px-5 py-4 border-t border-gray-100 flex items-center justify-between no-print">
+      <div className="text-sm text-gray-600 font-medium">
+        Page <span className="font-bold text-gray-900">{currentPage}</span> of{" "}
+        <span className="font-bold text-gray-900">{totalPages}</span>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        <div className="flex gap-1">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+            const isVisible = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+            const isEllipsis = page > 1 && page < totalPages && Math.abs(page - currentPage) > 1;
+
+            if (isEllipsis && page > currentPage - 1 && page < currentPage + 1) return null;
+
+            if (!isVisible) return null;
+
+            if (isEllipsis) {
+              return (
+                <span key={page} className="px-2 py-1 text-gray-400">
+                  …
+                </span>
+              );
+            }
+
+            return (
+              <button
+                key={page}
+                onClick={() => onPageChange(page)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  page === currentPage
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function WalletBadge({ method, wallet, paying }: { method: PayMethod; wallet: WalletBalances | null; paying?: number }) {
   if (!wallet) return null;
   const cfg = PAY_CFG[method];
@@ -169,9 +245,7 @@ function InventorySummary({ inventory }: { inventory: InventoryItem[] }) {
   const stats = inventory.reduce(
     (acc, item) => {
       const totalPurchased = item.batches?.reduce((s, b) => s + b.quantity, 0) ?? 0;
-      // item.stock is the definitive source of truth — it's decremented on every sale by the backend
       const currentStock = item.stock ?? 0;
-      // Sold = total ever purchased minus what is physically in stock right now
       const totalSold = Math.max(totalPurchased - currentStock, 0);
       const isSoldOut = currentStock === 0;
 
@@ -267,6 +341,8 @@ export default function InventoryPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [expandedInventory, setExpandedInventory] = useState<Set<string>>(new Set());
   const [expandedPurchases, setExpandedPurchases] = useState<Set<string>>(new Set());
+  const [inventoryCurrentPage, setInventoryCurrentPage] = useState(1);
+  const [purchasesCurrentPage, setPurchasesCurrentPage] = useState(1);
 
   // Edit
   const [editPurchase, setEditPurchase] = useState<PurchaseRecord | null>(null);
@@ -313,6 +389,20 @@ export default function InventoryPage() {
   async function fetchWallet() {
     try { const r = await fetch("/api/admin/wallet"); const d = await r.json(); setWallet(d.wallet || null); } catch {}
   }
+
+  // ── Pagination ────────────────────────────────────────────────────────────
+
+  const inventoryTotalPages = Math.ceil(inventory.length / ITEMS_PER_PAGE);
+  const paginatedInventory = useMemo(() => {
+    const start = (inventoryCurrentPage - 1) * ITEMS_PER_PAGE;
+    return inventory.slice(start, start + ITEMS_PER_PAGE);
+  }, [inventory, inventoryCurrentPage]);
+
+  const purchasesTotalPages = Math.ceil(purchases.length / ITEMS_PER_PAGE);
+  const paginatedPurchases = useMemo(() => {
+    const start = (purchasesCurrentPage - 1) * ITEMS_PER_PAGE;
+    return purchases.slice(start, start + ITEMS_PER_PAGE);
+  }, [purchases, purchasesCurrentPage]);
 
   // ── Product row helpers ────────────────────────────────────────────────────
 
@@ -755,7 +845,7 @@ export default function InventoryPage() {
                     <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto" />
                     <p className="mt-4 text-gray-600">Loading inventory...</p>
                   </div>
-                ) : inventory.length > 0 ? (
+                ) : paginatedInventory.length > 0 ? (
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 border-b-2">
                       <tr>
@@ -765,11 +855,9 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {inventory.map(item => {
+                      {paginatedInventory.map(item => {
                         const totalPurchased = item.batches?.reduce((s, b) => s + b.quantity, 0) ?? 0;
-                        // Use item.stock as the definitive source of truth
                         const currentStock = item.stock ?? 0;
-                        // Sold = total purchased minus what is currently in stock
                         const totalSold = Math.max(totalPurchased - currentStock, 0);
                         const isSoldOut = currentStock === 0;
                         const isLow = !isSoldOut && currentStock <= item.lowStockThreshold;
@@ -918,6 +1006,11 @@ export default function InventoryPage() {
                   </div>
                 )}
               </div>
+              <Pagination
+                currentPage={inventoryCurrentPage}
+                totalPages={inventoryTotalPages}
+                onPageChange={setInventoryCurrentPage}
+              />
             </Card>
           </div>
         )}
@@ -926,7 +1019,7 @@ export default function InventoryPage() {
         {tab === "purchases" && (
           <Card className="shadow-xl overflow-hidden border-0">
             <div className="overflow-x-auto">
-              {purchases.length > 0 ? (
+              {paginatedPurchases.length > 0 ? (
                 <table className="w-full text-left">
                   <thead className="bg-slate-50 border-b-2">
                     <tr>
@@ -936,7 +1029,7 @@ export default function InventoryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {purchases.map(p => {
+                    {paginatedPurchases.map(p => {
                       const mCfg = PAY_CFG[p.paymentMethod as PayMethod];
                       const isExpanded = expandedPurchases.has(p._id);
                       return (
@@ -1020,6 +1113,11 @@ export default function InventoryPage() {
                 <div className="text-center py-12"><ShoppingBag className="h-16 w-16 text-gray-300 mx-auto mb-4" /><p className="text-gray-500 text-lg">No purchases yet</p></div>
               )}
             </div>
+            <Pagination
+              currentPage={purchasesCurrentPage}
+              totalPages={purchasesTotalPages}
+              onPageChange={setPurchasesCurrentPage}
+            />
           </Card>
         )}
 

@@ -13,7 +13,8 @@ export async function GET(req: NextRequest) {
     }
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
+    // Allow all staff roles to access POS products
+    if (!payload || !["admin", "manager", "accountant", "staff"].includes(payload.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

@@ -6,6 +6,13 @@ import { User } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
 
+function requireStaff(req: NextRequest) {
+  const token = getTokenFromCookie(req.headers.get("cookie") || "");
+  const payload = verifyToken(token);
+  if (!payload || !["admin", "manager", "accountant", "staff"].includes(payload.role)) return null;
+  return payload;
+}
+
 function requireAdmin(req: NextRequest) {
   const token = getTokenFromCookie(req.headers.get("cookie") || "");
   const payload = verifyToken(token);
@@ -19,6 +26,7 @@ export async function PATCH(
 ) {
   try {
     await connectDB();
+    // Only admin can edit customers
     if (!requireAdmin(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -31,7 +39,6 @@ export async function PATCH(
 
     const { name, email, phone, addresses } = await req.json();
 
-    // Validate required fields
     if (!name || !email) {
       return NextResponse.json(
         { error: "Name and email are required" },
@@ -39,7 +46,6 @@ export async function PATCH(
       );
     }
 
-    // Check if email is already taken by another user
     const existing = await User.findOne({
       email: email.toLowerCase(),
       _id: { $ne: id },
@@ -51,7 +57,6 @@ export async function PATCH(
       );
     }
 
-    // Update the customer
     const updatedUser = await User.findByIdAndUpdate(
       id,
       {
@@ -83,6 +88,7 @@ export async function DELETE(
 ) {
   try {
     await connectDB();
+    // Only admin can delete customers
     if (!requireAdmin(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

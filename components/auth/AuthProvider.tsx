@@ -43,6 +43,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "customers",
     "suppliers",
     "purchases",
+    "refunds",
   ],
   accountant: [
     "reports",
@@ -52,8 +53,10 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "expenses",
     "wallet",
     "investment",
+    "customers",
+    "refunds",
   ],
-  staff: ["pos", "basic-inventory", "orders"],
+  staff: ["pos", "basic-inventory", "orders", "customers", "refunds"],
   user: [],
 };
 

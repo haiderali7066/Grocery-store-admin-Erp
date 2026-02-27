@@ -4,17 +4,18 @@ import { connectDB } from "@/lib/db";
 import { User, Order, POSSale } from "@/lib/models";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
-function requireAdmin(req: NextRequest) {
+function requireStaff(req: NextRequest) {
   const token = getTokenFromCookie(req.headers.get("cookie") || "");
   const payload = verifyToken(token);
-  if (!payload || payload.role !== "admin") return null;
+  // Allow all staff roles to access customers
+  if (!payload || !["admin", "manager", "accountant", "staff"].includes(payload.role)) return null;
   return payload;
 }
 
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
-    if (!requireAdmin(req)) {
+    if (!requireStaff(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -98,7 +99,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
-    if (!requireAdmin(req)) {
+    const payload = requireStaff(req);
+    if (!payload) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

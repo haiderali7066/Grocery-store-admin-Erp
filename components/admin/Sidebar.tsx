@@ -79,9 +79,9 @@ const menuItems: MenuItem[] = [
   },
   {
     label: "Customers",
-    icon: Tags,
+    icon: Users,
     href: "/admin/customers",
-    permission: "all",
+    permission: "customers", // All staff can access
   },
   {
     label: "Inventory",
@@ -101,7 +101,7 @@ const menuItems: MenuItem[] = [
     label: "Returns & Refunds",
     icon: RefreshCw,
     href: "/admin/refunds",
-    roles: ["admin", "manager", "accountant"],
+    permission: "refunds", // All staff can access
   },
 
   // Suppliers & Purchases (Accountant, Manager, Admin)
@@ -112,13 +112,6 @@ const menuItems: MenuItem[] = [
     permission: "suppliers",
     roles: ["admin", "manager", "accountant"],
   },
-  // {
-  //   label: "Purchases",
-  //   icon: Briefcase,
-  //   href: "/admin/purchases",
-  //   permission: "purchases",
-  //   roles: ["admin", "manager", "accountant"],
-  // },
 
   // Financial (Accountant, Admin)
   {

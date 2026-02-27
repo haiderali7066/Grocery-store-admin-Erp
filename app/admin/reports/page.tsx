@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import {
   AlertTriangle, Loader2, TrendingUp, TrendingDown, ShoppingBag,
   Receipt, Package, RefreshCcw, Store, Globe, BarChart3, FileText,
-  Printer, Calendar,
+  Printer, Calendar, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -44,6 +44,8 @@ const PERIODS = ["daily", "weekly", "monthly", "custom"] as const;
 type Period = (typeof PERIODS)[number];
 type ActiveTab = "overview" | "pl" | "online" | "pos";
 
+const ITEMS_PER_PAGE = 10;
+
 const fmt = (n: number) => `Rs. ${Math.abs(n).toLocaleString()}`;
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
@@ -66,6 +68,79 @@ function ItemList({ items, limit = 2 }: { items?: SaleItem[]; limit?: number }) 
   );
 }
 
+// ── Pagination Component ──────────────────────────────────────────────────
+
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="bg-gray-50 px-5 py-4 border-t border-gray-100 flex items-center justify-between no-print">
+      <div className="text-sm text-gray-600 font-medium">
+        Page <span className="font-bold text-gray-900">{currentPage}</span> of{" "}
+        <span className="font-bold text-gray-900">{totalPages}</span>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        <div className="flex gap-1">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+            const isVisible = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+            const isEllipsis = page > 1 && page < totalPages && Math.abs(page - currentPage) > 1;
+
+            if (isEllipsis && page > currentPage - 1 && page < currentPage + 1) return null;
+
+            if (!isVisible) return null;
+
+            if (isEllipsis) {
+              return (
+                <span key={page} className="px-2 py-1 text-gray-400">
+                  …
+                </span>
+              );
+            }
+
+            return (
+              <button
+                key={page}
+                onClick={() => onPageChange(page)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  page === currentPage
+                    ? "bg-green-700 text-white shadow-sm"
+                    : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────
 
 export default function ProfitLossPage() {
@@ -77,6 +152,8 @@ export default function ProfitLossPage() {
   const [dateTo, setDateTo] = useState("");
   const [activeTab, setActiveTab] = useState<ActiveTab>("overview");
   const [showCustom, setShowCustom] = useState(false);
+  const [onlineCurrentPage, setOnlineCurrentPage] = useState(1);
+  const [posCurrentPage, setPosCurrentPage] = useState(1);
   const printRef = useRef<HTMLDivElement>(null);
 
   const fetchData = useCallback(async () => {
@@ -88,6 +165,8 @@ export default function ProfitLossPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Failed to load reports");
       setData(result);
+      setOnlineCurrentPage(1);
+      setPosCurrentPage(1);
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   }, [period, dateFrom, dateTo]);
@@ -95,6 +174,24 @@ export default function ProfitLossPage() {
   useEffect(() => { if (period !== "custom") fetchData(); }, [period]);
 
   const handleCustomApply = () => { if (dateFrom && dateTo) fetchData(); };
+
+  // ── Online Orders Pagination ──────────────────────────────────────────
+
+  const onlineOrders = useMemo(() => data?.detail?.onlineOrders ?? [], [data]);
+  const onlineTotalPages = Math.ceil(onlineOrders.length / ITEMS_PER_PAGE);
+  const onlinePaginatedOrders = useMemo(() => {
+    const start = (onlineCurrentPage - 1) * ITEMS_PER_PAGE;
+    return onlineOrders.slice(start, start + ITEMS_PER_PAGE);
+  }, [onlineOrders, onlineCurrentPage]);
+
+  // ── POS Sales Pagination ──────────────────────────────────────────────
+
+  const posSales = useMemo(() => data?.detail?.posSales ?? [], [data]);
+  const posTotalPages = Math.ceil(posSales.length / ITEMS_PER_PAGE);
+  const posPaginatedSales = useMemo(() => {
+    const start = (posCurrentPage - 1) * ITEMS_PER_PAGE;
+    return posSales.slice(start, start + ITEMS_PER_PAGE);
+  }, [posSales, posCurrentPage]);
 
   const totalSales = (data?.breakdown.online ?? 0) + (data?.breakdown.pos ?? 0);
   const onlinePct  = totalSales > 0 ? (data!.breakdown.online / totalSales) * 100 : 0;
@@ -300,13 +397,13 @@ export default function ProfitLossPage() {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <SummaryCard label="Online Revenue" value={data?.breakdown.online ?? 0} color="blue"   icon={<Globe className="h-4 w-4" />} />
-                  <SummaryCard label="Online Profit"  value={(data?.detail?.onlineOrders ?? []).reduce((a, o) => a + o.profit, 0)} color="green" icon={<TrendingUp className="h-4 w-4" />} />
-                  <SummaryCard label="Orders"         value={(data?.detail?.onlineOrders ?? []).length} color="indigo" icon={<ShoppingBag className="h-4 w-4" />} isCount />
+                  <SummaryCard label="Online Profit"  value={onlineOrders.reduce((a, o) => a + o.profit, 0)} color="green" icon={<TrendingUp className="h-4 w-4" />} />
+                  <SummaryCard label="Orders"         value={onlineOrders.length} color="indigo" icon={<ShoppingBag className="h-4 w-4" />} isCount />
                 </div>
                 <Card className="border-0 shadow-md overflow-hidden">
                   <div className="bg-blue-700 text-white px-5 py-3 flex justify-between items-center">
                     <h3 className="font-bold text-sm">Order Details</h3>
-                    <span className="text-blue-200 text-xs">{(data?.detail?.onlineOrders ?? []).length} orders</span>
+                    <span className="text-blue-200 text-xs">{onlineOrders.length} orders</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -323,15 +420,14 @@ export default function ProfitLossPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
-                        {!(data?.detail?.onlineOrders ?? []).length ? (
+                        {!onlinePaginatedOrders.length ? (
                           <tr><td colSpan={8} className="text-center py-10 text-gray-400 italic">No online orders this period</td></tr>
-                        ) : (data?.detail?.onlineOrders ?? []).map((order) => {
+                        ) : onlinePaginatedOrders.map((order) => {
                           const margin = order.subtotal > 0 ? (order.profit / order.subtotal) * 100 : 0;
                           return (
                             <tr key={order._id} className="hover:bg-gray-50/50">
                               <td className="px-4 py-2.5 font-mono text-xs font-bold text-blue-700">#{order.orderNumber || order._id.slice(-6).toUpperCase()}</td>
                               <td className="px-4 py-2.5 font-medium text-gray-700">{order.customerName || "—"}</td>
-                              {/* ✅ Item names */}
                               <td className="px-4 py-2.5"><ItemList items={order.items} /></td>
                               <td className="px-4 py-2.5 text-gray-500 text-xs">{new Date(order.createdAt).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" })}</td>
                               <td className="px-4 py-2.5">
@@ -344,18 +440,23 @@ export default function ProfitLossPage() {
                           );
                         })}
                       </tbody>
-                      {!!(data?.detail?.onlineOrders ?? []).length && (
+                      {!!onlinePaginatedOrders.length && (
                         <tfoot className="bg-blue-50 border-t-2 border-blue-100">
                           <tr>
-                            <td colSpan={5} className="px-4 py-3 font-black text-gray-900">TOTAL</td>
-                            <td className="px-4 py-3 text-right font-black text-blue-700">Rs. {(data?.breakdown.online ?? 0).toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right font-black text-green-700">Rs. {(data?.detail?.onlineOrders ?? []).reduce((a, o) => a + o.profit, 0).toLocaleString()}</td>
-                            <td className="px-4 py-3 text-right font-black text-gray-700">{(data?.breakdown.online ?? 0) > 0 ? pct(((data?.detail?.onlineOrders ?? []).reduce((a, o) => a + o.profit, 0) / (data?.breakdown.online ?? 1)) * 100) : "0%"}</td>
+                            <td colSpan={5} className="px-4 py-3 font-black text-gray-900">TOTAL (Page {onlineCurrentPage})</td>
+                            <td className="px-4 py-3 text-right font-black text-blue-700">Rs. {onlinePaginatedOrders.reduce((a, o) => a + o.subtotal, 0).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right font-black text-green-700">Rs. {onlinePaginatedOrders.reduce((a, o) => a + o.profit, 0).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right font-black text-gray-700">{onlinePaginatedOrders.reduce((a, o) => a + o.subtotal, 0) > 0 ? pct((onlinePaginatedOrders.reduce((a, o) => a + o.profit, 0) / onlinePaginatedOrders.reduce((a, o) => a + o.subtotal, 0)) * 100) : "0%"}</td>
                           </tr>
                         </tfoot>
                       )}
                     </table>
                   </div>
+                  <Pagination
+                    currentPage={onlineCurrentPage}
+                    totalPages={onlineTotalPages}
+                    onPageChange={setOnlineCurrentPage}
+                  />
                 </Card>
               </div>
             )}
@@ -369,13 +470,13 @@ export default function ProfitLossPage() {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   <SummaryCard label="POS Revenue"      value={data?.breakdown.pos ?? 0} color="green" icon={<Store className="h-4 w-4" />} />
-                  <SummaryCard label="POS Gross Profit" value={(data?.breakdown.pos ?? 0) - ((data?.detail?.posSales ?? []).reduce((a, s) => a + (s.costOfGoods ?? 0), 0))} color="emerald" icon={<TrendingUp className="h-4 w-4" />} />
-                  <SummaryCard label="Transactions"     value={(data?.detail?.posSales ?? []).length} color="teal" icon={<Receipt className="h-4 w-4" />} isCount />
+                  <SummaryCard label="POS Gross Profit" value={(data?.breakdown.pos ?? 0) - (posSales.reduce((a, s) => a + (s.costOfGoods ?? 0), 0))} color="emerald" icon={<TrendingUp className="h-4 w-4" />} />
+                  <SummaryCard label="Transactions"     value={posSales.length} color="teal" icon={<Receipt className="h-4 w-4" />} isCount />
                 </div>
                 <Card className="border-0 shadow-md overflow-hidden">
                   <div className="bg-green-700 text-white px-5 py-3 flex justify-between items-center">
                     <h3 className="font-bold text-sm">Transaction Details</h3>
-                    <span className="text-green-200 text-xs">{(data?.detail?.posSales ?? []).length} transactions</span>
+                    <span className="text-green-200 text-xs">{posSales.length} transactions</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -383,7 +484,6 @@ export default function ProfitLossPage() {
                         <tr>
                           <th className="text-left px-4 py-3 font-bold text-gray-500 text-xs uppercase">Sale ID</th>
                           <th className="text-left px-4 py-3 font-bold text-gray-500 text-xs uppercase">Date & Time</th>
-                          {/* ✅ Items column added */}
                           <th className="text-left px-4 py-3 font-bold text-gray-500 text-xs uppercase">Items Sold</th>
                           <th className="text-left px-4 py-3 font-bold text-gray-500 text-xs uppercase">Payment</th>
                           <th className="text-right px-4 py-3 font-bold text-gray-500 text-xs uppercase">Revenue</th>
@@ -392,9 +492,9 @@ export default function ProfitLossPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
-                        {!(data?.detail?.posSales ?? []).length ? (
+                        {!posPaginatedSales.length ? (
                           <tr><td colSpan={7} className="text-center py-10 text-gray-400 italic">No POS sales this period</td></tr>
-                        ) : (data?.detail?.posSales ?? []).map((sale) => {
+                        ) : posPaginatedSales.map((sale) => {
                           const profit = sale.subtotal - (sale.costOfGoods ?? 0);
                           return (
                             <tr key={sale._id} className="hover:bg-gray-50/50">
@@ -404,7 +504,6 @@ export default function ProfitLossPage() {
                               <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
                                 {new Date(sale.createdAt).toLocaleString("en-PK", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                               </td>
-                              {/* ✅ Item names populated from backend */}
                               <td className="px-4 py-2.5"><ItemList items={sale.items} /></td>
                               <td className="px-4 py-2.5">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 capitalize">{sale.paymentMethod || "—"}</span>
@@ -416,14 +515,14 @@ export default function ProfitLossPage() {
                           );
                         })}
                       </tbody>
-                      {!!(data?.detail?.posSales ?? []).length && (() => {
-                        const totalCOGS   = (data?.detail?.posSales ?? []).reduce((a, s) => a + (s.costOfGoods ?? 0), 0);
-                        const totalProfit = (data?.breakdown.pos ?? 0) - totalCOGS;
+                      {!!posPaginatedSales.length && (() => {
+                        const totalCOGS   = posPaginatedSales.reduce((a, s) => a + (s.costOfGoods ?? 0), 0);
+                        const totalProfit = posPaginatedSales.reduce((a, s) => a + (s.subtotal - (s.costOfGoods ?? 0)), 0);
                         return (
                           <tfoot className="bg-green-50 border-t-2 border-green-100">
                             <tr>
-                              <td colSpan={4} className="px-4 py-3 font-black text-gray-900">TOTAL</td>
-                              <td className="px-4 py-3 text-right font-black text-green-700">Rs. {(data?.breakdown.pos ?? 0).toLocaleString()}</td>
+                              <td colSpan={4} className="px-4 py-3 font-black text-gray-900">TOTAL (Page {posCurrentPage})</td>
+                              <td className="px-4 py-3 text-right font-black text-green-700">Rs. {posPaginatedSales.reduce((a, s) => a + s.subtotal, 0).toLocaleString()}</td>
                               <td className="px-4 py-3 text-right font-black text-red-600">Rs. {totalCOGS.toLocaleString()}</td>
                               <td className="px-4 py-3 text-right font-black text-green-700">Rs. {totalProfit.toLocaleString()}</td>
                             </tr>
@@ -432,6 +531,11 @@ export default function ProfitLossPage() {
                       })()}
                     </table>
                   </div>
+                  <Pagination
+                    currentPage={posCurrentPage}
+                    totalPages={posTotalPages}
+                    onPageChange={setPosCurrentPage}
+                  />
                 </Card>
               </div>
             )}

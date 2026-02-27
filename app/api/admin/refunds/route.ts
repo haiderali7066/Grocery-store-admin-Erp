@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
   try {
     await connectDB();
     const payload = auth(req);
-    if (!payload || payload.role !== "admin")
+    // Allow all staff roles to view refunds
+    if (!payload || !["admin", "manager", "accountant", "staff"].includes(payload.role))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const refunds = await Refund.find()
@@ -33,10 +34,6 @@ export async function GET(req: NextRequest) {
 }
 
 // ── POST — customer creates online refund request ─────────────────────────────
-// Rules:
-//   • Each item in the order can only be returned ONCE
-//   • No Transaction record is created — wallet balance is cut silently
-//   • Stock is restored for each returned item
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,31 +49,27 @@ export async function POST(req: NextRequest) {
     if (!order)
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-    // Ownership check (admin can do anything)
-    if (order.user.toString() !== payload.userId && payload.role !== "admin")
+    // Ownership check (admin/staff can do anything)
+    if (order.user.toString() !== payload.userId && !["admin", "manager", "accountant", "staff"].includes(payload.role))
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     if (order.isPOS)
       return NextResponse.json({ error: "POS sales cannot be refunded online. Please visit store." }, { status: 400 });
 
     // ── Per-item one-return guard ─────────────────────────────────────────
-    // Find all completed/approved/pending refunds for this order
     const existingRefunds = await Refund.find({
       order: orderId,
       status: { $in: ["pending", "approved", "completed"] },
     }).lean();
 
-    // Collect which item indices (or product IDs) have already been returned
     const alreadyReturnedItems = new Set<string>();
     for (const r of existingRefunds) {
       for (const ri of (r as any).returnItems || []) {
-        // Key by productId if available, otherwise by name
         const key = ri.productId?.toString() || ri.name;
         alreadyReturnedItems.add(key);
       }
     }
 
-    // Check if ALL items in the order have already been returned
     const orderItems: any[] = order.items || [];
     const unreturnedItems = orderItems.filter(item => {
       const key = item.product?.toString() || item.productId?.toString() || item.name;
@@ -91,10 +84,8 @@ export async function POST(req: NextRequest) {
         error: `${orderItems.length - unreturnedItems.length} item(s) already returned. Only ${unreturnedItems.length} item(s) remain returnable.`
       }, { status: 400 });
 
-    // Calculate amount for un-returned items only
     const refundableAmount = unreturnedItems.reduce((sum: number, item: any) => sum + (item.subtotal || item.price * item.quantity || 0), 0);
 
-    // Build returnItems list for the new refund
     const returnItems = unreturnedItems.map((item: any) => ({
       productId: item.product || item.productId || null,
       name: item.name,
@@ -104,7 +95,6 @@ export async function POST(req: NextRequest) {
       restock: true,
     }));
 
-    // Create the refund as pending (admin must approve)
     const refund = new Refund({
       order: orderId,
       returnType: "online",

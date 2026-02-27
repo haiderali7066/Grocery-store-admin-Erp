@@ -16,7 +16,8 @@ export async function POST(
     }
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
+    // Only admin and manager can reject refunds
+    if (!payload || !["admin", "manager"].includes(payload.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -39,7 +40,6 @@ export async function POST(
       );
     }
 
-    // Update refund record
     refund.status = "rejected";
     refund.approvedBy = payload.userId;
     refund.approvedAt = new Date();

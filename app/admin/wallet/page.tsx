@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,9 @@ import {
   FileText,
   PieChart,
   Activity,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -102,6 +105,8 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: "custom", label: "Custom" },
 ];
 
+const ITEMS_PER_PAGE = 10;
+
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default function WalletPage() {
@@ -112,11 +117,16 @@ export default function WalletPage() {
   const [reportLoading, setReportLoading] = useState(false);
 
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense" | "transfer">("all");
+  const [walletFilter, setWalletFilter] = useState<"all" | WalletKey>("all");
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
   const [period, setPeriod] = useState<Period>("monthly");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showCustom, setShowCustom] = useState(false);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Toast
   const [toast, setToast] = useState<{ type: ToastType; message: string }>({ type: null, message: "" });
@@ -152,6 +162,7 @@ export default function WalletPage() {
 
   const fetchReport = useCallback(async () => {
     setReportLoading(true);
+    setCurrentPage(1);
     try {
       let url = `/api/admin/wallet/report?period=${period}`;
       if (period === "custom" && dateFrom && dateTo) {
@@ -232,13 +243,41 @@ export default function WalletPage() {
     }
   };
 
-  // ── Derived ───────────────────────────────────────────────────────────────
+  // ── Copy Transaction ID ───────────────────────────────────────────────────
 
-  const filteredTx = report?.transactions
-    ? (typeFilter === "all" ? report.transactions : report.transactions.filter(t => t.type === typeFilter))
-    : [];
+  const copyToClipboard = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  // ── Pagination & Filtering ───────────────────────────────────────────────
+
+  const filteredTx = useMemo(() => {
+    let filtered = report?.transactions ?? [];
+
+    if (typeFilter !== "all") {
+      filtered = filtered.filter(t => t.type === typeFilter);
+    }
+
+    if (walletFilter !== "all") {
+      filtered = filtered.filter(t => t.source === walletFilter || t.destination === walletFilter);
+    }
+
+    return filtered;
+  }, [report?.transactions, typeFilter, walletFilter]);
+
+  const totalPages = Math.ceil(filteredTx.length / ITEMS_PER_PAGE);
+  const paginatedTx = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredTx.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredTx, currentPage]);
 
   const transferTx = report?.transactions?.filter(t => t.type === "transfer") ?? [];
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+  };
 
   if (isLoading) {
     return (
@@ -476,27 +515,49 @@ export default function WalletPage() {
             {/* ── CASH FLOW TAB ── */}
             {activeTab === "cashflow" && (
               <Card className="border-0 shadow-md overflow-hidden">
-                <div className="bg-gray-900 text-white px-5 py-4 flex justify-between items-center">
-                  <div>
-                    <h3 className="font-black">Transaction History</h3>
-                    <p className="text-gray-400 text-xs">Period: {periodLabel}</p>
+                {/* Header with filters */}
+                <div className="bg-gray-900 text-white px-5 py-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="font-black">Transaction History</h3>
+                      <p className="text-gray-400 text-xs">Period: {periodLabel} · {filteredTx.length} total</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+
+                  {/* Filters */}
+                  <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+                    {/* Type Filter */}
                     <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
                       {(["all", "income", "expense", "transfer"] as const).map((f) => (
-                        <button key={f} onClick={() => setTypeFilter(f)}
+                        <button key={f} onClick={() => { setTypeFilter(f); setCurrentPage(1); }}
                           className={`px-2.5 py-1 rounded-md text-xs font-bold capitalize transition-all ${typeFilter === f ? "bg-white text-gray-900" : "text-gray-300 hover:text-white"}`}>
                           {f}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Wallet Filter */}
+                    <div className="flex items-center gap-1 bg-white/10 rounded-lg p-1">
+                      <button onClick={() => { setWalletFilter("all"); setCurrentPage(1); }}
+                        className={`px-2.5 py-1 rounded-md text-xs font-bold capitalize transition-all ${walletFilter === "all" ? "bg-white text-gray-900" : "text-gray-300 hover:text-white"}`}>
+                        All Wallets
+                      </button>
+                      {WALLETS.map((w) => (
+                        <button key={w.key} onClick={() => { setWalletFilter(w.key); setCurrentPage(1); }}
+                          className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${walletFilter === w.key ? "bg-white text-gray-900" : "text-gray-300 hover:text-white"}`}>
+                          {w.label}
                         </button>
                       ))}
                     </div>
                   </div>
                 </div>
 
+                {/* Transactions Table */}
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">ID</th>
                         <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">Date</th>
                         <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">Details</th>
                         <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">Type</th>
@@ -505,19 +566,33 @@ export default function WalletPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {filteredTx.length === 0 ? (
+                      {paginatedTx.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="text-center py-14 text-gray-400 text-sm">
+                          <td colSpan={6} className="text-center py-14 text-gray-400 text-sm">
                             <WalletIcon className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                            {(report?.transactions ?? []).length === 0 ? "No transactions this period." : "No transactions match this filter."}
+                            {filteredTx.length === 0 ? "No transactions match filters." : "No transactions this period."}
                           </td>
                         </tr>
                       ) : (
-                        filteredTx.map((tx) => {
+                        paginatedTx.map((tx) => {
                           const s = TX_STYLES[tx.type] || TX_STYLES.income;
                           const TxIcon = s.icon;
+                          const isIdCopied = copiedId === tx._id;
                           return (
                             <tr key={tx._id} className="hover:bg-gray-50/60 transition-colors">
+                              <td className="px-5 py-3">
+                                <button
+                                  onClick={() => copyToClipboard(tx._id)}
+                                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors group"
+                                  title="Click to copy ID"
+                                >
+                                  <span className="font-mono text-xs font-bold text-gray-600 group-hover:text-gray-700">
+                                    {tx._id.slice(0, 8)}...
+                                  </span>
+                                  <Copy className={`h-3 w-3 transition-colors ${isIdCopied ? "text-green-600" : "text-gray-400 group-hover:text-gray-600"}`} />
+                                </button>
+                                {isIdCopied && <p className="text-xs text-green-600 font-semibold mt-1">Copied!</p>}
+                              </td>
                               <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
                                 {new Date(tx.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}
                               </td>
@@ -543,18 +618,76 @@ export default function WalletPage() {
                         })
                       )}
                     </tbody>
-                    {filteredTx.length > 0 && (
+                    {paginatedTx.length > 0 && (
                       <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                         <tr>
-                          <td colSpan={4} className="px-5 py-3 font-black text-gray-900">TOTAL ({filteredTx.length} transactions)</td>
+                          <td colSpan={5} className="px-5 py-3 font-black text-gray-900">TOTAL ({paginatedTx.length} of {filteredTx.length} shown)</td>
                           <td className="px-5 py-3 text-right font-black text-gray-900">
-                            Rs. {filteredTx.reduce((a, t) => a + t.amount, 0).toLocaleString()}
+                            Rs. {paginatedTx.reduce((a, t) => a + t.amount, 0).toLocaleString()}
                           </td>
                         </tr>
                       </tfoot>
                     )}
                   </table>
                 </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="bg-gray-50 px-5 py-4 border-t border-gray-100 flex items-center justify-between no-print">
+                    <div className="text-sm text-gray-600 font-medium">
+                      Page <span className="font-bold text-gray-900">{currentPage}</span> of <span className="font-bold text-gray-900">{totalPages}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                      >
+                        <ChevronLeft className="h-4 w-4" /> Prev
+                      </Button>
+
+                      {/* Page number buttons */}
+                      <div className="flex gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                          const isVisible = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                          const isEllipsis = page > 1 && page < totalPages && Math.abs(page - currentPage) > 1;
+
+                          if (isEllipsis && page > currentPage - 1 && page < currentPage + 1) return null;
+
+                          if (!isVisible) return null;
+
+                          if (isEllipsis) {
+                            return <span key={page} className="px-2 py-1 text-gray-400">…</span>;
+                          }
+
+                          return (
+                            <Button
+                              key={page}
+                              onClick={() => handlePageChange(page)}
+                              variant={page === currentPage ? "default" : "outline"}
+                              size="sm"
+                              className={page === currentPage ? "bg-green-700 hover:bg-green-800" : ""}
+                            >
+                              {page}
+                            </Button>
+                          );
+                        })}
+                      </div>
+
+                      <Button
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage === totalPages}
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                      >
+                        Next <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </Card>
             )}
 
@@ -662,6 +795,7 @@ export default function WalletPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
+                        <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">ID</th>
                         <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">Date</th>
                         <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">From</th>
                         <th className="text-left px-5 py-3 text-xs font-bold text-gray-500 uppercase">To</th>
@@ -672,7 +806,7 @@ export default function WalletPage() {
                     <tbody className="divide-y divide-gray-50">
                       {transferTx.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="text-center py-14 text-gray-400 text-sm">
+                          <td colSpan={6} className="text-center py-14 text-gray-400 text-sm">
                             <ArrowLeftRight className="h-8 w-8 mx-auto mb-2 opacity-20" />
                             No transfers this period.
                           </td>
@@ -681,8 +815,22 @@ export default function WalletPage() {
                         transferTx.map((tx) => {
                           const fromW = WALLETS.find(w => w.key === tx.source);
                           const toW = WALLETS.find(w => w.key === tx.destination);
+                          const isIdCopied = copiedId === tx._id;
                           return (
                             <tr key={tx._id} className="hover:bg-indigo-50/40 transition-colors">
+                              <td className="px-5 py-3">
+                                <button
+                                  onClick={() => copyToClipboard(tx._id)}
+                                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors group"
+                                  title="Click to copy ID"
+                                >
+                                  <span className="font-mono text-xs font-bold text-gray-600 group-hover:text-gray-700">
+                                    {tx._id.slice(0, 8)}...
+                                  </span>
+                                  <Copy className={`h-3 w-3 transition-colors ${isIdCopied ? "text-green-600" : "text-gray-400 group-hover:text-gray-600"}`} />
+                                </button>
+                                {isIdCopied && <p className="text-xs text-green-600 font-semibold mt-1">Copied!</p>}
+                              </td>
                               <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
                                 {new Date(tx.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}
                               </td>
@@ -706,7 +854,7 @@ export default function WalletPage() {
                     {transferTx.length > 0 && (
                       <tfoot className="bg-indigo-50 border-t-2 border-indigo-100">
                         <tr>
-                          <td colSpan={4} className="px-5 py-3 font-black text-gray-900">TOTAL TRANSFERRED</td>
+                          <td colSpan={5} className="px-5 py-3 font-black text-gray-900">TOTAL TRANSFERRED</td>
                           <td className="px-5 py-3 text-right font-black text-indigo-700">
                             Rs. {transferTx.reduce((a, t) => a + t.amount, 0).toLocaleString()}
                           </td>

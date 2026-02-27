@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Eye, Download, Printer, Search,
   Trash2, AlertCircle, X, CheckCircle,
+  ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 interface SaleItem {
@@ -42,6 +43,81 @@ interface SaleSummary {
 
 type ToastType = "success" | "error" | null;
 
+const ITEMS_PER_PAGE = 10;
+
+// ── Pagination Component ──────────────────────────────────────────────────
+
+function Pagination({
+  currentPage,
+  totalPages,
+  onPageChange,
+}: {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+
+  return (
+    <div className="bg-gray-50 px-5 py-4 border-t border-gray-100 flex items-center justify-between no-print">
+      <div className="text-sm text-gray-600 font-medium">
+        Page <span className="font-bold text-gray-900">{currentPage}</span> of{" "}
+        <span className="font-bold text-gray-900">{totalPages}</span>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+
+        <div className="flex gap-1">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+            const isVisible = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+            const isEllipsis = page > 1 && page < totalPages && Math.abs(page - currentPage) > 1;
+
+            if (isEllipsis && page > currentPage - 1 && page < currentPage + 1) return null;
+
+            if (!isVisible) return null;
+
+            if (isEllipsis) {
+              return (
+                <span key={page} className="px-2 py-1 text-gray-400">
+                  …
+                </span>
+              );
+            }
+
+            return (
+              <button
+                key={page}
+                onClick={() => onPageChange(page)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  page === currentPage
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function POSReportsPage() {
   const [orders, setOrders] = useState<POSOrder[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<POSOrder[]>([]);
@@ -50,6 +126,7 @@ export default function POSReportsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedOrder, setSelectedOrder] = useState<POSOrder | null>(null);
   const [showDetail, setShowDetail] = useState(false);
 
@@ -64,7 +141,7 @@ export default function POSReportsPage() {
   };
 
   useEffect(() => { fetchPOSOrders(); }, []);
-  useEffect(() => { applyFilters(); }, [orders, searchTerm, dateFrom, dateTo]);
+  useEffect(() => { applyFilters(); setCurrentPage(1); }, [orders, searchTerm, dateFrom, dateTo]);
 
   const fetchPOSOrders = async () => {
     try {
@@ -106,6 +183,14 @@ export default function POSReportsPage() {
     }
     setFilteredOrders(filtered);
   };
+
+  // ── Pagination ────────────────────────────────────────────────────────
+
+  const totalPages = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE);
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredOrders.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredOrders, currentPage]);
 
   const downloadReport = () => {
     const headers = ["Order #", "Cashier", "Items", "Subtotal", "GST", "Total", "Payment", "Date"];
@@ -248,7 +333,7 @@ export default function POSReportsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredOrders.length > 0 ? filteredOrders.map(order => (
+                {paginatedOrders.length > 0 ? paginatedOrders.map(order => (
                   <tr key={order._id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-5 py-3 font-semibold text-gray-900 text-sm">{order.orderNumber}</td>
                     <td className="px-5 py-3">
@@ -307,12 +392,12 @@ export default function POSReportsPage() {
                   </tr>
                 )}
               </tbody>
-              {filteredOrders.length > 0 && (
+              {paginatedOrders.length > 0 && (
                 <tfoot className="bg-gray-50 border-t-2 border-gray-200">
                   <tr>
-                    <td colSpan={5} className="px-5 py-3 font-black text-gray-700 text-sm">TOTAL — {filteredOrders.length} transactions</td>
+                    <td colSpan={5} className="px-5 py-3 font-black text-gray-700 text-sm">TOTAL (Page {currentPage}) — {paginatedOrders.length} transactions</td>
                     <td className="px-5 py-3 font-black text-indigo-700">
-                      Rs. {filteredOrders.reduce((s, o) => s + (o.total || 0), 0).toLocaleString()}
+                      Rs. {paginatedOrders.reduce((s, o) => s + (o.total || 0), 0).toLocaleString()}
                     </td>
                     <td colSpan={3} />
                   </tr>
@@ -320,6 +405,11 @@ export default function POSReportsPage() {
               )}
             </table>
           </div>
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
         </Card>
 
         {/* ── Detail Modal ── */}

@@ -24,7 +24,8 @@ export async function POST(
     }
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
+    // Only admin and manager can approve refunds
+    if (!payload || !["admin", "manager"].includes(payload.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -69,8 +70,6 @@ export async function POST(
         orderRef = posSale._id;
         paymentMethod = posSale.paymentMethod || "cash";
       } else {
-        // If no POS sale found, we can't restock automatically
-        // Just process the refund without restocking
         console.warn(
           `No POS sale found for order number: ${refund.orderNumber}`,
         );
@@ -95,7 +94,7 @@ export async function POST(
           product: product._id,
           quantity: quantity,
           remainingQuantity: quantity,
-          buyingRate: costPrice, // Use cost price as buying rate
+          buyingRate: costPrice,
           baseRate: costPrice,
           taxValue: 0,
           taxType: "percent",
@@ -107,17 +106,14 @@ export async function POST(
 
         await batch.save();
 
-        // Increase product stock
         product.stock += quantity;
         await product.save();
       }
     }
 
-    // Calculate refund amount
     const finalRefundAmount =
       parseFloat(approvalAmount) || refund.requestedAmount;
 
-    // Update refund record
     refund.status = "completed";
     refund.approvedBy = payload.userId;
     refund.approvedAt = new Date();
@@ -125,7 +121,6 @@ export async function POST(
     refund.notes = notes || "Approved and restocked";
     await refund.save();
 
-    // Update order status if it's an online order
     if (refund.order) {
       const order = await Order.findById(refund.order);
       if (order) {
@@ -134,7 +129,6 @@ export async function POST(
       }
     }
 
-    // Update wallet - deduct the refunded amount
     let wallet = await Wallet.findOne();
     if (!wallet) {
       wallet = new Wallet();
@@ -153,7 +147,6 @@ export async function POST(
     wallet.lastUpdated = new Date();
     await wallet.save();
 
-    // Create transaction record
     const transaction = new Transaction({
       type: "expense",
       category: "Refund",
