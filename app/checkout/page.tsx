@@ -10,21 +10,10 @@ import { useAuth } from "@/components/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  AlertCircle,
-  Truck,
-  CreditCard,
-  ShieldCheck,
-  UploadCloud,
-  ChevronRight,
-  PackageCheck,
-  Building2,
-  Smartphone,
-  Banknote,
-  Loader2,
-  Info,
+  AlertCircle, Truck, CreditCard, ShieldCheck, UploadCloud,
+  ChevronRight, PackageCheck, Building2, Smartphone, Banknote,
+  Loader2, Info, Package, RefreshCw,
 } from "lucide-react";
-
-// ── Types ────────────────────────────────────────────────────────────────────
 
 interface PaymentMethodConfig {
   enabled: boolean;
@@ -34,7 +23,6 @@ interface PaymentMethodConfig {
   accountNumber?: string;
   bankName?: string;
   iban?: string;
-  // COD-specific
   codDeliveryCharge?: number;
   codEasypaisaAccount?: string;
   codEasypaisaName?: string;
@@ -56,8 +44,6 @@ interface StoreSettings {
 
 type PaymentKey = "cod" | "bank" | "easypaisa" | "jazzcash";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 const PAYMENT_ICONS: Record<PaymentKey, React.ReactNode> = {
   cod: <Banknote className="h-4 w-4" />,
   bank: <Building2 className="h-4 w-4" />,
@@ -65,11 +51,29 @@ const PAYMENT_ICONS: Record<PaymentKey, React.ReactNode> = {
   jazzcash: <Smartphone className="h-4 w-4" />,
 };
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Check if a cart item is a properly-formed bundle ──────────────────────────
+function isBundleValid(item: any): boolean {
+  return (
+    item.isBundle === true &&
+    Array.isArray(item.bundleProducts) &&
+    item.bundleProducts.length > 0 &&
+    item.bundleProducts.every(
+      (bp: any) => bp.productId && bp.productId.trim() !== "",
+    )
+  );
+}
+
+function isBundleBroken(item: any): boolean {
+  return (
+    item.isBundle === true &&
+    (!Array.isArray(item.bundleProducts) || item.bundleProducts.length === 0)
+  );
+}
 
 export default function CheckoutPage() {
   const {
     items,
+    removeItem,
     subtotal,
     taxAmount,
     taxRate,
@@ -84,7 +88,6 @@ export default function CheckoutPage() {
 
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentKey>("cod");
   const [formData, setFormData] = useState({
@@ -97,33 +100,33 @@ export default function CheckoutPage() {
     zipCode: "",
   });
 
-  // For non-COD methods
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  // For COD advance delivery charge screenshot (EasyPaisa)
   const [codScreenshotFile, setCodScreenshotFile] = useState<File | null>(null);
   const [codPreviewUrl, setCodPreviewUrl] = useState<string | null>(null);
-
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch settings (payment methods, tax, shipping)
+  // ── Detect broken bundles in cart (stale localStorage data) ──────────────
+  const brokenBundles = items.filter(isBundleBroken);
+  const hasBrokenBundles = brokenBundles.length > 0;
+
   useEffect(() => {
     fetch("/api/admin/settings")
       .then((r) => r.json())
       .then((data) => {
         const s: StoreSettings = data.settings;
         setSettings(s);
-        // Auto-select first enabled payment method
         const order: PaymentKey[] = ["cod", "bank", "easypaisa", "jazzcash"];
         const first = order.find((k) => s?.paymentMethods?.[k]?.enabled);
         if (first) setPaymentMethod(first);
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error("Settings error:", err);
+        setError("Failed to load payment methods");
+      })
       .finally(() => setIsLoadingSettings(false));
   }, []);
 
-  // Sync user data into form when user loads
   useEffect(() => {
     if (user) {
       setFormData((prev) => ({
@@ -156,7 +159,10 @@ export default function CheckoutPage() {
   const uploadToCloudinary = async (file: File): Promise<string> => {
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("upload_preset", process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+    fd.append(
+      "upload_preset",
+      process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!,
+    );
     const cloudRes = await fetch(
       `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`,
       { method: "POST", body: fd },
@@ -174,15 +180,43 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!user) return router.push("/login");
 
-    // Non-COD: must have screenshot
-    if (paymentMethod !== "cod" && !screenshotFile) {
-      setError("Please upload a payment screenshot before placing your order.");
+    if (!user) {
+      setError("Please log in to continue");
+      return router.push("/login");
+    }
+
+    if (items.length === 0) {
+      setError("Your cart is empty");
       return;
     }
 
-    // COD with advance delivery charge: must have EasyPaisa screenshot
+    // ── Pre-flight: block checkout if any bundle is broken ────────────────
+    if (hasBrokenBundles) {
+      setError(
+        `The following bundle${brokenBundles.length > 1 ? "s are" : " is"} missing product details: ` +
+        brokenBundles.map((b) => `"${b.name}"`).join(", ") +
+        ". Please remove and re-add them to your cart.",
+      );
+      return;
+    }
+
+    // ── Form validation ───────────────────────────────────────────────────
+    if (!formData.fullName.trim()) { setError("Full name is required"); return; }
+    if (!formData.email.trim()) { setError("Email is required"); return; }
+    if (!formData.phone.trim()) { setError("Phone number is required"); return; }
+    if (!formData.street.trim() || !formData.city.trim()) {
+      setError("Complete shipping address is required");
+      return;
+    }
+
+    if (paymentMethod !== "cod" && !screenshotFile) {
+      setError(
+        "Please upload a payment screenshot before placing your order.",
+      );
+      return;
+    }
+
     if (isCOD && codDeliveryCharge > 0 && !codScreenshotFile) {
       setError(
         `Please upload your EasyPaisa screenshot for the Rs. ${codDeliveryCharge} delivery charge advance.`,
@@ -198,55 +232,98 @@ export default function CheckoutPage() {
       if (paymentMethod !== "cod" && screenshotFile) {
         screenshotUrl = await uploadToCloudinary(screenshotFile);
       }
-
       if (isCOD && codDeliveryCharge > 0 && codScreenshotFile) {
         codDeliveryScreenshotUrl = await uploadToCloudinary(codScreenshotFile);
       }
 
+      // ── Build order items ─────────────────────────────────────────────
+      // Bundles: send isBundle=true + bundleProducts (with productId strings)
+      // Regular: send product: item.id
+      const orderItems = items.map((item) => {
+        if (item.isBundle) {
+          return {
+            id: item.id,
+            bundleId: item.bundleId || item.id,
+            name: item.name,
+            price: item.price,
+            quantity: item.quantity,
+            image: item.image || null,
+            isBundle: true,
+            // ✅ bundleProducts carries real MongoDB ObjectId strings
+            bundleProducts: (item.bundleProducts || []).map((bp) => ({
+              productId: bp.productId,   // real _id from CartProvider
+              name: bp.name,
+              quantity: bp.quantity,
+              price: bp.price,           // retailPrice per unit
+              image: bp.image || null,
+            })),
+            discount: item.discount || 0,
+            gst: 0,
+          };
+        }
+        // Regular product
+        return {
+          product: item.id,
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          image: item.image || null,
+          weight: item.weight || null,
+          discount: item.discount || 0,
+          gst: item.gst || 0,
+        };
+      });
+
+      const orderPayload = {
+        userId: user.id,
+        items: orderItems,
+        shippingAddress: {
+          fullName: formData.fullName.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          street: formData.street.trim(),
+          city: formData.city.trim(),
+          province: formData.province.trim(),
+          zipCode: formData.zipCode.trim(),
+          country: "Pakistan",
+        },
+        subtotal,
+        gstAmount: taxAmount,
+        taxRate,
+        taxName,
+        taxEnabled,
+        shippingCost,
+        total,
+        paymentMethod,
+        screenshot: screenshotUrl || null,
+        codDeliveryCharge: isCOD ? codDeliveryCharge : 0,
+        codDeliveryScreenshot: codDeliveryScreenshotUrl || null,
+      };
+
       const orderRes = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          items,
-          shippingAddress: {
-            street: formData.street,
-            city: formData.city,
-            province: formData.province,
-            zipCode: formData.zipCode,
-            country: "Pakistan",
-          },
-          subtotal,
-          gstAmount: taxAmount,
-          taxRate,
-          taxName,
-          taxEnabled,
-          shippingCost,
-          total,
-          paymentMethod,
-          screenshot: screenshotUrl,
-          // COD-specific advance delivery charge fields
-          codDeliveryCharge: isCOD ? codDeliveryCharge : 0,
-          codDeliveryScreenshot: codDeliveryScreenshotUrl,
-        }),
+        body: JSON.stringify(orderPayload),
       });
 
+      const data = await orderRes.json();
+
       if (!orderRes.ok) {
-        const err = await orderRes.json();
-        throw new Error(err.message || "Order creation failed");
+        throw new Error(
+          data.message || `Order creation failed (${orderRes.status})`,
+        );
       }
 
-      const data = await orderRes.json();
       clearCart();
-      router.push(`/orders/${data.order._id}`);
+      router.push(`/order-success/${data.order._id}`);
     } catch (err: any) {
+      console.error("Checkout error:", err);
       setError(err.message || "Checkout failed. Please try again.");
     } finally {
       setIsProcessing(false);
     }
   };
-
-  // ── Empty / unauthenticated state ─────────────────────────────────────────
 
   if (!user || items.length === 0) {
     return (
@@ -276,7 +353,6 @@ export default function CheckoutPage() {
     );
   }
 
-  // Which payment methods are enabled in settings
   const enabledMethods = (
     ["cod", "bank", "easypaisa", "jazzcash"] as PaymentKey[]
   ).filter((k) => settings?.paymentMethods?.[k]?.enabled);
@@ -288,7 +364,6 @@ export default function CheckoutPage() {
       <Navbar />
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
           <div>
             <h1 className="text-3xl font-black text-gray-900 tracking-tight">
@@ -309,7 +384,54 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {/* Error banner */}
+        {/* ── Broken bundle warning banner ── */}
+        {hasBrokenBundles && (
+          <div className="mb-6 bg-amber-50 border-2 border-amber-300 rounded-2xl p-5">
+            <div className="flex items-start gap-3 mb-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-900">
+                  Bundle{brokenBundles.length > 1 ? "s" : ""} need to be refreshed
+                </p>
+                <p className="text-sm text-amber-700 mt-1">
+                  The following bundle
+                  {brokenBundles.length > 1 ? "s are" : " is"} missing product
+                  details (likely saved from a previous session). Remove and re-add
+                  {brokenBundles.length > 1 ? " them" : " it"} to continue.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {brokenBundles.map((b) => (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between bg-white border border-amber-200 rounded-xl px-4 py-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-amber-500" />
+                    <span className="font-semibold text-sm text-gray-800">
+                      {b.name}
+                    </span>
+                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
+                      Missing product data
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => removeItem(b.id)}
+                    className="text-xs font-bold text-red-600 hover:text-red-800 flex items-center gap-1 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-amber-600 mt-3 flex items-center gap-1.5">
+              <RefreshCw className="h-3 w-3" />
+              After removing, go back to the sale page and add the bundle again.
+            </p>
+          </div>
+        )}
+
         {error && (
           <div className="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-2xl px-5 py-4">
             <AlertCircle className="h-5 w-5 shrink-0" />
@@ -320,6 +442,7 @@ export default function CheckoutPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           {/* ── Form ── */}
           <form onSubmit={handleSubmit} className="lg:col-span-8 space-y-8">
+
             {/* 1. Shipping */}
             <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4 mb-8">
@@ -434,7 +557,6 @@ export default function CheckoutPage() {
                 </div>
               ) : (
                 <>
-                  {/* Method selector tabs */}
                   <div
                     className="grid gap-2 mb-8"
                     style={{
@@ -470,10 +592,8 @@ export default function CheckoutPage() {
                     })}
                   </div>
 
-                  {/* ── COD: Hybrid — advance delivery charge via EasyPaisa + rest cash ── */}
                   {isCOD ? (
                     <div className="space-y-5">
-                      {/* Info card */}
                       <div className="bg-green-50/50 border border-green-200 rounded-2xl p-6">
                         <div className="flex gap-4">
                           <Banknote className="h-8 w-8 text-green-600 shrink-0 mt-1" />
@@ -489,7 +609,6 @@ export default function CheckoutPage() {
                         </div>
                       </div>
 
-                      {/* How it works breakdown */}
                       <div className="rounded-2xl border border-gray-200 overflow-hidden">
                         <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
                           <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
@@ -497,7 +616,6 @@ export default function CheckoutPage() {
                           </p>
                         </div>
                         <div className="divide-y divide-gray-100">
-                          {/* Step 1: Advance delivery charge */}
                           <div className="flex items-start gap-4 px-5 py-4">
                             <div className="bg-orange-100 text-orange-700 rounded-full w-7 h-7 flex items-center justify-center font-black text-sm shrink-0 mt-0.5">
                               1
@@ -525,7 +643,7 @@ export default function CheckoutPage() {
                                 </p>
                               ) : (
                                 <p className="text-sm text-gray-400 mt-0.5">
-                                  No advance delivery charge configured.
+                                  No advance delivery charge required.
                                 </p>
                               )}
                             </div>
@@ -534,12 +652,13 @@ export default function CheckoutPage() {
                                 <p className="font-black text-orange-600">
                                   Rs. {codDeliveryCharge}
                                 </p>
-                                <p className="text-xs text-gray-400">via EasyPaisa</p>
+                                <p className="text-xs text-gray-400">
+                                  via EasyPaisa
+                                </p>
                               </div>
                             )}
                           </div>
 
-                          {/* Step 2: Rest on delivery */}
                           <div className="flex items-start gap-4 px-5 py-4">
                             <div className="bg-green-100 text-green-700 rounded-full w-7 h-7 flex items-center justify-center font-black text-sm shrink-0 mt-0.5">
                               2
@@ -551,30 +670,31 @@ export default function CheckoutPage() {
                               <p className="text-sm text-gray-500 mt-0.5">
                                 Pay the rider{" "}
                                 <span className="font-bold text-green-700">
-                                  Rs. {Math.max(0, total - codDeliveryCharge).toFixed(0)}
+                                  Rs.{" "}
+                                  {Math.max(0, total - codDeliveryCharge).toFixed(0)}
                                 </span>{" "}
                                 in cash when your order arrives.
                               </p>
                             </div>
                             <div className="text-right shrink-0">
                               <p className="font-black text-green-700">
-                                Rs. {Math.max(0, total - codDeliveryCharge).toFixed(0)}
+                                Rs.{" "}
+                                {Math.max(0, total - codDeliveryCharge).toFixed(0)}
                               </p>
-                              <p className="text-xs text-gray-400">cash on delivery</p>
+                              <p className="text-xs text-gray-400">
+                                cash on delivery
+                              </p>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* EasyPaisa screenshot upload — only if advance charge is set */}
                       {codDeliveryCharge > 0 && (
                         <div>
                           <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-3">
                             EasyPaisa Screenshot (Delivery Charge){" "}
                             <span className="text-red-500">*</span>
                           </label>
-
-                          {/* EasyPaisa account highlight */}
                           {codConfig?.codEasypaisaAccount && (
                             <div className="mb-3 flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
                               <Smartphone className="h-5 w-5 text-orange-500 shrink-0" />
@@ -593,7 +713,6 @@ export default function CheckoutPage() {
                               </div>
                             </div>
                           )}
-
                           <label
                             htmlFor="cod-screenshot-upload"
                             className={`flex flex-col items-center justify-center border-2 border-dashed rounded-3xl p-8 transition-all bg-gray-50 hover:bg-gray-100 cursor-pointer ${
@@ -642,16 +761,14 @@ export default function CheckoutPage() {
                         <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
                           <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
                           <p className="text-xs text-blue-700">
-                            No advance delivery charge is required for this order. Simply pay the
-                            full amount to the rider on delivery.
+                            No advance delivery charge is required for this order.
+                            Simply pay the full amount to the rider on delivery.
                           </p>
                         </div>
                       )}
                     </div>
                   ) : (
-                    /* ── Non-COD payment methods ── */
                     <div className="space-y-6">
-                      {/* Account details card */}
                       <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
                         <div className="flex gap-4">
                           <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
@@ -669,13 +786,17 @@ export default function CheckoutPage() {
                             )}
                             {activePayment?.accountName && (
                               <p className="text-blue-700">
-                                <span className="font-semibold">Account Name:</span>{" "}
+                                <span className="font-semibold">
+                                  Account Name:
+                                </span>{" "}
                                 {activePayment.accountName}
                               </p>
                             )}
                             {activePayment?.accountNumber && (
                               <p className="text-blue-700">
-                                <span className="font-semibold">Account Number:</span>{" "}
+                                <span className="font-semibold">
+                                  Account Number:
+                                </span>{" "}
                                 <span className="font-mono bg-white px-2 py-0.5 rounded border border-blue-200 select-all">
                                   {activePayment.accountNumber}
                                 </span>
@@ -690,13 +811,13 @@ export default function CheckoutPage() {
                               </p>
                             )}
                             <p className="text-blue-600 pt-1">
-                              Transfer the exact amount and upload your screenshot below.
+                              Transfer the exact amount and upload your screenshot
+                              below.
                             </p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Screenshot upload */}
                       <div className="relative">
                         <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-4">
                           Payment Proof (Screenshot){" "}
@@ -753,7 +874,10 @@ export default function CheckoutPage() {
             <Button
               type="submit"
               disabled={
-                isProcessing || isLoadingSettings || enabledMethods.length === 0
+                isProcessing ||
+                isLoadingSettings ||
+                enabledMethods.length === 0 ||
+                hasBrokenBundles
               }
               className="w-full h-16 bg-green-700 hover:bg-green-800 rounded-2xl text-xl font-black shadow-xl shadow-green-100 transition-all active:scale-[0.98] disabled:opacity-70"
             >
@@ -762,6 +886,8 @@ export default function CheckoutPage() {
                   <Loader2 className="h-5 w-5 animate-spin" />
                   {isCOD ? "Placing Order…" : "Validating Payment…"}
                 </span>
+              ) : hasBrokenBundles ? (
+                "Fix bundle issues above to continue"
               ) : isCOD ? (
                 hasCodAdvanceCharge
                   ? `Place Order — Rs. ${codDeliveryCharge} advance + rest on delivery`
@@ -780,7 +906,6 @@ export default function CheckoutPage() {
                   Order Summary
                 </h2>
 
-                {/* Items */}
                 <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 mb-6">
                   {items.map((item) => (
                     <div key={item.id} className="flex gap-4">
@@ -795,6 +920,17 @@ export default function CheckoutPage() {
                       <div className="flex-1">
                         <p className="text-sm font-bold text-gray-800 line-clamp-1">
                           {item.name}
+                          {item.isBundle && (
+                            <span
+                              className={`ml-1.5 text-[10px] font-black px-1.5 py-0.5 rounded-full uppercase ${
+                                isBundleBroken(item)
+                                  ? "bg-red-100 text-red-600"
+                                  : "bg-yellow-100 text-yellow-700"
+                              }`}
+                            >
+                              {isBundleBroken(item) ? "⚠ Needs refresh" : "Bundle"}
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-gray-400 font-medium">
                           {item.quantity} × Rs. {item.price.toFixed(0)}
@@ -808,13 +944,11 @@ export default function CheckoutPage() {
                   ))}
                 </div>
 
-                {/* Totals */}
                 <div className="space-y-3 pt-6 border-t border-gray-100">
                   <div className="flex justify-between text-gray-500 font-medium">
                     <span>Subtotal</span>
                     <span>Rs. {subtotal.toFixed(0)}</span>
                   </div>
-
                   {taxEnabled && (
                     <div className="flex justify-between text-gray-500 font-medium">
                       <span>
@@ -823,7 +957,6 @@ export default function CheckoutPage() {
                       <span>Rs. {taxAmount.toFixed(0)}</span>
                     </div>
                   )}
-
                   <div className="flex justify-between text-gray-500 font-medium">
                     <span className="flex items-center gap-1">
                       <Truck className="h-4 w-4" /> Shipping
@@ -834,7 +967,6 @@ export default function CheckoutPage() {
                       <span>Rs. {shippingCost.toFixed(0)}</span>
                     )}
                   </div>
-
                   <div className="flex justify-between pt-4 border-t border-gray-100">
                     <span className="text-lg font-black text-gray-900">Total</span>
                     <div className="text-right">
@@ -846,8 +978,6 @@ export default function CheckoutPage() {
                       </p>
                     </div>
                   </div>
-
-                  {/* COD payment breakdown in sidebar */}
                   {isCOD && hasCodAdvanceCharge && (
                     <div className="pt-3 border-t border-gray-100 space-y-2">
                       <p className="text-xs font-black text-gray-400 uppercase tracking-widest">
@@ -868,7 +998,8 @@ export default function CheckoutPage() {
                           Cash on Delivery
                         </span>
                         <span className="font-bold text-green-700">
-                          Rs. {Math.max(0, total - codDeliveryCharge).toFixed(0)}
+                          Rs.{" "}
+                          {Math.max(0, total - codDeliveryCharge).toFixed(0)}
                         </span>
                       </div>
                     </div>
@@ -876,7 +1007,6 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              {/* Trust badge */}
               <div className="bg-green-50 rounded-2xl p-6 border border-green-100 flex items-center gap-4">
                 <ShieldCheck className="h-8 w-8 text-green-600 shrink-0" />
                 <div>

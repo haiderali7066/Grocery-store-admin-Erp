@@ -1,6 +1,9 @@
 // app/api/admin/sale/bundles/route.ts
+// ✅ POST: Create new bundle
+// ✅ GET: Fetch all bundles (admin)
+
 import { connectDB } from "@/lib/db";
-import { Bundle, Product } from "@/lib/models";
+import { Bundle } from "@/lib/models";
 import { NextRequest, NextResponse } from "next/server";
 import { getTokenFromCookie, verifyToken } from "@/lib/auth";
 
@@ -12,11 +15,14 @@ function auth(req: NextRequest) {
   return payload;
 }
 
-// GET — list all bundles with product details
+// ── GET /api/admin/sale/bundles ────────────────────────────────────────────
+
 export async function GET(req: NextRequest) {
   try {
     await connectDB();
-    if (!auth(req)) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!auth(req)) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
 
     const bundles = await Bundle.find()
       .populate("products.product", "name mainImage retailPrice unitSize unitType stock")
@@ -25,50 +31,78 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ bundles }, { status: 200 });
   } catch (err) {
-    console.error("GET /api/admin/sale/bundles:", err);
+    console.error("GET /api/admin/sale/bundles error:", err);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
   }
 }
 
-// POST — create a new bundle
+// ── POST /api/admin/sale/bundles ───────────────────────────────────────────
+// Create a new bundle
+
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
-    if (!auth(req)) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    if (!auth(req)) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await req.json();
-    const { name, description, products, bundlePrice, discount, discountType, gst, isActive, isFlashSale, image } = body;
+    const {
+      name,
+      description,
+      products,
+      bundlePrice,
+      discount,
+      discountType,
+      gst,
+      isActive,
+      isFlashSale,
+      image,
+    } = body;
 
-    if (!name?.trim()) return NextResponse.json({ message: "Bundle name is required" }, { status: 400 });
-    if (!Array.isArray(products) || products.length === 0)
-      return NextResponse.json({ message: "At least one product is required" }, { status: 400 });
-    if (!bundlePrice || bundlePrice <= 0)
-      return NextResponse.json({ message: "Valid bundle price is required" }, { status: 400 });
+    if (!name || !products || products.length === 0) {
+      return NextResponse.json(
+        { message: "Bundle name and at least one product are required" },
+        { status: 400 }
+      );
+    }
 
-    const bundle = await Bundle.create({
+    if (!bundlePrice || bundlePrice <= 0) {
+      return NextResponse.json(
+        { message: "Valid bundle price is required" },
+        { status: 400 }
+      );
+    }
+
+    const bundleData = {
       name: name.trim(),
       description: description?.trim() || "",
-      image: image || "",
+      image: image || null,
       products: products.map((p: any) => ({
         product: p.productId,
         quantity: p.quantity || 1,
         unit: p.unit || "",
       })),
-      bundlePrice,
-      discount: discount || 0,
+      bundlePrice: parseFloat(bundlePrice),
+      discount: parseFloat(discount) || 0,
       discountType: discountType || "percentage",
-      gst: gst ?? 0,
-      isActive: isActive !== false,
-      isFlashSale: isFlashSale === true,
-    });
+      gst: gst || 17,
+      isActive: isActive ?? true,
+      isFlashSale: isFlashSale ?? false,
+    };
 
-    const populated = await Bundle.findById(bundle._id)
-      .populate("products.product", "name mainImage retailPrice unitSize unitType stock")
-      .lean();
+    const bundle = await Bundle.create(bundleData);
+    const populated = await bundle.populate(
+      "products.product",
+      "name mainImage retailPrice unitSize unitType stock"
+    );
 
-    return NextResponse.json({ message: "Bundle created", bundle: populated }, { status: 201 });
+    return NextResponse.json(
+      { message: "Bundle created", bundle: populated },
+      { status: 201 }
+    );
   } catch (err) {
-    console.error("POST /api/admin/sale/bundles:", err);
+    console.error("POST /api/admin/sale/bundles error:", err);
     return NextResponse.json({ message: "Server error" }, { status: 500 });
   }
 }

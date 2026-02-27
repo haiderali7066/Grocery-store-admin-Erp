@@ -8,6 +8,7 @@ import {
   Zap, Save, Clock, Eye, Package, Search, RefreshCw, CheckCircle,
   AlertCircle, Flame, ToggleLeft, ToggleRight, Tag, X, Plus,
   Trash2, Edit2, ShoppingBag, ChevronDown, ChevronUp, Check,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -328,8 +329,17 @@ function BundleFormModal({
         <div className="flex gap-3 p-5 border-t sticky bottom-0 bg-white">
           <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
           <Button onClick={handleSave} disabled={saving} className="flex-1 bg-green-700 hover:bg-green-800 gap-2">
-            {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? "Saving…" : (editing ? "Update Bundle" : "Create Bundle")}
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4" />
+                {editing ? "Update Bundle" : "Create Bundle"}
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -354,6 +364,12 @@ function BundleCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const salePrice = getBundleSalePrice(bundle);
+  const retailTotal = bundle.products.reduce(
+    (sum, bp) => sum + ((bp.product?.retailPrice || 0) * bp.quantity),
+    0
+  );
+  const savings = retailTotal - salePrice;
+  const savingsPct = retailTotal > 0 ? Math.round((savings / retailTotal) * 100) : 0;
 
   return (
     <Card className="border-0 shadow-md overflow-hidden">
@@ -396,50 +412,92 @@ function BundleCard({
         {/* Price row */}
         <div className="flex items-baseline gap-2 mb-3">
           <span className="text-xl font-black text-green-700">Rs. {salePrice.toLocaleString()}</span>
-          {bundle.discount > 0 && (
-            <span className="text-sm text-gray-400 line-through">Rs. {bundle.bundlePrice.toLocaleString()}</span>
-          )}
-          {bundle.discount > 0 && (
-            <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-              {bundle.discountType === "percentage" ? `${bundle.discount}% OFF` : `Rs.${bundle.discount} OFF`}
-            </span>
+          {savings > 0 && (
+            <>
+              <span className="text-sm text-gray-400 line-through">Rs. {retailTotal.toLocaleString()}</span>
+              <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                {savingsPct}% OFF
+              </span>
+            </>
           )}
         </div>
 
-        {/* Product images strip */}
-        <div className="flex items-center gap-1 mb-2">
-          {bundle.products.slice(0, 5).map((bp, i) => (
-            <div key={i} className="relative w-8 h-8 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 shrink-0">
-              <Image src={bp.product?.mainImage || "/placeholder.svg"} alt={bp.product?.name || ""} fill className="object-contain p-0.5" />
+        {/* Bundle items list */}
+        <div className="space-y-2 mb-3">
+          {bundle.products.map((bp, i) => (
+            <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-lg p-2.5">
+              <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-white border flex-shrink-0">
+                <Image
+                  src={bp.product?.mainImage || "/placeholder.svg"}
+                  alt={bp.product?.name || ""}
+                  fill
+                  className="object-contain p-1"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-800 truncate">
+                  {bp.product?.name}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {bp.product?.unitSize} {bp.product?.unitType}
+                </p>
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-xs text-gray-400">× {bp.quantity}</p>
+                <p className="text-sm font-bold text-gray-800">
+                  Rs. {((bp.product?.retailPrice || 0) * bp.quantity).toLocaleString()}
+                </p>
+              </div>
             </div>
           ))}
-          {bundle.products.length > 5 && (
-            <span className="text-xs text-gray-400 ml-1">+{bundle.products.length - 5} more</span>
-          )}
-          <span className="ml-auto text-xs text-gray-400">{bundle.products.length} product{bundle.products.length !== 1 ? "s" : ""}</span>
         </div>
 
-        {/* Expandable product list */}
+        {/* Expandable summary */}
         <button
           onClick={() => setExpanded(v => !v)}
-          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors w-full justify-center py-1"
         >
-          {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          {expanded ? "Hide" : "Show"} items
+          {expanded ? (
+            <>
+              <ChevronUp className="h-3 w-3" /> Hide Summary
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3 w-3" /> Show Summary
+            </>
+          )}
         </button>
 
         {expanded && (
-          <div className="mt-2 space-y-1.5 border-t pt-2">
-            {bundle.products.map((bp, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
-                <div className="relative w-6 h-6 rounded overflow-hidden bg-gray-50 border shrink-0">
-                  <Image src={bp.product?.mainImage || "/placeholder.svg"} alt="" fill className="object-contain" />
-                </div>
-                <span className="flex-1 text-gray-700 truncate">{bp.product?.name}</span>
-                <span className="text-gray-400 shrink-0">× {bp.quantity}</span>
-                <span className="text-gray-500 font-semibold shrink-0">Rs. {((bp.product?.retailPrice || 0) * bp.quantity).toLocaleString()}</span>
+          <div className="mt-3 pt-3 border-t space-y-1 text-sm">
+            <div className="flex justify-between text-gray-600">
+              <span>Retail Total:</span>
+              <span>Rs. {retailTotal.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between text-gray-600">
+              <span>Bundle Price:</span>
+              <span>Rs. {bundle.bundlePrice.toLocaleString()}</span>
+            </div>
+            {bundle.discount > 0 && (
+              <div className="flex justify-between text-gray-600">
+                <span>Extra Discount:</span>
+                <span>
+                  {bundle.discountType === "percentage"
+                    ? `-${bundle.discount}%`
+                    : `-Rs. ${bundle.discount}`}
+                </span>
               </div>
-            ))}
+            )}
+            <div className="flex justify-between font-bold text-green-700 border-t pt-1 mt-1">
+              <span>Customer Pays:</span>
+              <span>Rs. {salePrice.toLocaleString()}</span>
+            </div>
+            {savings > 0 && (
+              <div className="flex justify-between font-semibold text-green-600 text-xs bg-green-50 px-2 py-1 rounded">
+                <span>✓ Customer Saves:</span>
+                <span>Rs. {savings.toLocaleString()}</span>
+              </div>
+            )}
           </div>
         )}
       </div>

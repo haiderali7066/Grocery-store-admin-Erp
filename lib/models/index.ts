@@ -7,34 +7,16 @@ import mongoose, { Schema } from "mongoose";
 // =========================
 export const UserSchema = new Schema(
   {
-    name: {
-      type: String,
-      required: true,
-    },
-
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-
-    password: {
-      type: String,
-      required: true,
-      select: false,
-    },
-
+    name: { type: String, required: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    password: { type: String, required: true, select: false },
     phone: String,
-
     role: {
       type: String,
       enum: ["user", "staff", "manager", "accountant", "admin"],
       default: "user",
       index: true,
     },
-
     addresses: [
       {
         label: String,
@@ -46,32 +28,11 @@ export const UserSchema = new Schema(
         isDefault: Boolean,
       },
     ],
-
     profileImage: String,
-
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-
-    // ✅ Password Reset OTP Fields
-    resetOTP: {
-      type: String,
-      select: false,
-    },
-
-    resetOTPExpire: {
-      type: Date,
-      select: false,
-    },
-
-    // ✅ Stores plain-text password for admin visibility only.
-    // Updated whenever admin creates or resets a staff password.
-    // Never used for authentication — bcrypt hash in `password` handles that.
-    tempPassword: {
-      type: String,
-      default: null,
-    },
+    isActive: { type: Boolean, default: true },
+    resetOTP: { type: String, select: false },
+    resetOTPExpire: { type: Date, select: false },
+    tempPassword: { type: String, default: null },
   },
   { timestamps: true },
 );
@@ -82,13 +43,7 @@ export const UserSchema = new Schema(
 export const CategorySchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    slug: {
-      type: String,
-      unique: true,
-      sparse: true,
-      lowercase: true,
-      trim: true,
-    },
+    slug: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
     icon: { type: String, default: "📦", trim: true },
     sortOrder: { type: Number, default: 0 },
     isVisible: { type: Boolean, default: true },
@@ -120,11 +75,7 @@ export const ProductSchema = new Schema(
     retailPrice: { type: Number, default: 0 },
     lastBuyingRate: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
-    discountType: {
-      type: String,
-      enum: ["percentage", "fixed"],
-      default: "percentage",
-    },
+    discountType: { type: String, enum: ["percentage", "fixed"], default: "percentage" },
     unitType: { type: String, required: true },
     unitSize: { type: Number, default: 0 },
     mainImage: String,
@@ -138,11 +89,7 @@ export const ProductSchema = new Schema(
     taxExempt: { type: Boolean, default: false },
     stock: { type: Number, default: 0 },
     lowStockThreshold: { type: Number, default: 10 },
-    status: {
-      type: String,
-      enum: ["active", "draft", "discontinued"],
-      default: "active",
-    },
+    status: { type: String, enum: ["active", "draft", "discontinued"], default: "active" },
   },
   { timestamps: true },
 );
@@ -157,22 +104,14 @@ export const BundleSchema = new Schema(
     image: String,
     products: [
       {
-        product: {
-          type: Schema.Types.ObjectId,
-          ref: "Product",
-          required: true,
-        },
+        product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
         quantity: { type: Number, required: true },
         unit: String,
       },
     ],
     bundlePrice: { type: Number, required: true },
     discount: { type: Number, default: 0 },
-    discountType: {
-      type: String,
-      enum: ["percentage", "fixed"],
-      default: "percentage",
-    },
+    discountType: { type: String, enum: ["percentage", "fixed"], default: "percentage" },
     gst: { type: Number, default: 17 },
     isActive: { type: Boolean, default: true },
     isFlashSale: { type: Boolean, default: false },
@@ -207,18 +146,10 @@ export const PurchaseSchema = new Schema(
     purchaseDate: { type: Date, default: Date.now },
     products: [
       {
-        product: {
-          type: Schema.Types.ObjectId,
-          ref: "Product",
-          required: true,
-        },
+        product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
         quantity: { type: Number, required: true },
         buyingRate: { type: Number, required: true },
-        taxType: {
-          type: String,
-          enum: ["percent", "fixed"],
-          default: "percent",
-        },
+        taxType: { type: String, enum: ["percent", "fixed"], default: "percent" },
         taxValue: { type: Number, default: 0 },
         freightPerUnit: { type: Number, default: 0 },
         unitCostWithTax: { type: Number, required: true },
@@ -241,11 +172,7 @@ export const PurchaseSchema = new Schema(
       default: "completed",
     },
     notes: String,
-    status: {
-      type: String,
-      enum: ["pending", "completed", "cancelled"],
-      default: "completed",
-    },
+    status: { type: String, enum: ["pending", "completed", "cancelled"], default: "completed" },
   },
   { timestamps: true },
 );
@@ -268,11 +195,7 @@ export const InventoryBatchSchema = new Schema(
     purchaseReference: { type: Schema.Types.ObjectId, ref: "Purchase" },
     expiry: Date,
     isReturn: { type: Boolean, default: false },
-    status: {
-      type: String,
-      enum: ["active", "partial", "finished"],
-      default: "active",
-    },
+    status: { type: String, enum: ["active", "partial", "finished"], default: "active" },
   },
   { timestamps: true },
 );
@@ -288,11 +211,7 @@ export const POSSaleSchema = new Schema(
     cashier: { type: Schema.Types.ObjectId, ref: "User" },
     items: [
       {
-        product: {
-          type: Schema.Types.ObjectId,
-          ref: "Product",
-          required: true,
-        },
+        product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
         name: { type: String, required: true },
         quantity: { type: Number, required: true },
         price: { type: Number, required: true },
@@ -308,11 +227,7 @@ export const POSSaleSchema = new Schema(
     ],
     subtotal: { type: Number, required: true },
     discount: { type: Number, default: 0 },
-    discountType: {
-      type: String,
-      enum: ["percentage", "fixed"],
-      default: "percentage",
-    },
+    discountType: { type: String, enum: ["percentage", "fixed"], default: "percentage" },
     discountValue: { type: Number, default: 0 },
     tax: { type: Number, required: true },
     gstAmount: { type: Number },
@@ -341,40 +256,68 @@ export const POSSaleSchema = new Schema(
 
 // =========================
 // Order Schema
-// ✅ UPDATED: Added hybrid COD fields —
-//    codDeliveryCharge, codDeliveryScreenshot, codDeliveryPaid
+// ✅ FIXED: items now include name, image, bundleId, bundleName
+// ✅ FIXED: shippingAddress now includes fullName, email, phone
 // =========================
 export const OrderSchema = new Schema(
   {
     orderNumber: { type: String, required: true, unique: true },
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+
     items: [
       {
+        // For regular products: populated from Product
         product: { type: Schema.Types.ObjectId, ref: "Product" },
+        // For bundle line items: reference to Bundle
         bundle: { type: Schema.Types.ObjectId, ref: "Bundle" },
+
+        // ✅ Product/item name stored directly (required for bundles since
+        //    product ref may differ from display name)
+        name: { type: String, default: "" },
+
         quantity: { type: Number, required: true },
-        weight: String,
         price: { type: Number, required: true },
-        discount: Number,
-        gst: Number,
-        subtotal: Number,
+        subtotal: { type: Number, default: 0 },
+
+        // ✅ Image URL stored directly for order history display
+        image: { type: String, default: null },
+
+        weight: { type: String, default: null },
+        discount: { type: Number, default: 0 },
+        gst: { type: Number, default: 0 },
+
+        // ✅ Bundle grouping fields — set for every line item that came from a bundle
+        bundleId: { type: String, default: null },
+        bundleName: { type: String, default: null },
+
+        // Return tracking
         returned: { type: Boolean, default: false },
         returnedAt: { type: Date, default: null },
         returnedQty: { type: Number, default: 0 },
       },
     ],
+
+    // ✅ FIXED: Added fullName, email, phone (checkout sends these)
     shippingAddress: {
-      street: String,
-      city: String,
-      province: String,
-      zipCode: String,
-      country: String,
+      fullName: { type: String, default: "" },
+      email: { type: String, default: "" },
+      phone: { type: String, default: "" },
+      street: { type: String, default: "" },
+      city: { type: String, default: "" },
+      province: { type: String, default: "" },
+      zipCode: { type: String, default: "" },
+      country: { type: String, default: "Pakistan" },
     },
+
     subtotal: { type: Number, required: true },
     gstAmount: { type: Number, required: true },
+    taxRate: { type: Number, default: 0 },
+    taxName: { type: String, default: "" },
+    taxEnabled: { type: Boolean, default: false },
     discount: { type: Number, default: 0 },
     shippingCost: { type: Number, default: 0 },
     total: { type: Number, required: true },
+
     paymentMethod: {
       type: String,
       enum: ["cod", "bank", "easypaisa", "jazzcash", "walkin"],
@@ -386,7 +329,7 @@ export const OrderSchema = new Schema(
       default: "pending",
     },
 
-    // ── Standard COD fields ──────────────────────────────────────────────
+    // ── COD fields ───────────────────────────────────────────────────────
     codPaymentStatus: {
       type: String,
       enum: ["unpaid", "paid"],
@@ -396,18 +339,8 @@ export const OrderSchema = new Schema(
     },
     codPaidAt: Date,
     codPaidBy: { type: Schema.Types.ObjectId, ref: "User" },
-
-    // ── ✅ NEW: Hybrid COD fields ────────────────────────────────────────
-    // Amount the customer paid in advance via EasyPaisa at checkout.
-    // 0 = pure COD (no advance required).
     codDeliveryCharge: { type: Number, default: 0 },
-
-    // Cloudinary URL of the EasyPaisa screenshot uploaded at checkout.
-    // null when codDeliveryCharge is 0 or paymentMethod is not COD.
     codDeliveryScreenshot: { type: String, default: null },
-
-    // Admin sets true after verifying the EasyPaisa screenshot.
-    // Automatically handled as part of paymentStatus → "verified" flow.
     codDeliveryPaid: { type: Boolean, default: false },
     // ────────────────────────────────────────────────────────────────────
 
@@ -415,14 +348,7 @@ export const OrderSchema = new Schema(
     invoiceNumber: String,
     orderStatus: {
       type: String,
-      enum: [
-        "pending",
-        "confirmed",
-        "processing",
-        "shipped",
-        "delivered",
-        "cancelled",
-      ],
+      enum: ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"],
       default: "pending",
     },
     profit: { type: Number, default: 0 },
@@ -443,11 +369,7 @@ export const PaymentSchema = new Schema(
     order: { type: Schema.Types.ObjectId, ref: "Order", required: true },
     amount: { type: Number, required: true },
     method: { type: String, enum: ["bank", "easypaisa", "jazzcash", "walkin"] },
-    status: {
-      type: String,
-      enum: ["pending", "verified", "failed"],
-      default: "pending",
-    },
+    status: { type: String, enum: ["pending", "verified", "failed"], default: "pending" },
     screenshot: String,
     verifiedBy: { type: Schema.Types.ObjectId, ref: "User" },
     verifiedAt: Date,
@@ -463,11 +385,7 @@ export const RefundSchema = new Schema(
   {
     order: { type: Schema.Types.ObjectId, ref: "Order" },
     orderNumber: { type: String, index: true },
-    returnType: {
-      type: String,
-      enum: ["online", "pos_manual"],
-      default: "online",
-    },
+    returnType: { type: String, enum: ["online", "pos_manual"], default: "online" },
     requestedAmount: { type: Number, required: true },
     refundedAmount: { type: Number },
     deliveryCost: { type: Number, default: 0 },
@@ -511,8 +429,6 @@ export const HeroBannerSchema = new Schema(
 
 // =========================
 // Store Settings Schema
-// ✅ UPDATED: Added hybrid COD fields to paymentMethods.cod —
-//    codDeliveryCharge, codEasypaisaAccount, codEasypaisaName
 // =========================
 export const StoreSettingsSchema = new Schema(
   {
@@ -538,10 +454,6 @@ export const StoreSettingsSchema = new Schema(
         enabled: { type: Boolean, default: true },
         displayName: { type: String, default: "Cash on Delivery" },
         description: String,
-        // ✅ NEW: Hybrid COD — advance delivery charge via EasyPaisa
-        // Set codDeliveryCharge > 0 to require an advance payment at checkout.
-        // Customer sends this amount to codEasypaisaAccount and uploads screenshot.
-        // Remaining order total is collected in cash on delivery.
         codDeliveryCharge: { type: Number, default: 0 },
         codEasypaisaAccount: { type: String, default: "" },
         codEasypaisaName: { type: String, default: "" },
@@ -638,11 +550,7 @@ export const WalletSchema = new Schema(
 // =========================
 export const TransactionSchema = new Schema(
   {
-    type: {
-      type: String,
-      enum: ["income", "expense", "transfer"],
-      required: true,
-    },
+    type: { type: String, enum: ["income", "expense", "transfer"], required: true },
     category: { type: String, required: true },
     amount: { type: Number, required: true },
     source: {
@@ -715,42 +623,13 @@ export const InvestmentSchema = new Schema(
 // =========================
 export const ReviewSchema = new Schema(
   {
-    product: {
-      type: Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-      index: true,
-    },
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-    },
-    order: {
-      type: Schema.Types.ObjectId,
-      ref: "Order",
-      required: true,
-    },
-    rating: {
-      type: Number,
-      required: true,
-      min: 1,
-      max: 5,
-    },
-    comment: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    isApproved: {
-      type: Boolean,
-      default: false,
-      index: true,
-    },
-    approvedBy: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-    },
+    product: { type: Schema.Types.ObjectId, ref: "Product", required: true, index: true },
+    user: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    order: { type: Schema.Types.ObjectId, ref: "Order", required: true },
+    rating: { type: Number, required: true, min: 1, max: 5 },
+    comment: { type: String, required: true, trim: true },
+    isApproved: { type: Boolean, default: false, index: true },
+    approvedBy: { type: Schema.Types.ObjectId, ref: "User" },
     approvedAt: Date,
   },
   { timestamps: true },
@@ -758,10 +637,9 @@ export const ReviewSchema = new Schema(
 
 ReviewSchema.index({ user: 1, product: 1 }, { unique: true });
 
-
-// lib/models/index.ts or lib/models/StoreInfo.ts
-
-
+// =========================
+// StoreInfo Schema
+// =========================
 const storeInfoSchema = new mongoose.Schema({
   name: { type: String, default: "Khas pure foods" },
   address: { type: String, default: "123 Store Street, Lahore, Pakistan" },
@@ -770,55 +648,28 @@ const storeInfoSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-
 // =========================
 // Mongoose Models Export
 // =========================
 export const User = mongoose.models.User || mongoose.model("User", UserSchema);
-export const Category =
-mongoose.models.Category || mongoose.model("Category", CategorySchema);
-export const Product =
-  mongoose.models.Product || mongoose.model("Product", ProductSchema);
-export const Bundle =
-  mongoose.models.Bundle || mongoose.model("Bundle", BundleSchema);
-export const Supplier =
-  mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
-  export const Purchase =
-  mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
-  export const InventoryBatch =
-  mongoose.models.InventoryBatch ||
-  mongoose.model("InventoryBatch", InventoryBatchSchema);
-export const POSSale =
-mongoose.models.POSSale || mongoose.model("POSSale", POSSaleSchema);
-export const Order =
-mongoose.models.Order || mongoose.model("Order", OrderSchema);
-export const Payment =
-mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
-export const Refund =
-  mongoose.models.Refund || mongoose.model("Refund", RefundSchema);
-  export const HeroBanner =
-  mongoose.models.HeroBanner || mongoose.model("HeroBanner", HeroBannerSchema);
-  export const StoreSettings =
-  mongoose.models.StoreSettings ||
-  mongoose.model("StoreSettings", StoreSettingsSchema);
-  export const FBRConfig =
-  mongoose.models.FBRConfig || mongoose.model("FBRConfig", FBRConfigSchema);
-export const Expense =
-mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
-export const Wallet =
-mongoose.models.Wallet || mongoose.model("Wallet", WalletSchema);
-export const Transaction =
-mongoose.models.Transaction ||
-mongoose.model("Transaction", TransactionSchema);
-export const Investment =
-  mongoose.models.Investment || mongoose.model("Investment", InvestmentSchema);
-  
-  export const RefundRequest = Refund;
-  
-export const SaleConfig =
-  mongoose.models.SaleConfig || mongoose.model("SaleConfig", SaleConfigSchema);
-  
-export const Review =
-  mongoose.models.Review || mongoose.model("Review", ReviewSchema);
-
+export const Category = mongoose.models.Category || mongoose.model("Category", CategorySchema);
+export const Product = mongoose.models.Product || mongoose.model("Product", ProductSchema);
+export const Bundle = mongoose.models.Bundle || mongoose.model("Bundle", BundleSchema);
+export const Supplier = mongoose.models.Supplier || mongoose.model("Supplier", SupplierSchema);
+export const Purchase = mongoose.models.Purchase || mongoose.model("Purchase", PurchaseSchema);
+export const InventoryBatch = mongoose.models.InventoryBatch || mongoose.model("InventoryBatch", InventoryBatchSchema);
+export const POSSale = mongoose.models.POSSale || mongoose.model("POSSale", POSSaleSchema);
+export const Order = mongoose.models.Order || mongoose.model("Order", OrderSchema);
+export const Payment = mongoose.models.Payment || mongoose.model("Payment", PaymentSchema);
+export const Refund = mongoose.models.Refund || mongoose.model("Refund", RefundSchema);
+export const HeroBanner = mongoose.models.HeroBanner || mongoose.model("HeroBanner", HeroBannerSchema);
+export const StoreSettings = mongoose.models.StoreSettings || mongoose.model("StoreSettings", StoreSettingsSchema);
+export const FBRConfig = mongoose.models.FBRConfig || mongoose.model("FBRConfig", FBRConfigSchema);
+export const Expense = mongoose.models.Expense || mongoose.model("Expense", ExpenseSchema);
+export const Wallet = mongoose.models.Wallet || mongoose.model("Wallet", WalletSchema);
+export const Transaction = mongoose.models.Transaction || mongoose.model("Transaction", TransactionSchema);
+export const Investment = mongoose.models.Investment || mongoose.model("Investment", InvestmentSchema);
+export const RefundRequest = Refund;
+export const SaleConfig = mongoose.models.SaleConfig || mongoose.model("SaleConfig", SaleConfigSchema);
+export const Review = mongoose.models.Review || mongoose.model("Review", ReviewSchema);
 export const StoreInfo = mongoose.models.StoreInfo || mongoose.model("StoreInfo", storeInfoSchema);

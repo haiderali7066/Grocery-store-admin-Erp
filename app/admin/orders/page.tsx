@@ -35,6 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 interface OrderItem {
   product: { name: string } | null;
+  name?: string;
   quantity: number;
   price: number;
   subtotal: number;
@@ -47,12 +48,24 @@ interface User {
   address?: string;
 }
 
+interface ShippingAddress {
+  fullName?: string;
+  street?: string;
+  city?: string;
+  province?: string;
+  zipCode?: string;
+  country?: string;
+  phone?: string;
+  email?: string;
+}
+
 interface Order {
   _id: string;
   orderNumber: string;
   total?: number;
   subtotal?: number;
   gstAmount?: number;
+  discount?: number;
   shippingCost?: number;
   paymentStatus: "pending" | "verified" | "failed";
   orderStatus:
@@ -65,7 +78,6 @@ interface Order {
   paymentMethod: string;
   codPaymentStatus?: "unpaid" | "paid" | null;
   codPaidAt?: string;
-  // Hybrid COD fields
   codDeliveryCharge?: number;
   codDeliveryScreenshot?: string | null;
   codDeliveryPaid?: boolean;
@@ -75,6 +87,7 @@ interface Order {
   trackingProvider?: string;
   items: OrderItem[];
   user?: User;
+  shippingAddress?: ShippingAddress;
 }
 
 interface StoreInfo {
@@ -83,6 +96,137 @@ interface StoreInfo {
   phone: string;
   email: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2-PAGE PRINT BUILDER
+// Page 1 — Store info (top half) | Customer info (bottom half)
+// Page 2 — Order number, summary bar, items table, totals
+// ─────────────────────────────────────────────────────────────────────────────
+function buildPrintHTML(order: Order, storeInfo: StoreInfo): string {
+  const addr = order.shippingAddress || {};
+  const user = order.user || {};
+
+  const customerName  = addr.fullName  || user.name  || "—";
+  const customerPhone = addr.phone     || user.phone || "—";
+  const customerEmail = addr.email     || user.email || "—";
+  const customerAddr  = [
+    addr.street,
+    addr.city,
+    addr.province,
+    addr.zipCode,
+    addr.country,
+  ].filter(Boolean).join(", ") || user.address || "—";
+
+  const orderDate = new Date(order.createdAt).toLocaleString("en-PK");
+
+  const itemRows = order.items.map(item => `
+    <tr>
+      <td>${item.name || item.product?.name || "Deleted Product"}</td>
+      <td style="text-align:center">${item.quantity}</td>
+      <td style="text-align:right">Rs. ${Number(item.price ?? 0).toLocaleString()}</td>
+      <td style="text-align:right">
+        Rs. ${Number(item.subtotal ?? item.price * item.quantity ?? 0).toLocaleString()}
+      </td>
+    </tr>
+  `).join("");
+
+  return `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Invoice #${order.orderNumber}</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 14px; }
+      h1, h2 { margin-bottom: 5px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { border: 1px solid #000; padding: 6px; }
+      th { background: #f2f2f2; }
+      .right { text-align: right; }
+      .center { text-align: center; }
+      .section { margin-bottom: 15px; }
+      @media print { body { margin: 20px; } }
+    </style>
+  </head>
+  <body>
+
+    <h1>${storeInfo.name}</h1>
+    <p>${storeInfo.address}</p>
+    <p>Phone: ${storeInfo.phone} | Email: ${storeInfo.email}</p>
+
+    <hr/>
+
+    <div class="section">
+      <h2>Order Details</h2>
+      <p><strong>Order #:</strong> ${order.orderNumber}</p>
+      <p><strong>Date:</strong> ${orderDate}</p>
+      <p><strong>Payment:</strong> ${order.paymentMethod}</p>
+    </div>
+
+    <div class="section">
+      <h2>Customer Information</h2>
+      <p><strong>Name:</strong> ${customerName}</p>
+      <p><strong>Phone:</strong> ${customerPhone}</p>
+      <p><strong>Email:</strong> ${customerEmail}</p>
+      <p><strong>Address:</strong> ${customerAddr}</p>
+    </div>
+
+    <div class="section">
+      <h2>Items</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th class="center">Qty</th>
+            <th class="right">Unit Price</th>
+            <th class="right">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemRows}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <table>
+        <tr>
+          <td><strong>Subtotal</strong></td>
+          <td class="right">Rs. ${(order.subtotal ?? 0).toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td><strong>Tax</strong></td>
+          <td class="right">Rs. ${(order.gstAmount ?? 0).toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td><strong>Shipping</strong></td>
+          <td class="right">
+            ${(order.shippingCost ?? 0) === 0
+              ? "Free"
+              : `Rs. ${(order.shippingCost ?? 0).toLocaleString()}`}
+          </td>
+        </tr>
+        <tr>
+          <td><strong>Total</strong></td>
+          <td class="right"><strong>Rs. ${(order.total ?? 0).toLocaleString()}</strong></td>
+        </tr>
+      </table>
+    </div>
+
+    <script>
+      window.onload = function() {
+        setTimeout(function() {
+          window.print();
+        }, 300);
+      };
+    </script>
+
+  </body>
+  </html>
+  `;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function OrdersContent() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -113,18 +257,13 @@ function OrdersContent() {
   const [codNotes, setCodNotes] = useState("");
   const [isProcessingCod, setIsProcessingCod] = useState(false);
 
-  // Fix COD Status
   const [isFixing, setIsFixing] = useState(false);
-
-  // Filter
   const [filterStatus, setFilterStatus] = useState<"all" | "unpaid_cod">("all");
 
   useEffect(() => {
     fetchStoreInfo();
     fetchOrders();
   }, []);
-
-  // ── Fetch and manage store info ──────────────────────────────────────────
 
   const fetchStoreInfo = async () => {
     setIsLoadingStoreInfo(true);
@@ -159,12 +298,10 @@ function OrdersContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(storeInfo),
       });
-
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.error || "Failed to save");
       }
-
       const data = await res.json();
       setStoreInfoOriginal(data.storeInfo);
       setStoreInfoChanged(false);
@@ -176,14 +313,11 @@ function OrdersContent() {
     }
   };
 
-  // ── Fetch orders ────────────────────────────────────────────────────────
-
   const fetchOrders = async () => {
     try {
       const res = await fetch("/api/admin/orders");
       const data = await res.json();
       setOrders(data.orders || []);
-
       const initialTracking: Record<string, { code: string; courier: string }> = {};
       data.orders?.forEach((o: Order) => {
         initialTracking[o._id] = {
@@ -254,7 +388,6 @@ function OrdersContent() {
   const handleApprove = async (order: Order) => {
     const isCOD = order.paymentMethod === "cod";
     const hasAdvance = (order.codDeliveryCharge || 0) > 0;
-
     const confirmMsg = isCOD
       ? hasAdvance
         ? `Approve Order #${order.orderNumber}?\n\n✅ This will:\n• Verify the EasyPaisa advance screenshot (Rs. ${order.codDeliveryCharge})\n• Credit Rs. ${order.codDeliveryCharge} to EasyPaisa wallet\n• Move order to processing\n\n💡 Cash remainder (Rs. ${((order.total || 0) - (order.codDeliveryCharge || 0)).toFixed(0)}) will be collected from rider separately.`
@@ -277,15 +410,12 @@ function OrdersContent() {
           trackingProvider: courier,
         }),
       });
-
       if (!res.ok) throw new Error("Update failed");
-
       const successMsg = isCOD
         ? hasAdvance
           ? `✅ COD order approved!\n\n💳 EasyPaisa advance Rs. ${order.codDeliveryCharge} credited to wallet\n📦 Order moved to processing\n💵 Collect Rs. ${((order.total || 0) - (order.codDeliveryCharge || 0)).toFixed(0)} from rider on delivery`
           : `✅ COD order approved!\n\n📦 Order moved to processing\n💵 Collect full Rs. ${order.total} from rider on delivery`
         : `✅ Order approved!\n\n💰 Payment added to wallet\n📦 Order moved to processing`;
-
       alert(successMsg);
       setUpdatedOrderId(order._id);
       fetchOrders();
@@ -330,10 +460,7 @@ function OrdersContent() {
   const handleMarkCodPaid = async () => {
     if (!selectedOrder) return;
     const amount = parseFloat(codAmount);
-    if (isNaN(amount) || amount <= 0) {
-      alert("Please enter a valid amount");
-      return;
-    }
+    if (isNaN(amount) || amount <= 0) { alert("Please enter a valid amount"); return; }
 
     setIsProcessingCod(true);
     try {
@@ -342,12 +469,10 @@ function OrdersContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount, notes: codNotes }),
       });
-
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || "Failed to mark as paid");
       }
-
       const data = await res.json();
       alert(
         `✅ ${data.message}\n\n💰 Profit: Rs. ${data.profit}\n💵 Cash Balance: Rs. ${data.walletCashBalance?.toLocaleString()}`,
@@ -364,77 +489,16 @@ function OrdersContent() {
     }
   };
 
+  // ── 2-page print: opens a new tab, auto-prints, then closes ──────────────
   const handlePrint = (order: Order) => {
-    const itemsRows = order.items
-      .map(
-        (item) => `<tr>
-          <td>${item.product?.name || "Deleted Product"}</td>
-          <td>${item.quantity}</td>
-          <td>Rs. ${(item.price ?? 0).toLocaleString()}</td>
-          <td>Rs. ${(item.subtotal ?? 0).toLocaleString()}</td>
-        </tr>`,
-      )
-      .join("");
-
-    const user = order.user || {};
-    const isHybridCOD = order.paymentMethod === "cod" && (order.codDeliveryCharge || 0) > 0;
-    const cashDue = (order.total || 0) - (order.codDeliveryCharge || 0);
-
-    const w = window.open("", "_blank");
-    if (!w) return;
-
-    w.document.write(`
-      <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; }
-            table { border-collapse: collapse; width: 100%; }
-            th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
-            th { background: #f5f5f5; }
-            .cod-box { background: #fff7ed; border: 1px solid #fdba74; padding: 10px; border-radius: 6px; margin: 10px 0; }
-          </style>
-        </head>
-        <body>
-          <h2>${storeInfo.name}</h2>
-          <p>${storeInfo.address}</p>
-          <p>Phone: ${storeInfo.phone} | Email: ${storeInfo.email}</p>
-          <hr/>
-          <h3>Order #${order.orderNumber}</h3>
-          <p>Date: ${new Date(order.createdAt).toLocaleDateString()}</p>
-          <p>Payment Method: ${order.paymentMethod?.toUpperCase() || "-"}</p>
-          ${
-            order.paymentMethod === "cod"
-              ? isHybridCOD
-                ? `<div class="cod-box">
-                     <strong>Hybrid COD:</strong><br/>
-                     Advance paid (EasyPaisa): Rs. ${order.codDeliveryCharge}<br/>
-                     Cash to collect on delivery: Rs. ${cashDue.toFixed(0)}<br/>
-                     COD Status: ${order.codPaymentStatus === "paid" ? "PAID" : "UNPAID"}
-                   </div>`
-                : `<p>COD Status: ${order.codPaymentStatus === "paid" ? "PAID" : "UNPAID"}</p>`
-              : ""
-          }
-          <p>Payment Status: ${order.paymentStatus}</p>
-          <p>Order Status: ${order.orderStatus}</p>
-          <h4>Customer:</h4>
-          <p>${user.name || "-"} | ${user.email || "-"} | ${user.phone || "-"}</p>
-          <h4>Items:</h4>
-          <table>
-            <thead>
-              <tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr>
-            </thead>
-            <tbody>${itemsRows}</tbody>
-          </table>
-          <br/>
-          <p>Subtotal: Rs. ${(order.subtotal ?? 0).toLocaleString()}</p>
-          <p>GST: Rs. ${(order.gstAmount ?? 0).toLocaleString()}</p>
-          <p>Shipping: Rs. ${(order.shippingCost ?? 0).toLocaleString()}</p>
-          <p><strong>Total: Rs. ${(order.total ?? 0).toLocaleString()}</strong></p>
-        </body>
-      </html>
-    `);
-    w.document.close();
-    w.print();
+    const html = buildPrintHTML(order, storeInfo);
+    const win = window.open("", "_blank", "width=900,height=750");
+    if (!win) {
+      alert("Pop-up blocked. Please allow pop-ups for this site to print.");
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
   };
 
   const badge = (status: string) => {
@@ -451,9 +515,7 @@ function OrdersContent() {
       paid: "bg-green-100 text-green-700 border-green-300",
     };
     return (
-      <span
-        className={`px-3 py-1 rounded-full text-xs font-semibold border ${styles[status] || "bg-gray-100 text-gray-600"}`}
-      >
+      <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${styles[status] || "bg-gray-100 text-gray-600"}`}>
         {status}
       </span>
     );
@@ -470,19 +532,17 @@ function OrdersContent() {
   });
 
   const unpaidCodOrders = orders.filter(
-    (o) =>
-      o.paymentMethod === "cod" &&
-      (o.codPaymentStatus === "unpaid" || !o.codPaymentStatus),
+    (o) => o.paymentMethod === "cod" && (o.codPaymentStatus === "unpaid" || !o.codPaymentStatus),
   );
   const unpaidCodTotal = unpaidCodOrders.reduce(
     (sum, o) => sum + (o.total || 0) - (o.codDeliveryCharge || 0),
     0,
   );
-
   const needsFixing = orders.some((o) => o.paymentMethod === "cod" && !o.codPaymentStatus);
 
   return (
     <div className="space-y-8 p-6 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
+
       {/* Store Info */}
       <Card className="p-6 shadow-lg border bg-white">
         <div className="flex items-center justify-between mb-4">
@@ -503,13 +563,7 @@ function OrdersContent() {
               {(["name", "address", "phone", "email"] as const).map((key) => (
                 <div key={key}>
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">
-                    {key === "name"
-                      ? "Store Name"
-                      : key === "address"
-                        ? "Store Address"
-                        : key === "phone"
-                          ? "Phone Number"
-                          : "Email Address"}
+                    {key === "name" ? "Store Name" : key === "address" ? "Store Address" : key === "phone" ? "Phone Number" : "Email Address"}
                   </label>
                   <Input
                     value={storeInfo[key]}
@@ -526,15 +580,9 @@ function OrdersContent() {
                 className="mt-4 bg-green-600 hover:bg-green-700 text-white gap-2"
               >
                 {isSavingStoreInfo ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Saving...</>
                 ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-                    Save Store Info
-                  </>
+                  <><Save className="h-4 w-4" /> Save Store Info</>
                 )}
               </Button>
             )}
@@ -551,9 +599,7 @@ function OrdersContent() {
               <Banknote className="h-8 w-8 text-orange-600" />
               <div>
                 <p className="text-xs text-orange-600 font-medium">Cash to Collect (COD)</p>
-                <p className="text-2xl font-bold text-orange-900">
-                  Rs. {unpaidCodTotal.toLocaleString()}
-                </p>
+                <p className="text-2xl font-bold text-orange-900">Rs. {unpaidCodTotal.toLocaleString()}</p>
                 <p className="text-xs text-orange-600">{unpaidCodOrders.length} orders</p>
               </div>
             </div>
@@ -616,28 +662,21 @@ function OrdersContent() {
 
               return (
                 <AnimatePresence key={order._id}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                  >
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                     <Card
                       className={`p-5 border transition-all ${
                         updatedOrderId === order._id
                           ? "border-blue-500 ring-2 ring-blue-200"
-                          : isCOD &&
-                              (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus)
-                            ? "border-orange-300 bg-orange-50/30"
-                            : "border-slate-200"
+                          : isCOD && (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus)
+                          ? "border-orange-300 bg-orange-50/30"
+                          : "border-slate-200"
                       }`}
                     >
-                      {/* Order Header */}
+                      {/* Order Header Row */}
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-bold text-lg text-slate-800">
-                              #{order.orderNumber}
-                            </p>
+                            <p className="font-bold text-lg text-slate-800">#{order.orderNumber}</p>
                             {isCOD && (
                               <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded font-semibold">
                                 COD
@@ -675,7 +714,6 @@ function OrdersContent() {
                           {badge(order.orderStatus)}
                           {isCOD && order.codPaymentStatus && badge(order.codPaymentStatus)}
 
-                          {/* Mark COD Cash Collected */}
                           {isCOD &&
                             (order.codPaymentStatus === "unpaid" || !order.codPaymentStatus) &&
                             order.paymentStatus === "verified" && (
@@ -685,17 +723,14 @@ function OrdersContent() {
                                 onClick={() => handleCodPaymentClick(order)}
                               >
                                 <DollarSign className="w-4 h-4 mr-1" />
-                                Collect Cash
-                                {hasAdvance && ` (Rs. ${cashDue.toFixed(0)})`}
+                                Collect Cash{hasAdvance && ` (Rs. ${cashDue.toFixed(0)})`}
                               </Button>
                             )}
 
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() =>
-                              setOpenOrderId(openOrderId === order._id ? null : order._id)
-                            }
+                            onClick={() => setOpenOrderId(openOrderId === order._id ? null : order._id)}
                           >
                             <Eye className="w-4 h-4 mr-1" /> Manage
                           </Button>
@@ -727,42 +762,38 @@ function OrdersContent() {
                           <div className="space-y-6">
                             <section>
                               <h3 className="font-semibold text-slate-700 mb-2">Customer Info</h3>
-                              <p className="text-sm">{order.user?.name || "-"}</p>
-                              <p className="text-xs text-slate-500">{order.user?.email || "-"}</p>
-                              <p className="text-xs text-slate-500">{order.user?.phone || "-"}</p>
+                              <p className="text-sm">{order.user?.name || order.shippingAddress?.fullName || "-"}</p>
+                              <p className="text-xs text-slate-500">{order.user?.email || order.shippingAddress?.email || "-"}</p>
+                              <p className="text-xs text-slate-500">{order.user?.phone || order.shippingAddress?.phone || "-"}</p>
+                              {order.shippingAddress?.street && (
+                                <p className="text-xs text-slate-500 mt-1">
+                                  {[order.shippingAddress.street, order.shippingAddress.city, order.shippingAddress.province]
+                                    .filter(Boolean).join(", ")}
+                                </p>
+                              )}
                               <p className="text-sm font-medium mt-2 text-slate-700">
                                 Payment: {order.paymentMethod?.toUpperCase() || "N/A"}
                               </p>
-
-                              {/* COD status breakdown */}
                               {isCOD && (
                                 <div className="mt-2 p-3 bg-orange-50 border border-orange-200 rounded-lg space-y-2">
                                   {hasAdvance ? (
                                     <>
-                                      <p className="text-sm font-bold text-orange-900">
-                                        Hybrid COD
-                                      </p>
+                                      <p className="text-sm font-bold text-orange-900">Hybrid COD</p>
                                       <div className="text-xs space-y-1">
                                         <div className="flex justify-between">
                                           <span className="text-green-700 flex items-center gap-1">
-                                            <Smartphone className="h-3 w-3" />
-                                            EasyPaisa advance
+                                            <Smartphone className="h-3 w-3" /> EasyPaisa advance
                                           </span>
-                                          <span
-                                            className={`font-bold ${order.codDeliveryPaid ? "text-green-700" : "text-orange-600"}`}
-                                          >
+                                          <span className={`font-bold ${order.codDeliveryPaid ? "text-green-700" : "text-orange-600"}`}>
                                             Rs. {order.codDeliveryCharge}{" "}
                                             {order.codDeliveryPaid ? "✓ verified" : "⏳ pending"}
                                           </span>
                                         </div>
                                         <div className="flex justify-between">
                                           <span className="text-orange-700 flex items-center gap-1">
-                                            <Banknote className="h-3 w-3" />
-                                            Cash on delivery
+                                            <Banknote className="h-3 w-3" /> Cash on delivery
                                           </span>
-                                          <span
-                                            className={`font-bold ${order.codPaymentStatus === "paid" ? "text-green-700" : "text-orange-600"}`}
-                                          >
+                                          <span className={`font-bold ${order.codPaymentStatus === "paid" ? "text-green-700" : "text-orange-600"}`}>
                                             Rs. {cashDue.toFixed(0)}{" "}
                                             {order.codPaymentStatus === "paid" ? "✓ collected" : "⏳ pending"}
                                           </span>
@@ -771,14 +802,12 @@ function OrdersContent() {
                                     </>
                                   ) : (
                                     <p className="text-sm font-semibold text-orange-900">
-                                      COD Status:{" "}
-                                      {order.codPaymentStatus === "paid" ? "✓ PAID" : "⏱ UNPAID"}
+                                      COD Status: {order.codPaymentStatus === "paid" ? "✓ PAID" : "⏱ UNPAID"}
                                     </p>
                                   )}
                                   {order.codPaymentStatus === "paid" && order.codPaidAt && (
                                     <p className="text-xs text-orange-700">
-                                      Collected:{" "}
-                                      {new Date(order.codPaidAt).toLocaleString()}
+                                      Collected: {new Date(order.codPaidAt).toLocaleString()}
                                     </p>
                                   )}
                                 </div>
@@ -800,51 +829,28 @@ function OrdersContent() {
                                   <tbody>
                                     {order.items.map((item, idx) => (
                                       <tr key={idx} className="border-t">
-                                        <td className="p-2">
-                                          {item.product?.name || "Deleted Product"}
-                                        </td>
+                                        <td className="p-2">{item.name || item.product?.name || "Deleted Product"}</td>
                                         <td className="p-2 text-center">{item.quantity}</td>
-                                        <td className="p-2 text-center">
-                                          Rs. {(item.price ?? 0).toLocaleString()}
-                                        </td>
-                                        <td className="p-2 text-center">
-                                          Rs. {(item.subtotal ?? 0).toLocaleString()}
-                                        </td>
+                                        <td className="p-2 text-center">Rs. {(item.price ?? 0).toLocaleString()}</td>
+                                        <td className="p-2 text-center">Rs. {(item.subtotal ?? 0).toLocaleString()}</td>
                                       </tr>
                                     ))}
                                   </tbody>
                                 </table>
                               </div>
                               <div className="mt-3 space-y-1 text-sm bg-slate-50 rounded-lg p-3">
-                                <div className="flex justify-between">
-                                  <span>Subtotal</span>
-                                  <span>Rs. {(order.subtotal ?? 0).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>GST</span>
-                                  <span>Rs. {(order.gstAmount ?? 0).toLocaleString()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Shipping</span>
-                                  <span>Rs. {(order.shippingCost ?? 0).toLocaleString()}</span>
-                                </div>
+                                <div className="flex justify-between"><span>Subtotal</span><span>Rs. {(order.subtotal ?? 0).toLocaleString()}</span></div>
+                                <div className="flex justify-between"><span>GST</span><span>Rs. {(order.gstAmount ?? 0).toLocaleString()}</span></div>
+                                <div className="flex justify-between"><span>Shipping</span><span>Rs. {(order.shippingCost ?? 0).toLocaleString()}</span></div>
                                 {hasAdvance && (
                                   <>
                                     <div className="flex justify-between text-green-700 border-t pt-1">
-                                      <span className="flex items-center gap-1">
-                                        <Smartphone className="h-3 w-3" />
-                                        Advance paid (EasyPaisa)
-                                      </span>
+                                      <span className="flex items-center gap-1"><Smartphone className="h-3 w-3" />Advance paid</span>
                                       <span>− Rs. {order.codDeliveryCharge}</span>
                                     </div>
                                     <div className="flex justify-between text-orange-700">
-                                      <span className="flex items-center gap-1">
-                                        <Banknote className="h-3 w-3" />
-                                        Cash to collect
-                                      </span>
-                                      <span className="font-bold">
-                                        Rs. {cashDue.toFixed(0)}
-                                      </span>
+                                      <span className="flex items-center gap-1"><Banknote className="h-3 w-3" />Cash to collect</span>
+                                      <span className="font-bold">Rs. {cashDue.toFixed(0)}</span>
                                     </div>
                                   </>
                                 )}
@@ -861,16 +867,12 @@ function OrdersContent() {
                                 <Input
                                   placeholder="Tracking Number"
                                   value={trackingInputs[order._id]?.code || ""}
-                                  onChange={(e) =>
-                                    handleTrackingChange(order._id, "code", e.target.value)
-                                  }
+                                  onChange={(e) => handleTrackingChange(order._id, "code", e.target.value)}
                                 />
                                 <Input
                                   placeholder="Courier"
                                   value={trackingInputs[order._id]?.courier || ""}
-                                  onChange={(e) =>
-                                    handleTrackingChange(order._id, "courier", e.target.value)
-                                  }
+                                  onChange={(e) => handleTrackingChange(order._id, "courier", e.target.value)}
                                 />
                               </div>
                               <Button
@@ -882,26 +884,18 @@ function OrdersContent() {
                               </Button>
                             </section>
 
-                            {/* Approve / Reject */}
                             {order.paymentStatus === "pending" && (
                               <div className="flex gap-3">
-                                <Button
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                                  onClick={() => handleApprove(order)}
-                                >
+                                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => handleApprove(order)}>
                                   <Check className="w-4 h-4 mr-1" />
                                   {isCOD ? "Verify & Process" : "Approve"}
                                 </Button>
-                                <Button
-                                  variant="destructive"
-                                  onClick={() => handleReject(order._id)}
-                                >
+                                <Button variant="destructive" onClick={() => handleReject(order._id)}>
                                   <X className="w-4 h-4 mr-1" /> Reject & Restock
                                 </Button>
                               </div>
                             )}
 
-                            {/* Status Update */}
                             <div>
                               <label className="block mb-1 font-semibold text-sm text-slate-700">
                                 Update Order Status
@@ -911,23 +905,13 @@ function OrdersContent() {
                                 onChange={(e) => handleStatusUpdate(order._id, e.target.value)}
                                 className="border rounded px-3 py-2 text-sm w-full max-w-xs"
                               >
-                                {[
-                                  "pending",
-                                  "confirmed",
-                                  "processing",
-                                  "shipped",
-                                  "delivered",
-                                  "cancelled",
-                                ].map((s) => (
-                                  <option key={s} value={s}>
-                                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                                  </option>
+                                {["pending","confirmed","processing","shipped","delivered","cancelled"].map((s) => (
+                                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                                 ))}
                               </select>
-                              {["cancelled", "failed"].includes(order.orderStatus) && (
+                              {["cancelled","failed"].includes(order.orderStatus) && (
                                 <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                                  <RotateCcw className="h-3 w-3" />
-                                  Stock has been automatically restored
+                                  <RotateCcw className="h-3 w-3" /> Stock has been automatically restored
                                 </p>
                               )}
                             </div>
@@ -935,57 +919,42 @@ function OrdersContent() {
 
                           {/* RIGHT — Payment Screenshots */}
                           <div className="space-y-6">
-                            {/* ── Case 1: Hybrid COD ── */}
                             {isCOD && hasAdvance && (
                               <section>
                                 <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
                                   <Smartphone className="h-4 w-4 text-green-600" />
                                   EasyPaisa Advance Screenshot
-                                  <span className="text-xs font-normal text-slate-500">
-                                    (Rs. {order.codDeliveryCharge} delivery charge)
-                                  </span>
+                                  <span className="text-xs font-normal text-slate-500">(Rs. {order.codDeliveryCharge})</span>
                                 </h3>
                                 {order.codDeliveryScreenshot ? (
                                   <div>
                                     <img
                                       src={order.codDeliveryScreenshot}
-                                      alt="EasyPaisa Advance Screenshot"
+                                      alt="EasyPaisa Advance"
                                       className="rounded-lg border max-h-80 object-contain hover:scale-105 transition w-full cursor-zoom-in"
                                       onClick={() => window.open(order.codDeliveryScreenshot!, "_blank")}
                                     />
-                                    <div
-                                      className={`mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${
-                                        order.codDeliveryPaid
-                                          ? "bg-green-100 text-green-700"
-                                          : "bg-yellow-100 text-yellow-700"
-                                      }`}
-                                    >
-                                      {order.codDeliveryPaid
-                                        ? "✓ Advance verified & credited to EasyPaisa wallet"
-                                        : "⏳ Pending — click Verify & Process to confirm"}
+                                    <div className={`mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1 w-fit ${order.codDeliveryPaid ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+                                      {order.codDeliveryPaid ? "✓ Advance verified & credited" : "⏳ Pending — click Verify & Process to confirm"}
                                     </div>
                                   </div>
                                 ) : (
                                   <div className="border-2 border-dashed border-orange-200 rounded-lg p-6 text-center text-orange-400">
                                     <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                                    <p className="text-sm">No EasyPaisa screenshot uploaded by customer</p>
+                                    <p className="text-sm">No EasyPaisa screenshot uploaded</p>
                                   </div>
                                 )}
                               </section>
                             )}
 
-                            {/* ── Case 2: Pure COD ── */}
                             {isCOD && !hasAdvance && (
                               <section>
                                 <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
-                                  <Banknote className="h-4 w-4 text-orange-600" />
-                                  Payment Proof
+                                  <Banknote className="h-4 w-4 text-orange-600" /> Payment Proof
                                 </h3>
                                 <div className="border-2 border-dashed border-orange-200 rounded-lg p-8 text-center">
                                   <Banknote className="h-10 w-10 mx-auto mb-3 text-orange-300" />
-                                  <p className="text-sm font-semibold text-orange-700">
-                                    Cash on Delivery — No screenshot required
-                                  </p>
+                                  <p className="text-sm font-semibold text-orange-700">Cash on Delivery — No screenshot required</p>
                                   <p className="text-xs text-slate-400 mt-1">
                                     Full amount of Rs. {(order.total ?? 0).toLocaleString()} collected in cash on delivery
                                   </p>
@@ -993,12 +962,10 @@ function OrdersContent() {
                               </section>
                             )}
 
-                            {/* ── Case 3: Non-COD ── */}
                             {!isCOD && (
                               <section>
                                 <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
-                                  <ImageIcon className="h-4 w-4 text-slate-500" />
-                                  Payment Proof
+                                  <ImageIcon className="h-4 w-4 text-slate-500" /> Payment Proof
                                 </h3>
                                 {order.screenshot ? (
                                   <img
@@ -1037,29 +1004,21 @@ function OrdersContent() {
               <span className="font-bold">#{selectedOrder?.orderNumber}</span>
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-4 py-4">
             {(selectedOrder?.codDeliveryCharge || 0) > 0 && (
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm space-y-1">
                 <p className="font-bold text-orange-900">Payment Breakdown</p>
                 <div className="flex justify-between text-green-700">
                   <span className="flex items-center gap-1">
-                    <Smartphone className="h-3.5 w-3.5" />
-                    Already collected (EasyPaisa advance)
+                    <Smartphone className="h-3.5 w-3.5" /> Already collected (EasyPaisa advance)
                   </span>
                   <span className="font-semibold">Rs. {selectedOrder?.codDeliveryCharge}</span>
                 </div>
                 <div className="flex justify-between text-orange-700 font-bold">
                   <span className="flex items-center gap-1">
-                    <Banknote className="h-3.5 w-3.5" />
-                    Cash from rider (enter below)
+                    <Banknote className="h-3.5 w-3.5" /> Cash from rider (enter below)
                   </span>
-                  <span>
-                    Rs.{" "}
-                    {(
-                      (selectedOrder?.total || 0) - (selectedOrder?.codDeliveryCharge || 0)
-                    ).toFixed(0)}
-                  </span>
+                  <span>Rs. {((selectedOrder?.total || 0) - (selectedOrder?.codDeliveryCharge || 0)).toFixed(0)}</span>
                 </div>
                 <div className="flex justify-between border-t pt-1 text-slate-700">
                   <span>Order Total</span>
@@ -1067,7 +1026,6 @@ function OrdersContent() {
                 </div>
               </div>
             )}
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Cash Amount Received from Rider (Rs) <span className="text-red-500">*</span>
@@ -1081,11 +1039,8 @@ function OrdersContent() {
                 step="0.01"
               />
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes (Optional)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
               <Textarea
                 value={codNotes}
                 onChange={(e) => setCodNotes(e.target.value)}
@@ -1093,27 +1048,15 @@ function OrdersContent() {
                 rows={3}
               />
             </div>
-
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-sm text-blue-800">
                 💡 Rs. {codAmount || "0"} will be added to your <strong>Cash wallet</strong>.
               </p>
             </div>
           </div>
-
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setCodDialogOpen(false)}
-              disabled={isProcessingCod}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-orange-600 hover:bg-orange-700"
-              onClick={handleMarkCodPaid}
-              disabled={isProcessingCod}
-            >
+            <Button variant="outline" onClick={() => setCodDialogOpen(false)} disabled={isProcessingCod}>Cancel</Button>
+            <Button className="bg-orange-600 hover:bg-orange-700" onClick={handleMarkCodPaid} disabled={isProcessingCod}>
               {isProcessingCod ? "Processing..." : "Confirm Cash Collected"}
             </Button>
           </DialogFooter>
