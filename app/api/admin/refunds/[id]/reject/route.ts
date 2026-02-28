@@ -57,7 +57,10 @@ export async function POST(
   } catch (error) {
     console.error("Refund rejection error:", error);
     return NextResponse.json(
-      { error: "Failed to reject refund" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to reject refund",
+      },
       { status: 500 },
     );
   }

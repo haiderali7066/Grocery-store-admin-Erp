@@ -10,6 +10,7 @@ import {
   Transaction,
 } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+import mongoose from "mongoose";
 
 export async function POST(
   req: NextRequest,
@@ -48,126 +49,197 @@ export async function POST(
       );
     }
 
-    let items = [];
-    let orderRef = null;
-    let paymentMethod = "cash";
+    // ── Process in a transaction ───────────────────────────────────────────────
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    // Determine if it's an online order or POS sale
-    if (refund.order) {
-      // Online order
-      const order = refund.order as any;
-      items = order.items;
-      orderRef = order._id;
-      paymentMethod = order.paymentMethod || "cash";
-    } else if (refund.orderNumber) {
-      // Try to find POS sale by sale number
-      const posSale = await POSSale.findOne({
-        saleNumber: refund.orderNumber,
-      }).populate("items.product");
+    try {
+      const finalRefundAmount =
+        parseFloat(approvalAmount) || refund.requestedAmount;
 
-      if (posSale) {
-        items = posSale.items;
-        orderRef = posSale._id;
-        paymentMethod = posSale.paymentMethod || "cash";
-      } else {
-        console.warn(
-          `No POS sale found for order number: ${refund.orderNumber}`,
-        );
+      // Determine source order/sale and get payment method
+      let orderRef = null;
+      let paymentMethod = "cash";
+      let returnItems = refund.returnItems || [];
+
+      if (refund.order) {
+        // Online order
+        const order = refund.order as any;
+        orderRef = order._id;
+        paymentMethod = order.paymentMethod || "cash";
+      } else if (refund.orderNumber) {
+        // POS sale
+        const posSale = await POSSale.findOne({
+          saleNumber: refund.orderNumber,
+        }).session(session);
+
+        if (posSale) {
+          orderRef = posSale._id;
+          paymentMethod = posSale.paymentMethod || "cash";
+        }
       }
-    }
 
-    // Restock items using FIFO batches
-    if (items && items.length > 0) {
-      for (const item of items) {
-        if (!item.product) continue;
+      const approvedAt = new Date();
 
-        const productId =
-          typeof item.product === "object" ? item.product._id : item.product;
-        const product = await Product.findById(productId);
+      // ── Mark returned items on POS sale ────────────────────────────────────
+      if (!refund.order && refund.orderNumber) {
+        const posSale = await POSSale.findOne({
+          saleNumber: refund.orderNumber,
+        }).session(session);
+
+        if (posSale) {
+          for (const returnItem of returnItems) {
+            const matchKey = returnItem.productId?.toString();
+            const matchName = returnItem.name?.toLowerCase();
+
+            const saleItems: any[] = (posSale as any).items || [];
+            const matchIndex = saleItems.findIndex((saleItem: any) => {
+              const saleProductId = saleItem.product?.toString();
+              const saleItemName = saleItem.name?.toLowerCase();
+              return matchKey
+                ? saleProductId === matchKey
+                : saleItemName === matchName;
+            });
+
+            if (matchIndex !== -1) {
+              await POSSale.updateOne(
+                { saleNumber: refund.orderNumber },
+                {
+                  $set: {
+                    [`items.${matchIndex}.returned`]: true,
+                    [`items.${matchIndex}.returnedAt`]: approvedAt,
+                    [`items.${matchIndex}.returnedQty`]: returnItem.returnQty,
+                  },
+                },
+                { session }
+              );
+            }
+          }
+        }
+      }
+
+      // ── Mark returned items on online Order ────────────────────────────────
+      if (refund.order) {
+        const order = await Order.findById(refund.order).session(session);
+
+        if (order) {
+          const orderItems: any[] = (order as any).items || [];
+          for (const returnItem of returnItems) {
+            const matchKey = returnItem.productId?.toString();
+            const matchName = returnItem.name?.toLowerCase();
+
+            const matchIndex = orderItems.findIndex((orderItem: any) => {
+              const orderProductId = orderItem.product?.toString();
+              const orderItemName = orderItem.name?.toLowerCase();
+              return matchKey
+                ? orderProductId === matchKey
+                : orderItemName === matchName;
+            });
+
+            if (matchIndex !== -1) {
+              await Order.updateOne(
+                { _id: refund.order },
+                {
+                  $set: {
+                    [`items.${matchIndex}.returned`]: true,
+                    [`items.${matchIndex}.returnedAt`]: approvedAt,
+                    [`items.${matchIndex}.returnedQty`]: returnItem.returnQty,
+                  },
+                },
+                { session }
+              );
+            }
+          }
+        }
+      }
+
+      // ── Restock items ──────────────────────────────────────────────────────
+      for (const item of returnItems) {
+        if (!item.restock || !item.productId) continue;
+
+        const product = await Product.findById(item.productId).session(session);
         if (!product) continue;
 
-        const quantity = item.quantity;
-        const costPrice = item.costPrice || item.price || 0;
+        product.stock += item.returnQty;
+        await product.save({ session });
 
-        // Create a new inventory batch for returned items
-        const batch = new InventoryBatch({
+        const costPrice = parseFloat(item.unitPrice) || 0;
+        const newBatch = new InventoryBatch({
           product: product._id,
-          quantity: quantity,
-          remainingQuantity: quantity,
+          quantity: item.returnQty,
+          remainingQuantity: item.returnQty,
           buyingRate: costPrice,
           baseRate: costPrice,
           taxValue: 0,
           taxType: "percent",
           freightPerUnit: 0,
-          sellingPrice: product.retailPrice || costPrice * 1.2,
-          profitPerUnit: (product.retailPrice || costPrice * 1.2) - costPrice,
+          sellingPrice: product.retailPrice || costPrice,
+          profitPerUnit: (product.retailPrice || costPrice) - costPrice,
           status: "active",
+          isReturn: true, // Mark as return batch
         });
-
-        await batch.save();
-
-        product.stock += quantity;
-        await product.save();
+        await newBatch.save({ session });
       }
-    }
 
-    const finalRefundAmount =
-      parseFloat(approvalAmount) || refund.requestedAmount;
-
-    refund.status = "completed";
-    refund.approvedBy = payload.userId;
-    refund.approvedAt = new Date();
-    refund.refundedAmount = finalRefundAmount;
-    refund.notes = notes || "Approved and restocked";
-    await refund.save();
-
-    if (refund.order) {
-      const order = await Order.findById(refund.order);
-      if (order) {
-        order.orderStatus = "cancelled";
-        await order.save();
+      // ── Deduct from wallet ─────────────────────────────────────────────────
+      let wallet = await Wallet.findOne().session(session);
+      if (!wallet) {
+        wallet = new Wallet({ cash: 0, bank: 0, easyPaisa: 0, jazzCash: 0 });
       }
+
+      const walletKeyMap: Record<string, string> = {
+        cash:      "cash",
+        bank:      "bank",
+        card:      "bank",
+        easypaisa: "easyPaisa",
+        jazzcash:  "jazzCash",
+      };
+      const walletField = walletKeyMap[paymentMethod?.toLowerCase() || "cash"] || "cash";
+      (wallet as any)[walletField] = ((wallet as any)[walletField] || 0) - finalRefundAmount;
+      wallet.lastUpdated = new Date();
+      await wallet.save({ session });
+
+      // ── Update refund record ───────────────────────────────────────────────
+      refund.status = "completed";
+      refund.approvedBy = payload.userId;
+      refund.approvedAt = approvedAt;
+      refund.refundedAmount = finalRefundAmount;
+      refund.notes = notes || "Approved by admin";
+      await refund.save({ session });
+
+      // ── CREATE TRANSACTION RECORD ──────────────────────────────────────────
+      const transaction = new Transaction({
+        type: "expense",
+        category: "Refund",
+        amount: finalRefundAmount,
+        source: walletField,
+        reference: refund._id,
+        referenceModel: "Refund",
+        description: `Refund for ${refund.returnType === "online" ? "Order" : "Sale"} #${refund.orderNumber || refund.order?.orderNumber} (${returnItems.length} item${returnItems.length > 1 ? "s" : ""})`,
+        notes: notes || `Approved ${refund.returnType === "online" ? "online" : "POS"} return`,
+        createdBy: payload.userId,
+      });
+      await transaction.save({ session });
+
+      await session.commitTransaction();
+
+      return NextResponse.json(
+        {
+          success: true,
+          message: `Refund approved! Rs. ${finalRefundAmount.toLocaleString()} refunded. ${returnItems.filter(i => i.restock).length} item(s) restocked.`,
+          refund,
+          refundAmount: finalRefundAmount,
+          walletBalance: (wallet as any)[walletField],
+          transactionId: transaction._id,
+        },
+        { status: 200 }
+      );
+    } catch (err) {
+      await session.abortTransaction();
+      throw err;
+    } finally {
+      session.endSession();
     }
-
-    let wallet = await Wallet.findOne();
-    if (!wallet) {
-      wallet = new Wallet();
-    }
-
-    const walletField =
-      paymentMethod === "bank"
-        ? "bank"
-        : paymentMethod === "easypaisa"
-          ? "easyPaisa"
-          : paymentMethod === "jazzcash"
-            ? "jazzCash"
-            : "cash";
-
-    wallet[walletField] = (wallet[walletField] || 0) - finalRefundAmount;
-    wallet.lastUpdated = new Date();
-    await wallet.save();
-
-    const transaction = new Transaction({
-      type: "expense",
-      category: "Refund",
-      amount: finalRefundAmount,
-      source: paymentMethod,
-      reference: refund._id,
-      referenceModel: "Refund",
-      description: `Refund for ${refund.returnType === "online" ? "online order" : "POS sale"} ${refund.order?.orderNumber || refund.orderNumber}`,
-      notes: notes,
-      createdBy: payload.userId,
-    });
-    await transaction.save();
-
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Refund approved and items restocked",
-        refund,
-      },
-      { status: 200 },
-    );
   } catch (error) {
     console.error("Refund approval error:", error);
     return NextResponse.json(
@@ -175,7 +247,7 @@ export async function POST(
         error:
           error instanceof Error ? error.message : "Failed to approve refund",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
