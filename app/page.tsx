@@ -381,58 +381,91 @@ export default function Home() {
         {/* ── Hero ── */}
         <section><HeroCarousel /></section>
 
-        {/* ── Categories ── */}
-        <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-10">
-            <div>
-              <span className="section-pill section-pill-green"><Star className="w-3 h-3" /> Categories</span>
-              <h2 className="font-display text-3xl md:text-4xl lg:text-[2.8rem] font-bold text-gray-900 leading-tight">Shop by Category</h2>
-              <p className="text-gray-500 text-base mt-2">Explore our wide range of fresh products</p>
-            </div>
-            <Link href="/products" className="inline-flex items-center gap-1.5 text-green-700 font-semibold text-sm hover:text-orange-600 transition-colors group">
-              View all products <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </Link>
-          </div>
+        {/* ── Categories Section ── */}
+<section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  
+  {/* Header: Centered on all screen sizes */}
+  <div className="flex flex-col items-center text-center gap-4 mb-12">
+    <div>
+      
+      <h2 className="font-display text-3xl md:text-4xl lg:text-[2.8rem] font-bold text-gray-900 leading-tight mt-3">
+        Shop by Category
+      </h2>
+      <p className="text-gray-500 text-base mt-2 max-w-2xl">
+        Explore our wide range of fresh products
+      </p>
+    </div>
 
-          {loadingCategories ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => <div key={i} className="aspect-square rounded-2xl skeleton-box" />)}
+  </div>
+
+  {/* Content States */}
+  {loadingCategories ? (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="aspect-square rounded-2xl skeleton-box bg-gray-100 animate-pulse" />
+      ))}
+    </div>
+  ) : categoriesError ? (
+    <div className="text-center py-16">
+      <p className="text-red-500 font-semibold">{categoriesError}</p>
+    </div>
+  ) : categories.length === 0 ? (
+    <div className="text-center py-16">
+      <p className="text-gray-400">No categories available yet</p>
+    </div>
+  ) : (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-5">
+      {categories.map((category, idx) => {
+        const gradient = CATEGORY_GRADIENTS[idx % CATEGORY_GRADIENTS.length];
+        const iconBg = CATEGORY_ICON_BG[idx % CATEGORY_ICON_BG.length];
+        const hasUrlIcon = category.icon && isUrl(category.icon);
+        const hasEmojiIcon = category.icon && !isUrl(category.icon) && category.icon.trim().length > 0;
+
+        return (
+          <Link 
+            key={category._id} 
+            href={`/products?category=${category._id}`} 
+            className="category-card group block"
+          >
+            <div className={`relative flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-br ${gradient} aspect-square overflow-hidden cursor-pointer`}>
+              {/* Decorative background shapes */}
+              <div className="absolute -top-5 -right-5 w-20 h-20 rounded-full bg-white/10 pointer-events-none" />
+              <div className="absolute -bottom-6 -left-4 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
+              
+              {/* Icon Container */}
+              <div className={`relative w-14 h-14 ${iconBg} rounded-2xl shadow flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200`}>
+                {hasUrlIcon ? (
+                  <img 
+                    src={category.icon} 
+                    alt={category.name} 
+                    className="w-8 h-8 object-contain"
+                    onError={(e) => { 
+                      const t = e.target; 
+                      t.style.display = "none"; 
+                      if (t.parentElement) t.parentElement.innerHTML = `<span class="text-xl font-bold text-gray-600">${category.name.charAt(0).toUpperCase()}</span>`; 
+                    }}
+                  />
+                ) : hasEmojiIcon ? (
+                  <span className="text-2xl leading-none" role="img" aria-label={category.name}>
+                    {category.icon}
+                  </span>
+                ) : (
+                  <span className="text-xl font-bold text-gray-600 font-display">
+                    {category.name.charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </div>
+              
+              <h3 className="relative text-xs md:text-sm font-bold text-white text-center leading-snug drop-shadow px-1 line-clamp-2">
+                {category.name}
+              </h3>
             </div>
-          ) : categoriesError ? (
-            <div className="text-center py-16"><p className="text-red-500 font-semibold">{categoriesError}</p></div>
-          ) : categories.length === 0 ? (
-            <div className="text-center py-16"><p className="text-gray-400">No categories available yet</p></div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-5">
-              {categories.map((category, idx) => {
-                const gradient = CATEGORY_GRADIENTS[idx % CATEGORY_GRADIENTS.length];
-                const iconBg = CATEGORY_ICON_BG[idx % CATEGORY_ICON_BG.length];
-                const hasUrlIcon = category.icon && isUrl(category.icon);
-                const hasEmojiIcon = category.icon && !isUrl(category.icon) && category.icon.trim().length > 0;
-                return (
-                  <Link key={category._id} href={`/products?category=${category._id}`} className="category-card group block">
-                    <div className={`relative flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-br ${gradient} aspect-square overflow-hidden cursor-pointer`}>
-                      <div className="absolute -top-5 -right-5 w-20 h-20 rounded-full bg-white/10 pointer-events-none" />
-                      <div className="absolute -bottom-6 -left-4 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
-                      <div className={`relative w-14 h-14 ${iconBg} rounded-2xl shadow flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200`}>
-                        {hasUrlIcon ? (
-                          <img src={category.icon} alt={category.name} className="w-8 h-8 object-contain"
-                            onError={(e) => { const t = e.target as HTMLImageElement; t.style.display = "none"; if (t.parentElement) t.parentElement.innerHTML = `<span style="font-size:1.25rem;font-weight:700;color:#555">${category.name.charAt(0).toUpperCase()}</span>`; }}
-                          />
-                        ) : hasEmojiIcon ? (
-                          <span className="text-2xl leading-none" role="img" aria-label={category.name}>{category.icon}</span>
-                        ) : (
-                          <span className="text-xl font-bold text-gray-600 font-display">{category.name.charAt(0).toUpperCase()}</span>
-                        )}
-                      </div>
-                      <h3 className="relative text-xs md:text-sm font-bold text-white text-center leading-snug drop-shadow px-1 line-clamp-2">{category.name}</h3>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </section>
+          </Link>
+        );
+      })}
+    </div>
+  )}
+</section>
 
         {/* ── Featured Products (amber marquee strip) ── */}
         <FeaturedProducts />
@@ -474,6 +507,7 @@ export default function Home() {
             )}
           </div>
         </section>
+         
 
         {/* ── Dual CTA Cards ── */}
         <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -511,20 +545,6 @@ export default function Home() {
                 </div>
               </div>
             </Link>
-          </div>
-        </section>
-
-        {/* ── Stats Strip ── */}
-        <section className="stats-strip py-10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center text-white">
-              {[{ value: "10,000+", label: "Happy Customers" }, { value: "500+", label: "Products" }, { value: "50+", label: "Trusted Brands" }, { value: "4.9 ★", label: "Average Rating" }].map((s, i) => (
-                <div key={i}>
-                  <div className="font-display text-2xl md:text-3xl font-bold">{s.value}</div>
-                  <div className="text-white/80 text-sm mt-1 font-medium">{s.label}</div>
-                </div>
-              ))}
-            </div>
           </div>
         </section>
 
