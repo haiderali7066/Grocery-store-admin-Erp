@@ -85,7 +85,7 @@ export function Navbar() {
   return (
     <header className="w-full bg-white flex flex-col shadow-sm sticky top-0 z-50">
       {/* Tier 1: Top Green Bar */}
-      <div className="bg-green-700 text-green-50 w-full transition-colors">
+      <div className="bg-green-700 text-white w-full transition-colors">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center py-2 text-[11px] sm:text-xs font-medium tracking-wide">
           <div className="flex items-center gap-4">
             <span className="hidden sm:inline bg-green-600/50 px-2 py-0.5 rounded-full">
@@ -97,8 +97,7 @@ export function Navbar() {
           </div>
           <div className="flex items-center gap-4 sm:gap-6">
             <Link href="/about" className="hover:text-white transition-colors">About Us</Link>
-            <Link href="/contact" className="hover:text-white transition-colors">Contact Us</Link>
-            <Link href="/orders" className="hover:text-white transition-colors hidden sm:inline-block">Track Order</Link>
+            <Link href="/orders" className="hover:text-white transition-colors  sm:inline-block">Track Order</Link>
           </div>
         </div>
       </div>
@@ -121,7 +120,7 @@ export function Navbar() {
               </div>
             )}
             <span className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight group-hover:text-green-700 transition-colors">
-              {settings?.storeName ?? "GreenValley"}
+              {settings?.storeName ?? "Devntom"}
             </span>
           </Link>
 
