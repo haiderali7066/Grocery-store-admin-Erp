@@ -204,31 +204,37 @@ function HomeBundleCard({ bundle, index }: { bundle: HomeBundle; index: number }
     <div className="group relative bg-white rounded-xl overflow-hidden border-2 border-green-100 hover:border-green-300 hover:shadow-xl transition-all duration-300 flex flex-col h-full" style={{ animationDelay: `${index * 60}ms` }}>
       {/* Badges */}
       <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
-        <span className="bg-green-700 text-white text-[10px] font-black px-2 py-1 rounded shadow-sm flex items-center gap-1">
-          <Package className="h-2.5 w-2.5" /> BUNDLE
+        <span className="bg-green-700 text-white text-xs font-black px-2 py-1 rounded shadow-sm flex items-center gap-1">
+          <Package className="h-3 w-3" /> BUNDLE
         </span>
-        {savingsPct > 0 && <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm">{savingsPct}% OFF</span>}
+        {savingsPct > 0 && <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">{savingsPct}% OFF</span>}
       </div>
 
       {/* Header */}
-      <div className="p-4 border-b bg-gradient-to-r from-green-50 to-transparent">
-        <h3 className="font-bold text-gray-900 text-sm sm:text-base mb-1">{bundle.name}</h3>
-        {bundle.description && <p className="text-xs text-gray-500 line-clamp-1">{bundle.description}</p>}
+      <div className="p-5 border-b bg-gradient-to-r from-green-50 to-transparent">
+        <h3 className="font-bold text-gray-900 text-lg sm:text-xl mb-1">{bundle.name}</h3>
+        {bundle.description && <p className="text-sm sm:text-base text-gray-500 line-clamp-1">{bundle.description}</p>}
       </div>
 
       {/* Items list */}
-      <div className="flex-1 p-4 space-y-2">
+      <div className="flex-1 p-5 space-y-3">
         {bundle.products.map((bp, i) => (
-          <div key={i} className="flex items-center gap-2.5 bg-gray-50 rounded-lg p-2.5 text-xs">
-            <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-white border flex-shrink-0">
-              <Image src={bp.product?.mainImage || "/placeholder.svg"} alt={bp.product?.name || ""} fill unoptimized className="object-contain p-0.5" />
+          <div key={i} className="flex items-center gap-4 bg-gray-50 rounded-lg p-3.5 text-sm sm:text-base">
+            <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-lg overflow-hidden bg-white border flex-shrink-0">
+              <Image
+                src={bp.product?.mainImage || "/placeholder.svg"}
+                alt={bp.product?.name || ""}
+                fill
+                unoptimized
+                className="object-contain p-1"
+              />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-800 text-[11px] truncate">{bp.product?.name}</p>
-              <p className="text-gray-500 text-[10px]">{bp.product?.unitSize} {bp.product?.unitType}</p>
+              <p className="font-semibold text-gray-800 truncate">{bp.product?.name}</p>
+              <p className="text-gray-500">{bp.product?.unitSize} {bp.product?.unitType}</p>
             </div>
             <div className="text-right flex-shrink-0">
-              <p className="text-gray-400 text-[10px]">×{bp.quantity}</p>
+              <p className="text-gray-400">×{bp.quantity}</p>
               <p className="font-bold text-gray-700">Rs. {((bp.product?.retailPrice || 0) * bp.quantity).toLocaleString()}</p>
             </div>
           </div>
@@ -236,12 +242,12 @@ function HomeBundleCard({ bundle, index }: { bundle: HomeBundle; index: number }
       </div>
 
       {/* Expandable pricing */}
-      <div className="px-4 py-2 border-t">
-        <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-center w-full gap-1 text-xs text-gray-500 hover:text-gray-700 py-1">
-          {expanded ? <><ChevronUp className="h-3 w-3" /> Hide Pricing</> : <><ChevronDown className="h-3 w-3" /> Show Pricing</>}
+      <div className="px-5 py-3 border-t">
+        <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-center w-full gap-1 text-sm sm:text-base text-gray-500 hover:text-gray-700 py-1">
+          {expanded ? <><ChevronUp className="h-4 w-4" /> Hide Pricing</> : <><ChevronDown className="h-4 w-4" /> Show Pricing</>}
         </button>
         {expanded && (
-          <div className="mt-2 space-y-1 text-[11px]">
+          <div className="mt-2 space-y-1 text-sm sm:text-base">
             <div className="flex justify-between text-gray-600"><span>Retail Total:</span><span>Rs. {retailTotal.toLocaleString()}</span></div>
             <div className="flex justify-between text-gray-600"><span>Bundle Price:</span><span>Rs. {bundle.bundlePrice.toLocaleString()}</span></div>
             {bundle.discount > 0 && (
@@ -260,26 +266,25 @@ function HomeBundleCard({ bundle, index }: { bundle: HomeBundle; index: number }
       </div>
 
       {/* Price + CTA */}
-      <div className="px-4 py-3 bg-green-50 border-t border-green-100">
-        <div className="flex items-baseline gap-2 mb-3">
-          <span className="text-lg sm:text-xl font-bold text-green-700">Rs. {salePrice.toLocaleString()}</span>
-          {retailTotal > salePrice && <span className="text-xs text-gray-400 line-through">Rs. {retailTotal.toLocaleString()}</span>}
+      <div className="px-5 py-4 bg-green-50 border-t border-green-100">
+        <div className="flex items-baseline gap-3 mb-3">
+          <span className="text-2xl sm:text-3xl font-bold text-green-700">Rs. {salePrice.toLocaleString()}</span>
+          {retailTotal > salePrice && <span className="text-sm sm:text-base text-gray-400 line-through">Rs. {retailTotal.toLocaleString()}</span>}
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-3">
           <button onClick={handleAddToCart}
-            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 border ${showSuccess ? "bg-green-100 border-green-200 text-green-700" : "bg-white border-gray-200 text-gray-900 hover:border-gray-900 hover:bg-gray-50"}`}
+            className={`flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-lg text-sm sm:text-base font-semibold transition-all duration-200 border ${showSuccess ? "bg-green-100 border-green-200 text-green-700" : "bg-white border-gray-200 text-gray-900 hover:border-gray-900 hover:bg-gray-50"}`}
           >
-            {showSuccess ? <><Check className="w-3 h-3 sm:w-4 sm:h-4" /> Added</> : <><ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" /> Add</>}
+            {showSuccess ? <><Check className="w-4 h-4 sm:w-5 sm:h-5" /> Added</> : <><ShoppingCart className="w-4 h-4 sm:w-5 sm:h-5" /> Add</>}
           </button>
-          <button onClick={handleBuyNow} className="flex items-center justify-center py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold text-white bg-green-700 hover:bg-green-800 transition-colors shadow-sm gap-1">
-            Buy <ArrowRight className="w-3 h-3" />
+          <button onClick={handleBuyNow} className="flex items-center justify-center py-2.5 px-3.5 rounded-lg text-sm sm:text-base font-semibold text-white bg-green-700 hover:bg-green-800 transition-colors shadow-sm gap-2">
+            Buy <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>
     </div>
   );
 }
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -381,168 +386,45 @@ export default function Home() {
         {/* ── Hero ── */}
         <section><HeroCarousel /></section>
 
-        {/* ── Categories Section ── */}
-{/* <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-  
-  <div className="flex flex-col items-center text-center gap-4 mb-12">
-    <div>
-      
-      <h2 className="font-display text-3xl md:text-4xl lg:text-[2.8rem] font-bold text-gray-900 leading-tight mt-3">
-        Shop by Category
-      </h2>
-      <p className="text-gray-500 text-base mt-2 max-w-2xl">
-        Explore our wide range of fresh products
-      </p>
-    </div>
-
-  </div>
-
-  {loadingCategories ? (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="aspect-square rounded-2xl skeleton-box bg-gray-100 animate-pulse" />
-      ))}
-    </div>
-  ) : categoriesError ? (
-    <div className="text-center py-16">
-      <p className="text-red-500 font-semibold">{categoriesError}</p>
-    </div>
-  ) : categories.length === 0 ? (
-    <div className="text-center py-16">
-      <p className="text-gray-400">No categories available yet</p>
-    </div>
-  ) : (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-5">
-      {categories.map((category, idx) => {
-        const gradient = CATEGORY_GRADIENTS[idx % CATEGORY_GRADIENTS.length];
-        const iconBg = CATEGORY_ICON_BG[idx % CATEGORY_ICON_BG.length];
-        const hasUrlIcon = category.icon && isUrl(category.icon);
-        const hasEmojiIcon = category.icon && !isUrl(category.icon) && category.icon.trim().length > 0;
-
-        return (
-          <Link 
-            key={category._id} 
-            href={`/products?category=${category._id}`} 
-            className="category-card group block"
-          >
-            <div className={`relative flex flex-col items-center justify-center p-4 rounded-2xl bg-gradient-to-br ${gradient} aspect-square overflow-hidden cursor-pointer`}>
-              <div className="absolute -top-5 -right-5 w-20 h-20 rounded-full bg-white/10 pointer-events-none" />
-              <div className="absolute -bottom-6 -left-4 w-24 h-24 rounded-full bg-white/10 pointer-events-none" />
-              
-              <div className={`relative w-14 h-14 ${iconBg} rounded-2xl shadow flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-200`}>
-                {hasUrlIcon ? (
-                  <img 
-                    src={category.icon} 
-                    alt={category.name} 
-                    className="w-8 h-8 object-contain"
-                    onError={(e) => { 
-                      const t = e.target; 
-                      t.style.display = "none"; 
-                      if (t.parentElement) t.parentElement.innerHTML = `<span class="text-xl font-bold text-gray-600">${category.name.charAt(0).toUpperCase()}</span>`; 
-                    }}
-                  />
-                ) : hasEmojiIcon ? (
-                  <span className="text-2xl leading-none" role="img" aria-label={category.name}>
-                    {category.icon}
-                  </span>
-                ) : (
-                  <span className="text-xl font-bold text-gray-600 font-display">
-                    {category.name.charAt(0).toUpperCase()}
-                  </span>
-                )}
-              </div>
-              
-              <h3 className="relative text-xs md:text-sm font-bold text-white text-center leading-snug drop-shadow px-1 line-clamp-2">
-                {category.name}
-              </h3>
-            </div>
-          </Link>
-        );
-      })}
-    </div>
-  )}
-</section> */}
+ 
 
         {/* ── Featured Products (amber marquee strip) ── */}
         <FeaturedProducts />
 
         {/* ── Bundle Deals ── */}
-        <section className="py-16 md:py-20 bg-gray-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-10">
-              <div>
-                <span className="section-pill section-pill-orange"><Gift className="w-3 h-3" /> Bundle Deals</span>
-                <h2 className="font-display text-3xl md:text-4xl lg:text-[2.8rem] font-bold text-gray-900 leading-tight">Save More, Buy Together</h2>
-                <p className="text-gray-500 text-base mt-2">Handpicked bundles at unbeatable prices</p>
-              </div>
-              <Link href="/sale" className="inline-flex items-center gap-1.5 text-orange-600 font-semibold text-sm hover:text-green-700 transition-colors group">
-                See all bundles <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </div>
+       <section className="py-16 md:py-20 bg-gray-50">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 mb-10">
+      <div>
+        <span className="section-pill section-pill-orange">
+          <Gift className="w-3 h-3" /> Bundle Deals
+        </span>
+        <h2 className="font-display text-3xl md:text-4xl font-bold text-gray-900 mt-3">Hot Bundle Deals</h2>
+      </div>
+    </div>
 
-            {loadingBundles ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="rounded-xl overflow-hidden border-2 border-green-100">
-                    <div className="h-14 skeleton-box" />
-                    <div className="p-4 space-y-3">{Array.from({ length: 3 }).map((_, j) => <div key={j} className="h-12 skeleton-box rounded-lg" />)}</div>
-                    <div className="h-20 skeleton-box" />
-                  </div>
-                ))}
-              </div>
-            ) : bundles.length === 0 ? (
-              <div className="text-center py-16">
-                <p className="text-gray-400">No bundle deals available right now — check back soon!</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {bundles.slice(0, 6).map((bundle, i) => (
-                  <HomeBundleCard key={bundle._id} bundle={bundle} index={i} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
+    {/* Updated grid for wider cards */}
+    <div className="grid grid-cols-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 justify-center">
+      {loadingBundles ? (
+        <p>Loading Bundles...</p>
+      ) : bundles.length === 0 ? (
+        <p>No bundles available.</p>
+      ) : (
+        bundles.map((bundle, i) => (
+          <HomeBundleCard
+            key={bundle._id}
+            bundle={bundle}
+            index={i}
+            className="w-full max-w-[400px]" // <-- limit width of each card
+          />
+        ))
+      )}
+    </div>
+  </div>
+</section>
          
 
-        {/* ── Dual CTA Cards ── */}
-        {/* <section className="py-16 md:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Link href="/products" className="cta-card-products block rounded-3xl p-8 md:p-10 relative overflow-hidden group">
-              <div className="cta-blob w-48 h-48 -top-16 -right-16" />
-              <div className="cta-blob w-32 h-32 -bottom-12 -left-8" />
-              <div className="relative">
-                <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-5">
-                  <Package className="w-7 h-7 text-white" />
-                </div>
-                <h3 className="font-display text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">Browse All Products</h3>
-                <p className="text-green-100 text-base mb-6">Discover 500+ fresh, organic, and wholesome products from trusted brands.</p>
-                <div className="inline-flex items-center gap-2 bg-white text-green-700 font-bold text-sm px-5 py-3 rounded-xl group-hover:bg-green-50 transition-colors">
-                  Shop Now <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-            </Link>
-
-            <Link href="/sale" className="cta-card-sale block rounded-3xl p-8 md:p-10 relative overflow-hidden group">
-              <div className="cta-blob w-48 h-48 -top-16 -right-16" />
-              <div className="cta-blob w-32 h-32 -bottom-12 -left-8" />
-              <div className="absolute top-6 right-6 w-16 h-16 bg-white rounded-full flex flex-col items-center justify-center shadow-lg">
-                <span className="font-display text-lg font-bold text-orange-600 leading-none">50%</span>
-                <span className="text-orange-500 text-xs font-bold">OFF</span>
-              </div>
-              <div className="relative">
-                <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-5">
-                  <Tag className="w-7 h-7 text-white" />
-                </div>
-                <h3 className="font-display text-2xl md:text-3xl font-bold text-white mb-2 leading-tight">Today's Hot Deals</h3>
-                <p className="text-orange-100 text-base mb-6">Limited-time offers on your favourite products. Don't miss out — sale ends soon!</p>
-                <div className="inline-flex items-center gap-2 bg-white text-orange-600 font-bold text-sm px-5 py-3 rounded-xl group-hover:bg-orange-50 transition-colors">
-                  View Sale <Zap className="w-4 h-4" />
-                </div>
-              </div>
-            </Link>
-          </div>
-        </section> */}
+       
 
         {/* ── All Products ── */}
         <section className="py-16 md:py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -581,11 +463,11 @@ export default function Home() {
             <div className="text-center py-16"><p className="text-gray-400">No products available yet</p></div>
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-5">
-                {displayedProducts.map((product) => (
-                  <HomeProductCard key={product._id} product={product} />
-                ))}
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 md:gap-8">
+  {displayedProducts.map((product) => (
+    <HomeProductCard key={product._id} product={product} />
+  ))}
+</div>
               {hasMore && (
                 <div className="text-center mt-10">
                   <button onClick={() => setProductPage(p => p + 1)}
