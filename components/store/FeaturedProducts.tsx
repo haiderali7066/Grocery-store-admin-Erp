@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCart } from "@/components/cart/CartProvider";
 import { ProductCard } from "./ProductCard";
 import { ChevronRight, Sparkles, Loader2, PauseCircle, PlayCircle } from "lucide-react";
 
@@ -101,16 +100,20 @@ export function FeaturedProducts() {
         <div className="absolute left-0 top-0 bottom-0 w-16 md:w-32 bg-gradient-to-r from-amber-400 to-transparent z-10 pointer-events-none" />
         <div className="absolute right-0 top-0 bottom-0 w-16 md:w-32 bg-gradient-to-l from-amber-500 to-transparent z-10 pointer-events-none" />
 
-        {/* Track — height fixed to card height (220px image + 140px content = 360px) + padding */}
+        {/* Track */}
         <div className="flex overflow-hidden select-none py-3">
-          <div className={`flex gap-4 flex-shrink-0 items-start ${isPaused ? "pause-marquee" : "run-marquee"}`}>
+          {/* Changed items-start to items-stretch to enforce uniform height naturally */}
+          <div className={`flex gap-4 flex-shrink-0 items-stretch ${isPaused ? "pause-marquee" : "run-marquee"}`}>
             {[0, 1].map((setIdx) => (
               <div key={setIdx} className="flex gap-4 flex-shrink-0">
                 {products.map((product) => (
-                  <ProductCard
-                    key={`${product._id}-${setIdx}`}
-                    product={product}
-                  />
+                  // THE FIX: Added a strict wrapper to force width and height
+                  <div 
+                    key={`${product._id}-${setIdx}`} 
+                    className="w-[240px] sm:w-[260px] h-[380px] shrink-0 flex flex-col"
+                  >
+                    <ProductCard product={product} />
+                  </div>
                 ))}
               </div>
             ))}
