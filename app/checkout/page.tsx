@@ -316,7 +316,7 @@ export default function CheckoutPage() {
       }
 
       clearCart();
-      router.push(`/order-success/${data.order._id}`);
+      router.push(`/orders/${data.order._id}`);
     } catch (err: any) {
       console.error("Checkout error:", err);
       setError(err.message || "Checkout failed. Please try again.");
