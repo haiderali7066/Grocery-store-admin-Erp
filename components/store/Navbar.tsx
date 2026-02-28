@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/components/auth/AuthProvider";
 import { useCart } from "@/components/cart/CartProvider";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -22,9 +21,9 @@ import {
   LogOut,
   User,
   Phone,
-  Mail,
-  MapPin,
-  Clock,
+  ChevronDown,
+  AlignLeft,
+  ShoppingBag
 } from "lucide-react";
 
 interface StoreSettings {
@@ -32,16 +31,10 @@ interface StoreSettings {
   storeLogoUrl?: string;
   contactPhone?: string;
   contactEmail?: string;
-  address?: string;
-  city?: string;
-  country?: string;
-  businessHours?: string;
-  whatsappNumber?: string;
 }
 
-// Ensure you match this to your actual category structure from the DB
 interface Category {
-  _id: string; // or id: string
+  _id: string;
   name: string;
   slug: string;
 }
@@ -56,17 +49,14 @@ export function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    // Fetch Settings
     fetch("/api/admin/settings")
       .then((res) => res.json())
       .then((data) => setSettings(data.settings ?? null))
       .catch(console.error);
 
-    // Fetch Categories (Adjust the endpoint if your API path is different)
     fetch("/api/categories")
       .then((res) => res.json())
       .then((data) => {
-        // Checks if API returns an array directly, or an object like { categories: [...] }
         if (Array.isArray(data)) {
           setCategories(data);
         } else if (data.categories) {
@@ -80,8 +70,8 @@ export function Navbar() {
     e.preventDefault();
     if (searchQuery.trim()) {
       router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-      setIsMenuOpen(false); // Close mobile menu if open
-      setSearchQuery(""); // Optional: clear search after submitting
+      setIsMenuOpen(false);
+      setSearchQuery(""); 
     }
   };
 
@@ -90,362 +80,239 @@ export function Navbar() {
   const phoneHref = settings?.contactPhone
     ? `tel:${settings.contactPhone.replace(/\s/g, "")}`
     : "tel:+923001234567";
-  const phoneDisplay = settings?.contactPhone ?? "";
-
-  const emailHref = settings?.contactEmail
-    ? `mailto:${settings.contactEmail}`
-    : "mailto:info@khaspurefood.com";
-  const emailDisplay = settings?.contactEmail ?? "";
-
-  const locationDisplay =
-    [settings?.city, settings?.country].filter(Boolean).join(", ") ||
-    "";
-
-  const hoursDisplay = settings?.businessHours ?? "";
+  const phoneDisplay = settings?.contactPhone ?? "+92 300 123 4567";
 
   return (
-    <nav className="sticky top-0 z-50 w-full bg-background shadow-sm">
-      {/* Top Info Bar */}
-      <div className="bg-primary text-primary-foreground">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap justify-between items-center py-2 text-xs md:text-sm gap-2">
-            {/* Left side - Contact Info */}
-            <div className="flex flex-wrap items-center gap-3 md:gap-6">
-              <a
-                href={phoneHref}
-                className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
-              >
-                <Phone className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                <span className="hidden sm:inline">{phoneDisplay}</span>
-              </a>
-              <a
-                href={emailHref}
-                className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
-              >
-                <Mail className="h-3.5 w-3.5 md:h-4 md:w-4" />
-                <span className="hidden md:inline">{emailDisplay}</span>
-              </a>
-              {hoursDisplay && (
-                <div className="hidden lg:flex items-center gap-1.5">
-                  <Clock className="h-4 w-4" />
-                  <span>{hoursDisplay}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Right side - Location / Links */}
-            <div className="flex items-center gap-3 md:gap-4">
-              {locationDisplay && (
-                <div className="hidden md:flex items-center gap-1.5">
-                  <MapPin className="h-4 w-4" />
-                  <span>{locationDisplay}</span>
-                </div>
-              )}
-              <Link
-                href="/orders"
-                className="hover:opacity-80 transition-opacity"
-              >
-                Track Order
-              </Link>
-              <Link
-                href="/about"
-                className="hover:opacity-80 transition-opacity hidden sm:inline"
-              >
-                Help
-              </Link>
-            </div>
+    <header className="w-full bg-white flex flex-col shadow-sm sticky top-0 z-50">
+      {/* Tier 1: Top Green Bar */}
+      <div className="bg-green-700 text-green-50 w-full transition-colors">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center py-2 text-[11px] sm:text-xs font-medium tracking-wide">
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:inline bg-green-600/50 px-2 py-0.5 rounded-full">
+              Free Delivery on orders over Rs. 5000
+            </span>
+            <a href={phoneHref} className="flex items-center gap-1.5 hover:text-white transition-colors">
+              <Phone className="h-3 w-3" /> {phoneDisplay}
+            </a>
+          </div>
+          <div className="flex items-center gap-4 sm:gap-6">
+            <Link href="/about" className="hover:text-white transition-colors">About Us</Link>
+            <Link href="/contact" className="hover:text-white transition-colors">Contact Us</Link>
+            <Link href="/orders" className="hover:text-white transition-colors hidden sm:inline-block">Track Order</Link>
           </div>
         </div>
       </div>
 
-      {/* Main Navbar */}
-      <div className="border-b border-secondary">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16 md:h-20">
-            {/* Logo */}
-            <Link
-              href="/"
-              className="flex items-center gap-2 text-lg md:text-xl font-bold text-primary"
-            >
-              {settings?.storeLogoUrl ? (
-                <div className="relative w-12 h-12 rounded-full overflow-hidden">
-                  <Image
-                    src={settings.storeLogoUrl}
-                    alt={settings?.storeName ?? "Store logo"}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              ) : (
-                <div className="w-9 h-9 bg-primary rounded-full flex items-center justify-center text-primary-foreground text-sm font-bold">
-                  {(settings?.storeName ?? "")
-                    .split(" ")
-                    .map((w) => w[0])
-                    .join("")
-                    .slice(0, 3)
-                    .toUpperCase()}
-                </div>
-              )}
-              <span className="hidden sm:inline">
-                {settings?.storeName ?? ""}
-              </span>
-            </Link>
-
-            {/* Desktop Search Bar */}
-            <div className="hidden md:flex flex-1 max-w-md mx-8">
-              <form onSubmit={handleSearch} className="relative w-full">
-                <Input
-                  type="search"
-                  placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-full bg-secondary border-0 pl-4 pr-10"
+      {/* Tier 2: Main Header */}
+      <div className="border-b border-gray-100 bg-white">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5 flex items-center justify-between gap-4 md:gap-8">
+          
+          {/* Logo & Store Name Combo */}
+          <Link href="/" className="flex items-center gap-3 flex-shrink-0 group">
+            {settings?.storeLogoUrl && (
+              <div className="relative w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 drop-shadow-sm group-hover:scale-105 transition-transform duration-300">
+                <Image
+                  src={settings.storeLogoUrl}
+                  alt={settings?.storeName ?? "Store logo"}
+                  fill
+                  className="object-contain"
+                  sizes="(max-width: 768px) 40px, 48px"
                 />
-                <button
-                  type="submit"
-                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <Search className="h-5 w-5" />
-                </button>
-              </form>
-            </div>
+              </div>
+            )}
+            <span className="text-xl sm:text-2xl font-extrabold text-gray-900 tracking-tight group-hover:text-green-700 transition-colors">
+              {settings?.storeName ?? "GreenValley"}
+            </span>
+          </Link>
 
-            {/* Desktop Menu */}
-            <div className="hidden md:flex items-center gap-4 lg:gap-6">
-              <Link
-                href="/"
-                className="text-primary text-lg font-bold hover:text-primary  transition-colors"
+          {/* Desktop Search Bar */}
+          <div className="hidden md:flex flex-1 max-w-2xl mx-auto">
+            <form 
+              onSubmit={handleSearch} 
+              className="flex w-full group relative rounded-lg overflow-hidden border border-gray-300 focus-within:border-green-600 focus-within:ring-4 focus-within:ring-green-600/10 transition-all"
+            >
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-green-600 transition-colors">
+                <Search className="h-5 w-5" />
+              </div>
+              <Input
+                type="search"
+                placeholder="Search for products, brands and more..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-50/50 border-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-gray-400"
+              />
+              <button
+                type="submit"
+                className="bg-green-600 hover:bg-green-700 text-white px-6 font-medium transition-colors border-l border-green-600"
               >
-                Home
-              </Link>
-              <Link
-                href="/products"
-                className="text-primary text-lg font-bold transition-colors"
-              >
-                Products
-              </Link>
-              <Link
-                href="/sale"
-                className="text-primary text-lg font-bold transition-colors"
-              >
-                Sale
-              </Link>
+                Search
+              </button>
+            </form>
+          </div>
 
+          {/* Desktop Right Actions */}
+          <div className="hidden md:flex items-center gap-8 flex-shrink-0">
+            {isAuthenticated && user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="text-primary text-lg font-bold transition-colors">
-                    Categories
+                  <button className="flex items-center gap-3 hover:opacity-80 transition-opacity outline-none">
+                    <div className="bg-green-50 p-2 rounded-full border border-green-100 text-green-700">
+                      <User className="h-5 w-5" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-gray-500 text-[11px] uppercase tracking-wider font-semibold">Welcome</p>
+                      <p className="font-bold text-gray-800 text-sm leading-tight">{user.name.split(" ")[0]}</p>
+                    </div>
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48 rounded-2xl">
-                  {categories.length > 0 ? (
-                    categories.map((cat) => (
-                      <DropdownMenuItem key={cat._id || cat.slug} asChild>
-                        <Link href={`/products?category=${cat._id}`}>
-                          {cat.name}
-                        </Link>
-                      </DropdownMenuItem>
-                    ))
-                  ) : (
-                    <DropdownMenuItem disabled>
-                      No categories found
-                    </DropdownMenuItem>
+                <DropdownMenuContent align="end" className="w-52 p-2 rounded-xl shadow-lg border-gray-100">
+                  <DropdownMenuItem asChild className="rounded-lg cursor-pointer"><Link href="/account">My Account</Link></DropdownMenuItem>
+                  <DropdownMenuItem asChild className="rounded-lg cursor-pointer"><Link href="/orders">My Orders</Link></DropdownMenuItem>
+                  {user.role === "admin" && (
+                     <DropdownMenuItem asChild className="rounded-lg cursor-pointer"><Link href="/admin">Admin Panel</Link></DropdownMenuItem>
                   )}
+                  <div className="h-px bg-gray-100 my-1"></div>
+                  <DropdownMenuItem onClick={logout} className="text-red-600 rounded-lg cursor-pointer hover:bg-red-50 hover:text-red-700 focus:bg-red-50 focus:text-red-700">
+                    <LogOut className="h-4 w-4 mr-2" /> Logout
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+            ) : (
+              <Link href="/login" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
+                 <div className="bg-gray-50 hover:bg-gray-100 p-2 rounded-full border border-gray-200 transition-colors">
+                    <User className="h-5 w-5 text-gray-600" />
+                 </div>
+                 <div className="text-left">
+                    <p className="text-gray-500 text-[11px] uppercase tracking-wider font-semibold">Sign In</p>
+                    <p className="font-bold text-gray-800 text-sm leading-tight">Account</p>
+                 </div>
+              </Link>
+            )}
 
-              <Link
-                href="/cart"
-                className="relative p-2 rounded-full hover:bg-secondary transition-colors group"
-              >
-                <ShoppingCart className="h-5 w-5 text-foreground group-hover:text-primary transition-colors" />
+            <Link href="/cart" className="flex items-center gap-3 group">
+              <div className="relative bg-gray-50 group-hover:bg-green-50 p-2.5 rounded-full border border-gray-200 group-hover:border-green-200 transition-all">
+                <ShoppingBag className="h-5 w-5 text-gray-700 group-hover:text-green-700" />
                 {cartItemCount > 0 && (
-                  <span className="absolute top-0 right-0 h-5 w-5 bg-primary text-primary-foreground text-xs font-bold rounded-full flex items-center justify-center animate-bounce">
+                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold h-5 w-5 rounded-full flex items-center justify-center border-2 border-white shadow-sm transform group-hover:scale-110 transition-transform">
                     {cartItemCount > 99 ? "99+" : cartItemCount}
                   </span>
                 )}
-              </Link>
-
-              {isAuthenticated && user ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-full bg-secondary hover:bg-muted transition-colors text-sm font-medium">
-                      <User className="h-4 w-4" />
-                      {user.name.split(" ")[0]}
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="rounded-2xl">
-                    <DropdownMenuItem asChild>
-                      <Link href="/account">My Account</Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/orders">My Orders</Link>
-                    </DropdownMenuItem>
-                    {user.role === "admin" && (
-                      <DropdownMenuItem asChild>
-                        <Link href="/admin">Admin Panel</Link>
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={logout}>
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Logout
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <>
-                  <button className="px-5 py-2 rounded-full border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-all text-sm font-medium">
-                    <Link href="/login">Login</Link>
-                  </button>
-                  <button className="px-5 py-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-all text-sm font-medium">
-                    <Link href="/signup">Sign Up</Link>
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Mobile Menu Button */}
-            <button
-              className="md:hidden"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              {isMenuOpen ? (
-                <X className="h-6 w-6" />
-              ) : (
-                <Menu className="h-6 w-6" />
-              )}
-            </button>
+              </div>
+              <span className="font-bold text-gray-800 hidden lg:inline group-hover:text-green-700 transition-colors">
+                Rs. 0.00 {/* Optional: Replace with actual cart total if you have it */}
+              </span>
+            </Link>
           </div>
 
-          {/* Mobile Menu */}
-          {isMenuOpen && (
-            <div className="md:hidden pb-4 border-t border-secondary">
-              <form onSubmit={handleSearch} className="py-3 relative">
-                <Input
-                  type="search"
-                  placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="mb-3 rounded-full bg-secondary border-0 pr-10"
-                />
-                <button
-                  type="submit"
-                  className="absolute right-3 top-5 text-muted-foreground"
-                >
-                  <Search className="h-5 w-5" />
-                </button>
-              </form>
-              <Link
-                href="/"
-                className="block py-2 text-foreground hover:text-primary transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Home
-              </Link>
-              <Link
-                href="/products"
-                className="block py-2 text-foreground hover:text-primary transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Products
-              </Link>
-              <Link
-                href="/sale"
-                className="block py-2 text-foreground hover:text-primary transition-colors"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Sale
-              </Link>
-
-              <div className="py-2">
-                <span className="block font-medium mb-1 text-muted-foreground text-sm">
-                  Categories
+          {/* Mobile Actions (Visible on small screens) */}
+          <div className="flex md:hidden items-center gap-4">
+            <Link href="/cart" className="relative p-2 text-gray-700 hover:text-green-600 transition-colors">
+              <ShoppingCart className="h-6 w-6" />
+              {cartItemCount > 0 && (
+                <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold h-4 w-4 rounded-full flex items-center justify-center border border-white">
+                  {cartItemCount > 99 ? "99+" : cartItemCount}
                 </span>
-                <div className="pl-4 space-y-2">
-                  {categories.length > 0 ? (
-                    categories.map((cat) => (
-                      <Link
-                        key={cat._id || cat.slug}
-                        href={`/products?category=${cat.slug || cat.name.toLowerCase()}`}
-                        className="block text-foreground hover:text-primary transition-colors"
-                        onClick={() => setIsMenuOpen(false)}
-                      >
-                        {cat.name}
-                      </Link>
-                    ))
-                  ) : (
-                    <span className="text-sm text-muted-foreground">
-                      Loading...
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <Link
-                href="/cart"
-                className="block py-2 text-foreground hover:text-primary transition-colors relative"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                Cart{" "}
-                {cartItemCount > 0 && (
-                  <span className="ml-1 bg-primary text-primary-foreground text-xs font-bold px-2 py-0.5 rounded-full">
-                    {cartItemCount > 99 ? "99+" : cartItemCount}
-                  </span>
-                )}
-              </Link>
-              {isAuthenticated && user ? (
-                <>
-                  <Link
-                    href="/account"
-                    className="block py-2 text-foreground hover:text-primary transition-colors"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    My Account
-                  </Link>
-                  <Link
-                    href="/orders"
-                    className="block py-2 text-foreground hover:text-primary transition-colors"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    My Orders
-                  </Link>
-                  {user.role === "admin" && (
-                    <Link
-                      href="/admin"
-                      className="block py-2 text-foreground hover:text-primary transition-colors"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Admin Panel
-                    </Link>
-                  )}
-                  <button
-                    onClick={() => {
-                      logout();
-                      setIsMenuOpen(false);
-                    }}
-                    className="block w-full text-left py-2 text-foreground hover:text-primary transition-colors"
-                  >
-                    Logout
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button className="w-full mb-2 py-2 rounded-full border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-all font-medium text-sm">
-                    <Link href="/login" onClick={() => setIsMenuOpen(false)}>
-                      Login
-                    </Link>
-                  </button>
-                  <button className="w-full py-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-all font-medium text-sm">
-                    <Link href="/signup" onClick={() => setIsMenuOpen(false)}>
-                      Sign Up
-                    </Link>
-                  </button>
-                </>
               )}
-            </div>
-          )}
+            </Link>
+            <button 
+              className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors" 
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
+              {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
         </div>
       </div>
-    </nav>
+
+      {/* Tier 3: Bottom Navigation Links (Desktop) */}
+      <div className="hidden md:block bg-white shadow-sm relative z-10 border-b border-gray-100">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-8 h-12">
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 bg-green-600 text-white px-4 h-full font-medium hover:bg-green-700 transition-colors">
+                <AlignLeft className="h-4 w-4" />
+                Browse Categories
+                <ChevronDown className="h-4 w-4 ml-2 opacity-70" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64 p-2 rounded-xl mt-1 shadow-xl border-gray-100">
+              {categories.map((cat) => (
+                <DropdownMenuItem key={cat._id || cat.slug} asChild className="rounded-lg cursor-pointer">
+                  <Link href={`/products?category=${cat._id}`} className="py-2.5 px-3 font-medium text-gray-700 hover:text-green-700 hover:bg-green-50 transition-colors">
+                    {cat.name}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <nav className="flex items-center gap-8 text-sm font-bold text-gray-600">
+            <Link href="/" className="hover:text-green-700 transition-colors">Home</Link>
+            <Link href="/products" className="hover:text-green-700 transition-colors">All Products</Link>
+            <Link href="/sale" className="text-red-600 hover:text-red-700 flex items-center gap-1 transition-colors">
+              Sale Offers
+              <span className="flex h-2 w-2 relative ml-1">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+              </span>
+            </Link>
+            <Link href="/bundles" className="hover:text-green-700 transition-colors">Bundles</Link>
+          </nav>
+        </div>
+      </div>
+
+      {/* Mobile Menu Dropdown */}
+      {isMenuOpen && (
+        <div className="md:hidden bg-white border-b border-gray-200 px-4 py-6 shadow-xl absolute top-full left-0 w-full animate-in slide-in-from-top-2 duration-200">
+          <form onSubmit={handleSearch} className="flex w-full relative mb-6">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <Search className="h-5 w-5" />
+            </div>
+            <Input
+              type="search"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-6 bg-gray-50 border-gray-200 rounded-xl focus-visible:ring-1 focus-visible:ring-green-600"
+            />
+          </form>
+          
+          <nav className="flex flex-col space-y-1">
+            <Link href="/" className="px-4 py-3 text-base font-bold text-gray-800 hover:bg-gray-50 rounded-lg transition-colors" onClick={() => setIsMenuOpen(false)}>Home</Link>
+            <Link href="/products" className="px-4 py-3 text-base font-bold text-gray-800 hover:bg-gray-50 rounded-lg transition-colors" onClick={() => setIsMenuOpen(false)}>All Products</Link>
+            <Link href="/sale" className="px-4 py-3 text-base font-bold text-red-600 hover:bg-red-50 rounded-lg transition-colors flex justify-between items-center" onClick={() => setIsMenuOpen(false)}>
+              Sale Offers
+              <span className="bg-red-100 text-red-600 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider">Hot</span>
+            </Link>
+            
+            <div className="pt-4 mt-2 border-t border-gray-100">
+              <p className="px-4 text-gray-400 mb-2 text-xs font-bold uppercase tracking-wider">Categories</p>
+              {categories.map((cat) => (
+                <Link key={cat._id} href={`/products?category=${cat._id}`} className="block px-4 py-2.5 text-sm font-medium text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" onClick={() => setIsMenuOpen(false)}>
+                  {cat.name}
+                </Link>
+              ))}
+            </div>
+
+            <div className="pt-4 mt-2 border-t border-gray-100">
+              {isAuthenticated && user ? (
+                 <>
+                   <Link href="/account" className="block px-4 py-3 text-sm font-bold text-gray-800 hover:bg-gray-50 rounded-lg" onClick={() => setIsMenuOpen(false)}>My Account</Link>
+                   <Link href="/orders" className="block px-4 py-3 text-sm font-bold text-gray-800 hover:bg-gray-50 rounded-lg" onClick={() => setIsMenuOpen(false)}>My Orders</Link>
+                   <button onClick={() => { logout(); setIsMenuOpen(false); }} className="w-full text-left px-4 py-3 text-sm font-bold text-red-600 hover:bg-red-50 rounded-lg flex items-center">
+                     <LogOut className="h-4 w-4 mr-2" /> Logout
+                   </button>
+                 </>
+              ) : (
+                <Link href="/login" className="block px-4 py-3 text-sm font-bold text-green-700 bg-green-50 hover:bg-green-100 rounded-lg text-center mt-2 transition-colors" onClick={() => setIsMenuOpen(false)}>
+                  Log In / Register
+                </Link>
+              )}
+            </div>
+          </nav>
+        </div>
+      )}
+    </header>
   );
 }

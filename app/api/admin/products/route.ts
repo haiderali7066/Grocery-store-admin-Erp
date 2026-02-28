@@ -17,12 +17,10 @@ export async function GET(req: NextRequest) {
     }
 
     const payload = verifyToken(token);
-    // Allow all staff roles to view products (needed for POS, inventory, etc.)
     if (!payload || !["admin", "manager", "accountant", "staff"].includes(payload.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // All staff see ALL products - no stock/visibility/status filters
     const products = await Product.find()
       .populate("category")
       .sort({ createdAt: -1 });
@@ -59,19 +57,26 @@ export async function POST(req: NextRequest) {
 
     // Parse FormData
     const formData = await req.formData();
-    const name = formData.get("name") as string;
-    const category = formData.get("category") as string;
-    const weight = formData.get("weight") as string;
-    const weightUnit = formData.get("weightUnit") as string;
-    const discount = formData.get("discount") as string;
+    const name        = formData.get("name")        as string;
+    const category    = formData.get("category")    as string;
+    const unitType    = (formData.get("unitType") as string)?.trim();   // ✅ fixed
+    const discount    = formData.get("discount")    as string;
     const discountType = formData.get("discountType") as string;
     const isFlashSale = formData.get("isFlashSale") === "true";
-    const isHot = formData.get("isHot") === "true";
-    const isFeatured = formData.get("isFeatured") === "true";
+    const isHot       = formData.get("isHot")       === "true";
+    const isFeatured  = formData.get("isFeatured")  === "true";
     const onlineVisible = formData.get("onlineVisible") === "true";
-    const image = formData.get("image") as File | null;
+    const image       = formData.get("image")       as File | null;
     const description = formData.get("description") as string | null;
-    const skuInput = formData.get("sku") as string | null;
+    const skuInput    = formData.get("sku")         as string | null;
+
+    // Validate unit type
+    if (!unitType) {
+      return NextResponse.json(
+        { error: "Unit type is required" },
+        { status: 400 },
+      );
+    }
 
     // Validate category
     const categoryDoc = await Category.findById(category);
@@ -109,8 +114,8 @@ export async function POST(req: NextRequest) {
       discount: discount ? parseFloat(discount) : 0,
       discountType: discountType || "percentage",
       category: categoryDoc._id,
-      unitType: weightUnit,
-      unitSize: parseFloat(weight),
+      unitType: unitType,   // ✅ fixed
+      unitSize: 0,          // ✅ fixed (no longer reading "weight" field)
       mainImage: imageUrl,
       stock: 0,
       status: "active",
