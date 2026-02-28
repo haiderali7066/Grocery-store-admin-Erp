@@ -55,7 +55,7 @@ export function HeroCarousel() {
 
   // ✅ FULL SCREEN HEIGHT
   const layoutClasses =
-    "relative w-full h-screen max-w-[1920px] mx-auto rounded-none sm:rounded-2xl lg:rounded-3xl overflow-hidden shadow-2xl";
+    "relative w-full h-screen max-w-[1920px] mx-auto rounded-none  overflow-hidden shadow-2xl";
 
   if (isLoading) {
     return <div className={`${layoutClasses} bg-gray-200 animate-pulse`} />;
