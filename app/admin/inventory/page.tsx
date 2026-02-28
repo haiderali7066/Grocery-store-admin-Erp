@@ -41,6 +41,9 @@ import {
   PackageCheck,
   ShoppingCart,
   BoxSelect,
+  FileText,
+  Hash,
+  Building2,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -57,6 +60,7 @@ interface BatchInfo {
   sellingPrice: number;
   profitPerUnit: number;
   status: string;
+  isReturn?: boolean;
   createdAt: string;
 }
 
@@ -132,6 +136,7 @@ type TabType = "inventory" | "purchases" | "reports";
 type ReportPeriod = "today" | "weekly" | "monthly" | "custom";
 
 const ITEMS_PER_PAGE = 10;
+const REPORT_ITEMS_PER_PAGE = 50;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -147,79 +152,109 @@ const PAY_CFG: Record<PayMethod, { label: string; walletKey: keyof WalletBalance
 
 const fmt      = (n: number) => (n ?? 0).toFixed(2);
 const fmtDate  = (d: string) => new Date(d).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" });
+const fmtDateFull = (d: string) => new Date(d).toLocaleString("en-PK", {
+  day: "2-digit", month: "short", year: "numeric",
+  hour: "2-digit", minute: "2-digit", hour12: true,
+});
 
 const emptyProductRow = (): PurchaseProduct => ({
   productId: "", quantity: "", buyingRate: "", taxType: "percentage",
   taxValue: "0", freightPerUnit: "0", sellingPrice: "",
 });
 
-// ── Pagination Component ──────────────────────────────────────────────────
+// ── Pagination Component ──────────────────────────────────────────────────────
 
 function Pagination({
   currentPage,
   totalPages,
   onPageChange,
+  totalItems,
+  itemsPerPage,
+  label = "items",
 }: {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  totalItems?: number;
+  itemsPerPage?: number;
+  label?: string;
 }) {
   if (totalPages <= 1) return null;
 
+  const startItem = totalItems && itemsPerPage ? (currentPage - 1) * itemsPerPage + 1 : null;
+  const endItem   = totalItems && itemsPerPage ? Math.min(currentPage * itemsPerPage, totalItems) : null;
+
+  // Build visible page numbers with ellipsis
+  const getPageNumbers = () => {
+    const pages: (number | "...")[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("...");
+      for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push("...");
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
   return (
-    <div className="bg-gray-50 px-5 py-4 border-t border-gray-100 flex items-center justify-between no-print">
-      <div className="text-sm text-gray-600 font-medium">
-        Page <span className="font-bold text-gray-900">{currentPage}</span> of{" "}
-        <span className="font-bold text-gray-900">{totalPages}</span>
+    <div className="bg-gray-50 px-5 py-4 border-t border-gray-100 flex items-center justify-between no-print flex-wrap gap-3">
+      <div className="text-sm text-gray-500 font-medium">
+        {startItem && endItem && totalItems ? (
+          <>Showing <span className="font-bold text-gray-900">{startItem}–{endItem}</span> of <span className="font-bold text-gray-900">{totalItems}</span> {label}</>
+        ) : (
+          <>Page <span className="font-bold text-gray-900">{currentPage}</span> of <span className="font-bold text-gray-900">{totalPages}</span></>
+        )}
       </div>
-      <div className="flex gap-2">
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => onPageChange(1)}
+          disabled={currentPage === 1}
+          className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-bold"
+        >
+          «
+        </button>
         <button
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage === 1}
-          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
 
-        <div className="flex gap-1">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-            const isVisible = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
-            const isEllipsis = page > 1 && page < totalPages && Math.abs(page - currentPage) > 1;
-
-            if (isEllipsis && page > currentPage - 1 && page < currentPage + 1) return null;
-
-            if (!isVisible) return null;
-
-            if (isEllipsis) {
-              return (
-                <span key={page} className="px-2 py-1 text-gray-400">
-                  …
-                </span>
-              );
-            }
-
-            return (
-              <button
-                key={page}
-                onClick={() => onPageChange(page)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  page === currentPage
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {page}
-              </button>
-            );
-          })}
-        </div>
+        {getPageNumbers().map((page, idx) =>
+          page === "..." ? (
+            <span key={`ellipsis-${idx}`} className="px-2 py-1 text-gray-400 text-sm">…</span>
+          ) : (
+            <button
+              key={page}
+              onClick={() => onPageChange(page as number)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all min-w-[32px] ${
+                page === currentPage
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {page}
+            </button>
+          )
+        )}
 
         <button
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
-          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="p-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronRight className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onPageChange(totalPages)}
+          disabled={currentPage === totalPages}
+          className="px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-bold"
+        >
+          »
         </button>
       </div>
     </div>
@@ -241,18 +276,13 @@ function WalletBadge({ method, wallet, paying }: { method: PayMethod; wallet: Wa
 
 // ── Inventory Summary Stats ───────────────────────────────────────────────────
 
-
-// Replace the InventorySummary function with this updated version:
-
 function InventorySummary({ inventory }: { inventory: InventoryItem[] }) {
   const stats = inventory.reduce(
     (acc, item) => {
-      // FIX #1: Exclude return batches from "purchased" calculation
       const totalPurchased = item.batches?.filter(b => !b.isReturn).reduce((s, b) => s + b.quantity, 0) ?? 0;
       const currentStock = item.stock ?? 0;
       const totalSold = Math.max(totalPurchased - currentStock, 0);
       const isSoldOut = currentStock === 0;
-
       return {
         totalItems: acc.totalItems + 1,
         totalPurchased: acc.totalPurchased + totalPurchased,
@@ -266,54 +296,12 @@ function InventorySummary({ inventory }: { inventory: InventoryItem[] }) {
   );
 
   const cards = [
-    {
-      label: "Total Products",
-      value: stats.totalItems,
-      unit: "SKUs",
-      icon: <BoxSelect className="h-6 w-6" />,
-      color: "bg-slate-50 border-slate-200 text-slate-700",
-      iconColor: "text-slate-500 bg-slate-100",
-    },
-    {
-      label: "Total Purchased",
-      value: stats.totalPurchased.toLocaleString(),
-      unit: "units ever",
-      icon: <ShoppingCart className="h-6 w-6" />,
-      color: "bg-blue-50 border-blue-200 text-blue-800",
-      iconColor: "text-blue-600 bg-blue-100",
-    },
-    {
-      label: "In Stock",
-      value: stats.totalInStock.toLocaleString(),
-      unit: "units available",
-      icon: <PackageCheck className="h-6 w-6" />,
-      color: "bg-green-50 border-green-200 text-green-800",
-      iconColor: "text-green-600 bg-green-100",
-    },
-    {
-      label: "Total Sold",
-      value: stats.totalSold.toLocaleString(),
-      unit: "units sold",
-      icon: <TrendingUp className="h-6 w-6" />,
-      color: "bg-indigo-50 border-indigo-200 text-indigo-800",
-      iconColor: "text-indigo-600 bg-indigo-100",
-    },
-    {
-      label: "Sold Out",
-      value: stats.soldOutCount,
-      unit: "products",
-      icon: <PackageX className="h-6 w-6" />,
-      color: stats.soldOutCount > 0 ? "bg-red-50 border-red-200 text-red-800" : "bg-gray-50 border-gray-200 text-gray-500",
-      iconColor: stats.soldOutCount > 0 ? "text-red-600 bg-red-100" : "text-gray-400 bg-gray-100",
-    },
-    {
-      label: "Low Stock",
-      value: stats.lowStockCount,
-      unit: "products",
-      icon: <AlertTriangle className="h-6 w-6" />,
-      color: stats.lowStockCount > 0 ? "bg-orange-50 border-orange-200 text-orange-800" : "bg-gray-50 border-gray-200 text-gray-500",
-      iconColor: stats.lowStockCount > 0 ? "text-orange-600 bg-orange-100" : "text-gray-400 bg-gray-100",
-    },
+    { label: "Total Products",   value: stats.totalItems,                 unit: "SKUs",            icon: <BoxSelect className="h-6 w-6" />,    color: "bg-slate-50 border-slate-200 text-slate-700",     iconColor: "text-slate-500 bg-slate-100" },
+    { label: "Total Purchased",  value: stats.totalPurchased.toLocaleString(), unit: "units ever",  icon: <ShoppingCart className="h-6 w-6" />, color: "bg-blue-50 border-blue-200 text-blue-800",        iconColor: "text-blue-600 bg-blue-100" },
+    { label: "In Stock",         value: stats.totalInStock.toLocaleString(),   unit: "units available", icon: <PackageCheck className="h-6 w-6" />, color: "bg-green-50 border-green-200 text-green-800", iconColor: "text-green-600 bg-green-100" },
+    { label: "Total Sold",       value: stats.totalSold.toLocaleString(),      unit: "units sold",  icon: <TrendingUp className="h-6 w-6" />,   color: "bg-indigo-50 border-indigo-200 text-indigo-800",  iconColor: "text-indigo-600 bg-indigo-100" },
+    { label: "Sold Out",         value: stats.soldOutCount,               unit: "products",        icon: <PackageX className="h-6 w-6" />,     color: stats.soldOutCount > 0 ? "bg-red-50 border-red-200 text-red-800" : "bg-gray-50 border-gray-200 text-gray-500", iconColor: stats.soldOutCount > 0 ? "text-red-600 bg-red-100" : "text-gray-400 bg-gray-100" },
+    { label: "Low Stock",        value: stats.lowStockCount,              unit: "products",        icon: <AlertTriangle className="h-6 w-6" />, color: stats.lowStockCount > 0 ? "bg-orange-50 border-orange-200 text-orange-800" : "bg-gray-50 border-gray-200 text-gray-500", iconColor: stats.lowStockCount > 0 ? "text-orange-600 bg-orange-100" : "text-gray-400 bg-gray-100" },
   ];
 
   return (
@@ -332,12 +320,6 @@ function InventorySummary({ inventory }: { inventory: InventoryItem[] }) {
   );
 }
 
-// ALSO UPDATE in the inventory table rendering section:
-// Find this line (around line 500-600):
-//   const totalPurchased = item.batches?.reduce((s, b) => s + b.quantity, 0) ?? 0;
-// Replace with:
-//   const totalPurchased = item.batches?.filter(b => !b.isReturn).reduce((s, b) => s + b.quantity, 0) ?? 0;
-
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
@@ -351,8 +333,10 @@ export default function InventoryPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [expandedInventory, setExpandedInventory] = useState<Set<string>>(new Set());
   const [expandedPurchases, setExpandedPurchases] = useState<Set<string>>(new Set());
+  const [expandedReportRows, setExpandedReportRows] = useState<Set<string>>(new Set());
   const [inventoryCurrentPage, setInventoryCurrentPage] = useState(1);
   const [purchasesCurrentPage, setPurchasesCurrentPage] = useState(1);
+  const [reportCurrentPage, setReportCurrentPage] = useState(1);
 
   // Edit
   const [editPurchase, setEditPurchase] = useState<PurchaseRecord | null>(null);
@@ -374,7 +358,7 @@ export default function InventoryPage() {
   const [reportTo, setReportTo] = useState("");
   const [showCustomDate, setShowCustomDate] = useState(false);
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch ─────────────────────────────────────────────────────────────────
 
   const fetchAll = useCallback(async () => {
     setIsLoading(true);
@@ -414,7 +398,7 @@ export default function InventoryPage() {
     return purchases.slice(start, start + ITEMS_PER_PAGE);
   }, [purchases, purchasesCurrentPage]);
 
-  // ── Product row helpers ────────────────────────────────────────────────────
+  // ── Product row helpers ───────────────────────────────────────────────────
 
   const calcUnitCost = (item: PurchaseProduct) => {
     const base = parseFloat(item.buyingRate) || 0;
@@ -443,7 +427,7 @@ export default function InventoryPage() {
   const newWalletBal = wallet && newMethodCfg.walletKey ? (wallet[newMethodCfg.walletKey] as number) : null;
   const insufficientNew = newWalletBal !== null && amountPaidNum > newWalletBal;
 
-  // ── New purchase ───────────────────────────────────────────────────────────
+  // ── New purchase ──────────────────────────────────────────────────────────
 
   const handleBulkPurchase = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -478,7 +462,7 @@ export default function InventoryPage() {
     } catch { alert("Error creating purchase"); }
   };
 
-  // ── Edit purchase ──────────────────────────────────────────────────────────
+  // ── Edit purchase ─────────────────────────────────────────────────────────
 
   const openEdit = (p: PurchaseRecord) => {
     setEditPurchase(p);
@@ -536,7 +520,7 @@ export default function InventoryPage() {
     finally { setIsEditSaving(false); }
   };
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
+  // ── Delete ────────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
     if (!deletingId) return;
@@ -550,9 +534,9 @@ export default function InventoryPage() {
     finally { setIsDeleting(false); }
   };
 
-  // ── Report filtering ───────────────────────────────────────────────────────
+  // ── Report filtering ──────────────────────────────────────────────────────
 
-  const getReportPurchases = () => {
+  const getReportPurchases = useCallback(() => {
     const now = new Date();
     return purchases.filter(p => {
       const d = new Date(p.createdAt);
@@ -566,15 +550,42 @@ export default function InventoryPage() {
       }
       return true;
     });
-  };
+  }, [purchases, reportPeriod, reportFrom, reportTo]);
 
-  const reportPurchases = getReportPurchases();
-  const reportTotals = reportPurchases.reduce((acc, p) => ({
+  const reportPurchases = useMemo(() => getReportPurchases(), [getReportPurchases]);
+
+  // Reset page when filter changes
+  useEffect(() => { setReportCurrentPage(1); }, [reportPeriod, reportFrom, reportTo]);
+
+  const reportTotals = useMemo(() => reportPurchases.reduce((acc, p) => ({
     total: acc.total + p.totalAmount,
     paid: acc.paid + p.amountPaid,
     due: acc.due + p.balanceDue,
-    items: acc.items + p.products.length,
-  }), { total: 0, paid: 0, due: 0, items: 0 });
+    items: acc.items + p.products.reduce((s, pr) => s + pr.quantity, 0),
+    orders: acc.orders + 1,
+  }), { total: 0, paid: 0, due: 0, items: 0, orders: 0 }), [reportPurchases]);
+
+  // Paginate report
+  const reportTotalPages = Math.ceil(reportPurchases.length / REPORT_ITEMS_PER_PAGE);
+  const paginatedReport = useMemo(() => {
+    const start = (reportCurrentPage - 1) * REPORT_ITEMS_PER_PAGE;
+    return reportPurchases.slice(start, start + REPORT_ITEMS_PER_PAGE);
+  }, [reportPurchases, reportCurrentPage]);
+
+  // Supplier summary for report
+  const supplierSummary = useMemo(() => {
+    const bySup: Record<string, { name: string; orders: number; total: number; paid: number; due: number; items: number }> = {};
+    reportPurchases.forEach(p => {
+      const id = p.supplier._id;
+      if (!bySup[id]) bySup[id] = { name: p.supplier.name, orders: 0, total: 0, paid: 0, due: 0, items: 0 };
+      bySup[id].orders++;
+      bySup[id].total += p.totalAmount;
+      bySup[id].paid += p.amountPaid;
+      bySup[id].due += p.balanceDue;
+      bySup[id].items += p.products.reduce((s, pr) => s + pr.quantity, 0);
+    });
+    return Object.values(bySup).sort((a, b) => b.total - a.total);
+  }, [reportPurchases]);
 
   const periodLabel = reportPeriod === "custom" && reportFrom && reportTo
     ? `${reportFrom} → ${reportTo}`
@@ -582,7 +593,7 @@ export default function InventoryPage() {
 
   const lowStockItems = inventory.filter(i => i && i.stock <= i.lowStockThreshold);
 
-  // ── Product row renderer ───────────────────────────────────────────────────
+  // ── Product row renderer ──────────────────────────────────────────────────
 
   const renderProductRows = (
     rows: PurchaseProduct[],
@@ -844,10 +855,7 @@ export default function InventoryPage() {
         {/* ════════════════════════════════════════════════════════ INVENTORY TAB */}
         {tab === "inventory" && (
           <div className="space-y-4">
-
-            {/* Summary stat cards */}
             {!isLoading && inventory.length > 0 && <InventorySummary inventory={inventory} />}
-
             <Card className="shadow-xl overflow-hidden border-0">
               <div className="overflow-x-auto">
                 {isLoading ? (
@@ -877,70 +885,43 @@ export default function InventoryPage() {
                             <tr className={`transition-colors ${isSoldOut ? "bg-red-50/40 hover:bg-red-50" : "hover:bg-slate-50"}`}>
                               <td className="px-6 py-4 font-semibold text-gray-900">{item.name}</td>
                               <td className="px-6 py-4 text-gray-500 font-mono text-sm">{item.sku}</td>
-
-                              {/* Total Purchased */}
                               <td className="px-6 py-4">
                                 <span className="text-lg font-bold text-blue-700">{totalPurchased}</span>
                                 <span className="text-xs text-gray-400 ml-1">units</span>
                               </td>
-
-                              {/* Total Sold */}
                               <td className="px-6 py-4">
                                 <span className={`text-lg font-bold ${totalSold > 0 ? "text-indigo-600" : "text-gray-300"}`}>{totalSold}</span>
                                 <span className="text-xs text-gray-400 ml-1">units</span>
                                 {totalPurchased > 0 && (
                                   <div className="mt-1 w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full bg-indigo-500 rounded-full"
-                                      style={{ width: `${Math.min((totalSold / totalPurchased) * 100, 100)}%` }}
-                                    />
+                                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min((totalSold / totalPurchased) * 100, 100)}%` }} />
                                   </div>
                                 )}
                               </td>
-
-                              {/* In Stock */}
                               <td className="px-6 py-4">
-                                <span className={`text-lg font-bold ${isSoldOut ? "text-red-600" : isLow ? "text-orange-600" : "text-green-600"}`}>
-                                  {currentStock}
-                                </span>
+                                <span className={`text-lg font-bold ${isSoldOut ? "text-red-600" : isLow ? "text-orange-600" : "text-green-600"}`}>{currentStock}</span>
                                 <span className="text-xs text-gray-400 ml-1">units</span>
                               </td>
-
                               <td className="px-6 py-4">
-                                {item.currentBatch
-                                  ? <span className="text-lg font-bold text-green-600">Rs {item.currentBatch.sellingPrice.toFixed(2)}</span>
-                                  : <span className="text-gray-400">—</span>}
+                                {item.currentBatch ? <span className="text-lg font-bold text-green-600">Rs {item.currentBatch.sellingPrice.toFixed(2)}</span> : <span className="text-gray-400">—</span>}
                               </td>
                               <td className="px-6 py-4">
                                 {item.currentBatch ? (
                                   <div>
-                                    <span className={`text-lg font-bold ${item.currentBatch.profitPerUnit >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                      Rs {item.currentBatch.profitPerUnit.toFixed(2)}
-                                    </span>
-                                    <p className="text-xs text-gray-500">
-                                      {((item.currentBatch.profitPerUnit / item.currentBatch.unitCostWithTax) * 100).toFixed(1)}% margin
-                                    </p>
+                                    <span className={`text-lg font-bold ${item.currentBatch.profitPerUnit >= 0 ? "text-green-600" : "text-red-600"}`}>Rs {item.currentBatch.profitPerUnit.toFixed(2)}</span>
+                                    <p className="text-xs text-gray-500">{((item.currentBatch.profitPerUnit / item.currentBatch.unitCostWithTax) * 100).toFixed(1)}% margin</p>
                                   </div>
                                 ) : <span className="text-gray-400">—</span>}
                               </td>
-
-                              {/* Status */}
                               <td className="px-6 py-4">
                                 {isSoldOut ? (
-                                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-red-100 text-red-700 flex items-center gap-1 w-fit">
-                                    <PackageX className="h-3 w-3" /> Sold Out
-                                  </span>
+                                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-red-100 text-red-700 flex items-center gap-1 w-fit"><PackageX className="h-3 w-3" /> Sold Out</span>
                                 ) : isLow ? (
-                                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-orange-100 text-orange-700 flex items-center gap-1 w-fit">
-                                    <AlertTriangle className="h-3 w-3" /> Low
-                                  </span>
+                                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-orange-100 text-orange-700 flex items-center gap-1 w-fit"><AlertTriangle className="h-3 w-3" /> Low</span>
                                 ) : (
-                                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700 flex items-center gap-1 w-fit">
-                                    <PackageCheck className="h-3 w-3" /> In Stock
-                                  </span>
+                                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700 flex items-center gap-1 w-fit"><PackageCheck className="h-3 w-3" /> In Stock</span>
                                 )}
                               </td>
-
                               <td className="px-6 py-4">
                                 <Button variant="outline" size="sm"
                                   onClick={() => { const s = new Set(expandedInventory); s.has(item._id) ? s.delete(item._id) : s.add(item._id); setExpandedInventory(s); }}
@@ -950,14 +931,10 @@ export default function InventoryPage() {
                                 </Button>
                               </td>
                             </tr>
-
-                            {/* Expanded batch rows */}
                             {expandedInventory.has(item._id) && (
                               <tr>
                                 <td colSpan={9} className="px-6 py-4 bg-gray-50">
-                                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
-                                    <TrendingUp className="h-4 w-4" />FIFO Batch History
-                                  </h4>
+                                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-2"><TrendingUp className="h-4 w-4" />FIFO Batch History</h4>
                                   {item.batches?.length > 0 ? (
                                     <div className="grid gap-2">
                                       {item.batches.map((batch, idx) => {
@@ -966,22 +943,12 @@ export default function InventoryPage() {
                                         return (
                                           <div key={batch._id} className={`p-3 rounded-lg border-2 ${batch.status === "active" ? "bg-green-50 border-green-300" : batch.status === "partial" ? "bg-yellow-50 border-yellow-300" : "bg-gray-100 border-gray-300"}`}>
                                             <div className="grid grid-cols-9 gap-3 text-sm">
-                                              <div>
-                                                <span className="text-gray-600 text-xs">Batch #{idx + 1}</span>
-                                                <p className="font-semibold">{batch.quantity} purchased</p>
-                                              </div>
-                                              <div>
-                                                <span className="text-gray-600 text-xs">Sold</span>
-                                                <p className="font-bold text-indigo-600">{soldFromBatch}</p>
-                                              </div>
+                                              <div><span className="text-gray-600 text-xs">Batch #{idx + 1}</span><p className="font-semibold">{batch.quantity} purchased</p></div>
+                                              <div><span className="text-gray-600 text-xs">Sold</span><p className="font-bold text-indigo-600">{soldFromBatch}</p></div>
                                               <div>
                                                 <span className="text-gray-600 text-xs">Remaining</span>
-                                                <p className={`font-bold ${(batch.remainingQuantity ?? 0) === 0 ? "text-red-600" : "text-green-600"}`}>
-                                                  {batch.remainingQuantity ?? 0}
-                                                </p>
-                                                <div className="mt-1 w-12 h-1 bg-gray-200 rounded-full overflow-hidden">
-                                                  <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${soldPct}%` }} />
-                                                </div>
+                                                <p className={`font-bold ${(batch.remainingQuantity ?? 0) === 0 ? "text-red-600" : "text-green-600"}`}>{batch.remainingQuantity ?? 0}</p>
+                                                <div className="mt-1 w-12 h-1 bg-gray-200 rounded-full overflow-hidden"><div className="h-full bg-indigo-400 rounded-full" style={{ width: `${soldPct}%` }} /></div>
                                               </div>
                                               <div><span className="text-gray-600 text-xs">Base Rate</span><p className="font-semibold">Rs {batch.buyingRate.toFixed(2)}</p></div>
                                               <div><span className="text-gray-600 text-xs">Tax</span><p className="font-semibold">{batch.taxType === "percentage" || batch.taxType === "percent" ? `${batch.taxValue}%` : `Rs ${batch.taxValue}`}</p></div>
@@ -990,9 +957,7 @@ export default function InventoryPage() {
                                               <div><span className="text-gray-600 text-xs">Selling</span><p className="font-semibold text-green-600">Rs {batch.sellingPrice.toFixed(2)}</p></div>
                                               <div>
                                                 <span className="text-gray-600 text-xs">Status</span>
-                                                <p className={`font-semibold capitalize text-xs mt-0.5 px-2 py-0.5 rounded-full w-fit ${batch.status === "active" ? "bg-green-200 text-green-800" : batch.status === "partial" ? "bg-yellow-200 text-yellow-800" : "bg-gray-200 text-gray-700"}`}>
-                                                  {batch.status}
-                                                </p>
+                                                <p className={`font-semibold capitalize text-xs mt-0.5 px-2 py-0.5 rounded-full w-fit ${batch.status === "active" ? "bg-green-200 text-green-800" : batch.status === "partial" ? "bg-yellow-200 text-yellow-800" : "bg-gray-200 text-gray-700"}`}>{batch.status}</p>
                                               </div>
                                             </div>
                                           </div>
@@ -1016,11 +981,7 @@ export default function InventoryPage() {
                   </div>
                 )}
               </div>
-              <Pagination
-                currentPage={inventoryCurrentPage}
-                totalPages={inventoryTotalPages}
-                onPageChange={setInventoryCurrentPage}
-              />
+              <Pagination currentPage={inventoryCurrentPage} totalPages={inventoryTotalPages} onPageChange={setInventoryCurrentPage} totalItems={inventory.length} itemsPerPage={ITEMS_PER_PAGE} label="products" />
             </Card>
           </div>
         )}
@@ -1062,12 +1023,8 @@ export default function InventoryPage() {
                             <td className="px-5 py-4"><span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${p.paymentStatus === "completed" ? "bg-green-100 text-green-700" : p.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>{p.paymentStatus}</span></td>
                             <td className="px-5 py-4">
                               <div className="flex items-center gap-2">
-                                <Button size="sm" variant="outline" onClick={() => openEdit(p)} className="gap-1.5 text-blue-600 hover:bg-blue-50 border-blue-200">
-                                  <Pencil className="h-3.5 w-3.5" /> Edit
-                                </Button>
-                                <Button size="sm" variant="outline" onClick={() => setDeletingId(p._id)} className="gap-1.5 text-red-500 hover:bg-red-50 border-red-200">
-                                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => openEdit(p)} className="gap-1.5 text-blue-600 hover:bg-blue-50 border-blue-200"><Pencil className="h-3.5 w-3.5" /> Edit</Button>
+                                <Button size="sm" variant="outline" onClick={() => setDeletingId(p._id)} className="gap-1.5 text-red-500 hover:bg-red-50 border-red-200"><Trash2 className="h-3.5 w-3.5" /> Delete</Button>
                               </div>
                             </td>
                           </tr>
@@ -1077,11 +1034,7 @@ export default function InventoryPage() {
                                 <div className="rounded-xl overflow-hidden border border-blue-100">
                                   <table className="w-full text-sm">
                                     <thead className="bg-blue-100/60">
-                                      <tr>
-                                        {["Product", "SKU", "Qty", "Base Rate", "Tax", "Freight", "Unit Cost", "Selling", "Profit/Unit", "Subtotal"].map(h => (
-                                          <th key={h} className="px-4 py-2 text-left text-xs font-bold text-blue-800">{h}</th>
-                                        ))}
-                                      </tr>
+                                      <tr>{["Product", "SKU", "Qty", "Base Rate", "Tax", "Freight", "Unit Cost", "Selling", "Profit/Unit", "Subtotal"].map(h => (<th key={h} className="px-4 py-2 text-left text-xs font-bold text-blue-800">{h}</th>))}</tr>
                                     </thead>
                                     <tbody className="divide-y divide-blue-100">
                                       {p.products.map((item, idx) => {
@@ -1103,10 +1056,7 @@ export default function InventoryPage() {
                                       })}
                                     </tbody>
                                     <tfoot className="bg-blue-100/40">
-                                      <tr>
-                                        <td colSpan={9} className="px-4 py-2 font-bold text-right text-gray-700">Total:</td>
-                                        <td className="px-4 py-2 font-black text-gray-900">Rs {fmt(p.totalAmount)}</td>
-                                      </tr>
+                                      <tr><td colSpan={9} className="px-4 py-2 font-bold text-right text-gray-700">Total:</td><td className="px-4 py-2 font-black text-gray-900">Rs {fmt(p.totalAmount)}</td></tr>
                                     </tfoot>
                                   </table>
                                 </div>
@@ -1123,41 +1073,41 @@ export default function InventoryPage() {
                 <div className="text-center py-12"><ShoppingBag className="h-16 w-16 text-gray-300 mx-auto mb-4" /><p className="text-gray-500 text-lg">No purchases yet</p></div>
               )}
             </div>
-            <Pagination
-              currentPage={purchasesCurrentPage}
-              totalPages={purchasesTotalPages}
-              onPageChange={setPurchasesCurrentPage}
-            />
+            <Pagination currentPage={purchasesCurrentPage} totalPages={purchasesTotalPages} onPageChange={setPurchasesCurrentPage} totalItems={purchases.length} itemsPerPage={ITEMS_PER_PAGE} label="purchases" />
           </Card>
         )}
 
         {/* ════════════════════════════════════════════════════════ REPORTS TAB */}
         {tab === "reports" && (
           <div className="space-y-5">
-            <div className="flex flex-wrap items-center gap-3 no-print">
-              <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-                {(["today", "weekly", "monthly", "custom"] as ReportPeriod[]).map(p => (
-                  <button key={p} onClick={() => { setReportPeriod(p); setShowCustomDate(p === "custom"); }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${reportPeriod === p ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700"}`}>
-                    {p === "custom" ? <><Calendar className="h-3 w-3 inline mr-1" />Custom</> : p}
-                  </button>
-                ))}
+
+            {/* Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-3 no-print">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+                  {(["today", "weekly", "monthly", "custom"] as ReportPeriod[]).map(p => (
+                    <button key={p} onClick={() => { setReportPeriod(p); setShowCustomDate(p === "custom"); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold capitalize transition-all ${reportPeriod === p ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:text-gray-700"}`}>
+                      {p === "custom" ? <><Calendar className="h-3 w-3 inline mr-1" />Custom</> : p}
+                    </button>
+                  ))}
+                </div>
+                {showCustomDate && (
+                  <div className="flex items-end gap-2">
+                    <div><label className="text-xs font-bold text-gray-500 block mb-1">FROM</label>
+                      <input type="date" value={reportFrom} onChange={e => setReportFrom(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" /></div>
+                    <div><label className="text-xs font-bold text-gray-500 block mb-1">TO</label>
+                      <input type="date" value={reportTo} onChange={e => setReportTo(e.target.value)} className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm" /></div>
+                  </div>
+                )}
               </div>
-              <Button onClick={() => window.print()} variant="outline" className="gap-2 rounded-xl border-gray-300">
+              <Button onClick={() => window.print()} variant="outline" className="gap-2 rounded-xl border-gray-300 no-print">
                 <Printer className="h-4 w-4" /> Print Report
               </Button>
             </div>
 
-            {showCustomDate && (
-              <div className="flex flex-wrap items-end gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4 no-print">
-                <div><label className="text-xs font-bold text-gray-500 block mb-1">FROM</label>
-                  <input type="date" value={reportFrom} onChange={e => setReportFrom(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-                <div><label className="text-xs font-bold text-gray-500 block mb-1">TO</label>
-                  <input type="date" value={reportTo} onChange={e => setReportTo(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm" /></div>
-              </div>
-            )}
-
             <div id="inv-print-area">
+              {/* Print header */}
               <div className="hidden print:block mb-6">
                 <h1 className="text-2xl font-black text-gray-900">Purchase Report</h1>
                 <p className="text-gray-500 text-sm">Period: {periodLabel}</p>
@@ -1165,113 +1115,311 @@ export default function InventoryPage() {
                 <hr className="mt-3 border-gray-200" />
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {/* ── Summary KPI cards ── */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
                 {[
-                  { label: "Total Purchased",  value: `Rs ${fmt(reportTotals.total)}`, color: "bg-blue-50 text-blue-700" },
-                  { label: "Amount Paid",       value: `Rs ${fmt(reportTotals.paid)}`,  color: "bg-green-50 text-green-700" },
-                  { label: "Balance Due",       value: `Rs ${fmt(reportTotals.due)}`,   color: reportTotals.due > 0 ? "bg-red-50 text-red-700" : "bg-gray-50 text-gray-500" },
-                  { label: "Transactions",      value: `${reportPurchases.length} orders`, color: "bg-indigo-50 text-indigo-700" },
+                  { label: "Orders",         value: reportTotals.orders,               suffix: "",      color: "bg-slate-50 border-slate-200 text-slate-700",   icon: <FileText className="h-5 w-5" /> },
+                  { label: "Total Purchased", value: `Rs ${fmt(reportTotals.total)}`,   suffix: "",      color: "bg-blue-50 border-blue-200 text-blue-800",      icon: <ShoppingBag className="h-5 w-5" /> },
+                  { label: "Amount Paid",     value: `Rs ${fmt(reportTotals.paid)}`,    suffix: "",      color: "bg-green-50 border-green-200 text-green-800",   icon: <Banknote className="h-5 w-5" /> },
+                  { label: "Balance Due",     value: `Rs ${fmt(reportTotals.due)}`,     suffix: "",      color: reportTotals.due > 0 ? "bg-red-50 border-red-200 text-red-800" : "bg-gray-50 border-gray-200 text-gray-500", icon: <AlertCircle className="h-5 w-5" /> },
+                  { label: "Items Purchased", value: reportTotals.items.toLocaleString(), suffix: "units", color: "bg-indigo-50 border-indigo-200 text-indigo-800", icon: <Package className="h-5 w-5" /> },
                 ].map((s, i) => (
-                  <Card key={i} className={`p-5 border-0 shadow-sm ${s.color}`}>
-                    <p className="text-xs font-bold uppercase tracking-wide opacity-70 mb-1">{s.label}</p>
-                    <p className="text-2xl font-black">{s.value}</p>
+                  <Card key={i} className={`p-4 border shadow-sm ${s.color}`}>
+                    <div className="flex items-center gap-2 mb-2 opacity-70">{s.icon}<span className="text-xs font-bold uppercase tracking-wide">{s.label}</span></div>
+                    <p className="text-xl font-black">{s.value}</p>
+                    {s.suffix && <p className="text-xs opacity-60 mt-0.5">{s.suffix}</p>}
                   </Card>
                 ))}
               </div>
 
-              <Card className="border-0 shadow-md overflow-hidden mt-5">
-                <div className="bg-gray-900 text-white px-5 py-3">
-                  <h3 className="font-black">Purchases by Supplier — {periodLabel}</h3>
-                </div>
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b">
-                    <tr>
-                      {["Supplier", "Orders", "Total Amount", "Amount Paid", "Balance Due", "Status"].map(h => (
-                        <th key={h} className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {(() => {
-                      const bySup: Record<string, { name: string; orders: number; total: number; paid: number; due: number }> = {};
-                      reportPurchases.forEach(p => {
-                        const id = p.supplier._id;
-                        if (!bySup[id]) bySup[id] = { name: p.supplier.name, orders: 0, total: 0, paid: 0, due: 0 };
-                        bySup[id].orders++;
-                        bySup[id].total += p.totalAmount;
-                        bySup[id].paid += p.amountPaid;
-                        bySup[id].due += p.balanceDue;
-                      });
-                      const rows = Object.values(bySup);
-                      if (!rows.length) return <tr><td colSpan={6} className="text-center py-10 text-gray-400 italic">No purchases this period</td></tr>;
-                      return rows.map((s, i) => (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-5 py-3 font-semibold text-gray-800">{s.name}</td>
-                          <td className="px-5 py-3 text-gray-600">{s.orders}</td>
-                          <td className="px-5 py-3 font-bold text-gray-900">Rs {fmt(s.total)}</td>
-                          <td className="px-5 py-3 text-green-700 font-bold">Rs {fmt(s.paid)}</td>
-                          <td className={`px-5 py-3 font-bold ${s.due > 0 ? "text-red-600" : "text-gray-400"}`}>Rs {fmt(s.due)}</td>
-                          <td className="px-5 py-3"><span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${s.due <= 0 ? "bg-green-100 text-green-700" : s.paid > 0 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>{s.due <= 0 ? "Cleared" : s.paid > 0 ? "Partial" : "Pending"}</span></td>
+              {/* ── Supplier Summary ── */}
+              {supplierSummary.length > 0 && (
+                <Card className="border-0 shadow-md overflow-hidden mb-6">
+                  <div className="bg-gray-900 text-white px-5 py-3 flex items-center gap-2">
+                    <Building2 className="h-4 w-4" />
+                    <h3 className="font-black">By Supplier — {periodLabel}</h3>
+                    <span className="ml-auto text-xs opacity-60">{supplierSummary.length} suppliers</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          {["Supplier", "Orders", "Items", "Total Amount", "Amount Paid", "Balance Due", "Status"].map(h => (
+                            <th key={h} className="px-5 py-3 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
+                          ))}
                         </tr>
-                      ));
-                    })()}
-                  </tbody>
-                  {reportPurchases.length > 0 && (
-                    <tfoot className="bg-gray-50 border-t-2">
-                      <tr>
-                        <td className="px-5 py-3 font-black text-gray-900">TOTAL</td>
-                        <td className="px-5 py-3 font-black">{reportPurchases.length}</td>
-                        <td className="px-5 py-3 font-black text-gray-900">Rs {fmt(reportTotals.total)}</td>
-                        <td className="px-5 py-3 font-black text-green-700">Rs {fmt(reportTotals.paid)}</td>
-                        <td className={`px-5 py-3 font-black ${reportTotals.due > 0 ? "text-red-600" : "text-gray-400"}`}>Rs {fmt(reportTotals.due)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </Card>
-
-              <Card className="border-0 shadow-md overflow-hidden mt-5">
-                <div className="bg-slate-800 text-white px-5 py-3">
-                  <h3 className="font-black">All Purchases — {periodLabel}</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        {["Date", "Invoice", "Supplier", "Items", "Total", "Paid", "Balance", "Method", "Status"].map(h => (
-                          <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {reportPurchases.length === 0 ? (
-                        <tr><td colSpan={9} className="text-center py-10 text-gray-400 italic">No purchases this period</td></tr>
-                      ) : reportPurchases.map(p => {
-                        const mCfg = PAY_CFG[p.paymentMethod as PayMethod];
-                        return (
-                          <tr key={p._id} className="hover:bg-gray-50">
-                            <td className="px-4 py-2.5 text-xs text-gray-500">{fmtDate(p.createdAt)}</td>
-                            <td className="px-4 py-2.5 font-mono text-xs">{p.supplierInvoiceNo || "—"}</td>
-                            <td className="px-4 py-2.5 font-semibold">{p.supplier.name}</td>
-                            <td className="px-4 py-2.5 text-gray-500">{p.products.length}</td>
-                            <td className="px-4 py-2.5 font-bold">Rs {fmt(p.totalAmount)}</td>
-                            <td className="px-4 py-2.5 text-green-600 font-bold">Rs {fmt(p.amountPaid)}</td>
-                            <td className={`px-4 py-2.5 font-bold ${p.balanceDue > 0 ? "text-red-600" : "text-gray-400"}`}>Rs {fmt(p.balanceDue)}</td>
-                            <td className="px-4 py-2.5">{mCfg ? <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${mCfg.pill}`}>{mCfg.label}</span> : p.paymentMethod}</td>
-                            <td className="px-4 py-2.5"><span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${p.paymentStatus === "completed" ? "bg-green-100 text-green-700" : p.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>{p.paymentStatus}</span></td>
+                      </thead>
+                      <tbody className="divide-y">
+                        {supplierSummary.map((s, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-5 py-3 font-semibold text-gray-800">{s.name}</td>
+                            <td className="px-5 py-3 text-gray-600">{s.orders}</td>
+                            <td className="px-5 py-3 text-gray-600">{s.items.toLocaleString()}</td>
+                            <td className="px-5 py-3 font-bold text-gray-900">Rs {fmt(s.total)}</td>
+                            <td className="px-5 py-3 text-green-700 font-bold">Rs {fmt(s.paid)}</td>
+                            <td className={`px-5 py-3 font-bold ${s.due > 0 ? "text-red-600" : "text-gray-400"}`}>Rs {fmt(s.due)}</td>
+                            <td className="px-5 py-3"><span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${s.due <= 0 ? "bg-green-100 text-green-700" : s.paid > 0 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>{s.due <= 0 ? "Cleared" : s.paid > 0 ? "Partial" : "Pending"}</span></td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50 border-t-2 font-black">
+                        <tr>
+                          <td className="px-5 py-3 text-gray-900">TOTAL</td>
+                          <td className="px-5 py-3">{reportTotals.orders}</td>
+                          <td className="px-5 py-3">{reportTotals.items.toLocaleString()}</td>
+                          <td className="px-5 py-3 text-gray-900">Rs {fmt(reportTotals.total)}</td>
+                          <td className="px-5 py-3 text-green-700">Rs {fmt(reportTotals.paid)}</td>
+                          <td className={`px-5 py-3 ${reportTotals.due > 0 ? "text-red-600" : "text-gray-400"}`}>Rs {fmt(reportTotals.due)}</td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </Card>
+              )}
+
+              {/* ── All Purchases Detail Table ── */}
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="h-4 w-4" />
+                    <h3 className="font-black">All Purchase Orders — {periodLabel}</h3>
+                  </div>
+                  <span className="text-xs opacity-60">{reportPurchases.length} orders · 50 per page</span>
                 </div>
+
+                {reportPurchases.length === 0 ? (
+                  <div className="text-center py-16">
+                    <ShoppingBag className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-400 font-semibold">No purchases this period</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b-2 border-gray-200">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase w-8">#</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date & Time</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Invoice</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Supplier</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Items</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Total</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Paid</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Balance</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Method</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase no-print">Details</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {paginatedReport.map((p, idx) => {
+                            const globalIdx = (reportCurrentPage - 1) * REPORT_ITEMS_PER_PAGE + idx + 1;
+                            const mCfg = PAY_CFG[p.paymentMethod as PayMethod];
+                            const isExpanded = expandedReportRows.has(p._id);
+                            const totalQty = p.products.reduce((s, pr) => s + pr.quantity, 0);
+
+                            return (
+                              <React.Fragment key={p._id}>
+                                <tr className={`transition-colors ${isExpanded ? "bg-blue-50/30" : "hover:bg-gray-50"}`}>
+                                  {/* Row number */}
+                                  <td className="px-4 py-3 text-xs text-gray-400 font-mono">{globalIdx}</td>
+
+                                  {/* Date */}
+                                  <td className="px-4 py-3">
+                                    <p className="text-sm font-semibold text-gray-800 whitespace-nowrap">{fmtDate(p.createdAt)}</p>
+                                    <p className="text-xs text-gray-400">{new Date(p.createdAt).toLocaleTimeString("en-PK", { hour: "2-digit", minute: "2-digit", hour12: true })}</p>
+                                  </td>
+
+                                  {/* Invoice */}
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-1">
+                                      <Hash className="h-3 w-3 text-gray-400" />
+                                      <span className="font-mono text-xs text-gray-700">{p.supplierInvoiceNo || <span className="text-gray-300 italic">—</span>}</span>
+                                    </div>
+                                  </td>
+
+                                  {/* Supplier */}
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-black shrink-0">
+                                        {p.supplier.name.charAt(0).toUpperCase()}
+                                      </div>
+                                      <span className="font-semibold text-gray-900 whitespace-nowrap">{p.supplier.name}</span>
+                                    </div>
+                                  </td>
+
+                                  {/* Items count + names preview */}
+                                  <td className="px-4 py-3">
+                                    <p className="text-sm font-bold text-gray-900">{totalQty} units</p>
+                                    <p className="text-xs text-gray-400 max-w-[140px] truncate">
+                                      {p.products.map(pr => pr.product?.name).filter(Boolean).join(", ")}
+                                    </p>
+                                  </td>
+
+                                  {/* Financials */}
+                                  <td className="px-4 py-3 font-bold text-gray-900 whitespace-nowrap">Rs {fmt(p.totalAmount)}</td>
+                                  <td className="px-4 py-3 font-semibold text-green-600 whitespace-nowrap">Rs {fmt(p.amountPaid)}</td>
+                                  <td className="px-4 py-3 whitespace-nowrap">
+                                    <span className={`font-bold ${p.balanceDue > 0 ? "text-red-600" : "text-gray-400"}`}>
+                                      {p.balanceDue > 0 ? `Rs ${fmt(p.balanceDue)}` : "—"}
+                                    </span>
+                                  </td>
+
+                                  {/* Payment method */}
+                                  <td className="px-4 py-3">
+                                    {mCfg ? (
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${mCfg.pill}`}>
+                                        {mCfg.icon}{mCfg.label}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-500 text-xs">{p.paymentMethod}</span>
+                                    )}
+                                  </td>
+
+                                  {/* Status */}
+                                  <td className="px-4 py-3">
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${p.paymentStatus === "completed" ? "bg-green-100 text-green-700" : p.paymentStatus === "partial" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>
+                                      {p.paymentStatus}
+                                    </span>
+                                  </td>
+
+                                  {/* Expand button */}
+                                  <td className="px-4 py-3 no-print">
+                                    <button
+                                      onClick={() => {
+                                        const s = new Set(expandedReportRows);
+                                        s.has(p._id) ? s.delete(p._id) : s.add(p._id);
+                                        setExpandedReportRows(s);
+                                      }}
+                                      className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600"}`}
+                                    >
+                                      {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                      {isExpanded ? "Hide" : "View"}
+                                    </button>
+                                  </td>
+                                </tr>
+
+                                {/* ── Expanded item rows ── */}
+                                {isExpanded && (
+                                  <tr>
+                                    <td colSpan={11} className="px-4 py-0 bg-blue-50/40">
+                                      <div className="py-3 pl-10">
+                                        <div className="rounded-xl border border-blue-200 overflow-hidden shadow-sm">
+                                          <div className="bg-blue-100/80 px-4 py-2 flex items-center justify-between">
+                                            <span className="text-xs font-black text-blue-800 uppercase tracking-wide">
+                                              Purchase Items — {p.supplier.name} · {fmtDate(p.createdAt)}
+                                            </span>
+                                            {p.supplierInvoiceNo && (
+                                              <span className="text-xs font-mono text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">INV #{p.supplierInvoiceNo}</span>
+                                            )}
+                                          </div>
+                                          <table className="w-full text-sm bg-white">
+                                            <thead className="bg-blue-50 border-b border-blue-100">
+                                              <tr>
+                                                {["Product", "SKU", "Qty", "Base Rate", "Tax", "Freight", "Unit Cost", "Selling Price", "Profit/Unit", "Line Total"].map(h => (
+                                                  <th key={h} className="px-4 py-2 text-left text-xs font-bold text-blue-700">{h}</th>
+                                                ))}
+                                              </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-blue-50">
+                                              {p.products.map((item, idx) => {
+                                                const profit = item.sellingPrice - item.unitCostWithTax;
+                                                const lineTotal = item.quantity * item.unitCostWithTax;
+                                                return (
+                                                  <tr key={idx} className="hover:bg-blue-50/30">
+                                                    <td className="px-4 py-2.5 font-semibold text-gray-900">{item.product?.name}</td>
+                                                    <td className="px-4 py-2.5 text-gray-400 font-mono text-xs">{item.product?.sku}</td>
+                                                    <td className="px-4 py-2.5 font-black text-gray-900">{item.quantity}</td>
+                                                    <td className="px-4 py-2.5 text-gray-700">Rs {fmt(item.buyingRate)}</td>
+                                                    <td className="px-4 py-2.5 text-blue-600">
+                                                      {item.taxType === "percent" || item.taxType === "percentage"
+                                                        ? `${item.taxValue ?? 0}%`
+                                                        : `Rs ${fmt(item.taxValue ?? 0)}`}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-purple-600">Rs {fmt(item.freightPerUnit ?? 0)}</td>
+                                                    <td className="px-4 py-2.5 font-bold text-blue-700">Rs {fmt(item.unitCostWithTax)}</td>
+                                                    <td className="px-4 py-2.5 font-bold text-green-700">Rs {fmt(item.sellingPrice)}</td>
+                                                    <td className={`px-4 py-2.5 font-bold ${profit >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                                      Rs {fmt(profit)}
+                                                      <span className="text-xs font-normal ml-1 opacity-60">
+                                                        ({item.unitCostWithTax > 0 ? ((profit / item.unitCostWithTax) * 100).toFixed(1) : 0}%)
+                                                      </span>
+                                                    </td>
+                                                    <td className="px-4 py-2.5 font-black text-gray-900">Rs {fmt(lineTotal)}</td>
+                                                  </tr>
+                                                );
+                                              })}
+                                            </tbody>
+                                            <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                                              <tr>
+                                                <td colSpan={2} className="px-4 py-2.5">
+                                                  {p.notes && <span className="text-xs text-gray-500 italic">Note: {p.notes}</span>}
+                                                </td>
+                                                <td className="px-4 py-2.5 font-black">{p.products.reduce((s, pr) => s + pr.quantity, 0)}</td>
+                                                <td colSpan={5} />
+                                                <td className="px-4 py-2.5 text-xs text-gray-500 font-bold">Total Cost:</td>
+                                                <td className="px-4 py-2.5 font-black text-gray-900">Rs {fmt(p.totalAmount)}</td>
+                                              </tr>
+                                              <tr className="bg-slate-800 text-white text-xs">
+                                                <td colSpan={5} className="px-4 py-2 font-semibold">
+                                                  Paid: <span className="text-green-400 font-black">Rs {fmt(p.amountPaid)}</span>
+                                                  {p.balanceDue > 0 && <span className="ml-4 text-red-400">Balance Due: <span className="font-black">Rs {fmt(p.balanceDue)}</span></span>}
+                                                </td>
+                                                <td colSpan={5} className="px-4 py-2 text-right font-semibold">
+                                                  Status: <span className={`font-black ${p.paymentStatus === "completed" ? "text-green-400" : p.paymentStatus === "partial" ? "text-yellow-400" : "text-red-400"}`}>{p.paymentStatus.toUpperCase()}</span>
+                                                  <span className="ml-4 opacity-60">via {PAY_CFG[p.paymentMethod as PayMethod]?.label || p.paymentMethod}</span>
+                                                </td>
+                                              </tr>
+                                            </tfoot>
+                                          </table>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+
+                        {/* Running totals footer */}
+                        {reportPurchases.length > 0 && (
+                          <tfoot className="bg-slate-900 text-white text-sm">
+                            <tr>
+                              <td colSpan={4} className="px-4 py-3 font-black text-slate-300 uppercase text-xs tracking-wide">
+                                Period Total ({reportPurchases.length} orders)
+                              </td>
+                              <td className="px-4 py-3 font-black">{reportTotals.items.toLocaleString()} units</td>
+                              <td className="px-4 py-3 font-black text-white">Rs {fmt(reportTotals.total)}</td>
+                              <td className="px-4 py-3 font-black text-green-400">Rs {fmt(reportTotals.paid)}</td>
+                              <td className={`px-4 py-3 font-black ${reportTotals.due > 0 ? "text-red-400" : "text-slate-400"}`}>
+                                {reportTotals.due > 0 ? `Rs ${fmt(reportTotals.due)}` : "—"}
+                              </td>
+                              <td colSpan={3} />
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+
+                    {/* ── Report Pagination ── */}
+                    <Pagination
+                      currentPage={reportCurrentPage}
+                      totalPages={reportTotalPages}
+                      onPageChange={setReportCurrentPage}
+                      totalItems={reportPurchases.length}
+                      itemsPerPage={REPORT_ITEMS_PER_PAGE}
+                      label="purchase orders"
+                    />
+                  </>
+                )}
               </Card>
             </div>
           </div>
         )}
 
-        {/* ════════════════════════════════════════════════════════ FULL EDIT DIALOG */}
+        {/* ════════════════════════════════════════════════════════ EDIT DIALOG */}
         {editPurchase && (
           <div className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-4 overflow-y-auto">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-8">
@@ -1310,9 +1458,7 @@ export default function InventoryPage() {
                     </div>
                   </div>
                 </Card>
-
                 {renderProductRows(editProducts, setEditProducts, true)}
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t">
                   <Card className="p-4 border-orange-200 bg-orange-50/50">
                     <h4 className="font-bold text-orange-800 flex items-center gap-2 mb-3"><WalletIcon className="h-4 w-4" /> Payment</h4>
@@ -1329,7 +1475,6 @@ export default function InventoryPage() {
                     </div>
                   </Card>
                 </div>
-
                 <div className="flex gap-3">
                   <Button variant="outline" onClick={() => setEditPurchase(null)} className="flex-1 rounded-xl">Cancel</Button>
                   <Button onClick={handleEditSave} disabled={isEditSaving} className="flex-1 bg-blue-600 hover:bg-blue-700 rounded-xl py-3 text-base font-bold">
@@ -1363,6 +1508,7 @@ export default function InventoryPage() {
             </div>
           </div>
         )}
+
       </div>
     </>
   );
