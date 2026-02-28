@@ -89,15 +89,15 @@ export function Navbar() {
         <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center py-2 text-[11px] sm:text-xs font-medium tracking-wide">
           <div className="flex items-center gap-4">
             <span className="hidden sm:inline bg-green-600/50 px-2 py-0.5 rounded-full">
-              Free Delivery on orders over Rs. 5000
+               Delivery on orders everywhere
             </span>
             <a href={phoneHref} className="flex items-center gap-1.5 hover:text-white transition-colors">
               <Phone className="h-3 w-3" /> {phoneDisplay}
             </a>
           </div>
           <div className="flex items-center gap-4 sm:gap-6">
-            <Link href="/about" className="hover:text-white transition-colors">About Us</Link>
             <Link href="/orders" className="hover:text-white transition-colors  sm:inline-block">Track Order</Link>
+            <Link href="/about" className="hover:text-white transition-colors">About Us</Link>
           </div>
         </div>
       </div>
