@@ -256,7 +256,7 @@ export function Navbar() {
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
               </span>
             </Link>
-            <Link href="/bundles" className="hover:text-green-700 transition-colors">Bundles</Link>
+            <Link href="/sale" className="hover:text-green-700 transition-colors">Bundles</Link>
           </nav>
         </div>
       </div>
