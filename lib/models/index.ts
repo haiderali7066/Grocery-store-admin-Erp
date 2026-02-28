@@ -13,7 +13,7 @@ export const UserSchema = new Schema(
     phone: String,
     role: {
       type: String,
-      enum: ["user", "staff", "manager", "accountant", "admin"],
+      enum: ["user",  "staff", "manager", "accountant", "admin"],
       default: "user",
       index: true,
     },

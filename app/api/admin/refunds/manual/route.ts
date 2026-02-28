@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import {
-  Refund, Product, Wallet, InventoryBatch, Order, POSSale,
+  Refund, Product, Wallet, InventoryBatch, Order, POSSale, Transaction,
 } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "At least one item is required" }, { status: 400 });
 
     // ── Per-item one-return guard (checked against Refund collection) ─────────
-    // This is the SOURCE OF TRUTH — we always check DB, never trust client state
     const existingRefunds = await Refund.find({
       orderNumber,
       status: { $in: ["completed", "approved"] },
@@ -57,7 +56,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: errors.join(" | ") }, { status: 400 });
 
     // ── Find the source order/sale ─────────────────────────────────────────────
-    // Use findOne WITHOUT .lean() so we can mutate and save
     const posSale = await POSSale.findOne({ saleNumber: orderNumber });
     const onlineOrder = !posSale ? await Order.findOne({ orderNumber }) : null;
 
@@ -93,15 +91,12 @@ export async function POST(req: NextRequest) {
       if (totalRefundAmount <= 0)
         throw new Error("Return amount must be greater than 0");
 
-      // ── Mark returned items on POS sale using atomic $set ─────────────────
-      // We use updateOne with positional $ operator to avoid subdocument schema issues.
-      // This works regardless of whether the items schema has `returned` defined.
+      // ── Mark returned items on POS sale ────────────────────────────────────
       if (posSale) {
         for (const returnItem of returnItems) {
           const matchKey = returnItem.productId?.toString();
           const matchName = returnItem.name?.toLowerCase();
 
-          // Find the index of the matching item in the array
           const saleItems: any[] = (posSale as any).items || [];
           const matchIndex = saleItems.findIndex((saleItem: any) => {
             const saleProductId = saleItem.product?.toString();
@@ -112,7 +107,6 @@ export async function POST(req: NextRequest) {
           });
 
           if (matchIndex !== -1) {
-            // Use MongoDB's positional update via updateOne to bypass Mongoose schema restrictions
             await POSSale.updateOne(
               { saleNumber: orderNumber },
               {
@@ -182,7 +176,7 @@ export async function POST(req: NextRequest) {
           sellingPrice: product.retailPrice || costPrice,
           profitPerUnit: (product.retailPrice || costPrice) - costPrice,
           status: "active",
-          isReturn: true,
+          isReturn: true, // Mark as return batch
         });
         await newBatch.save({ session });
       }
@@ -221,6 +215,20 @@ export async function POST(req: NextRequest) {
       });
       await refund.save({ session });
 
+      // ── CREATE TRANSACTION RECORD (FIX #2) ─────────────────────────────────
+      const transaction = new Transaction({
+        type: "expense",
+        category: "Refund",
+        amount: totalRefundAmount,
+        source: walletField,
+        reference: refund._id,
+        referenceModel: "Refund",
+        description: `Return/Refund for ${orderType === "online" ? "Order" : "Sale"} #${orderNumber} (${returnItems.length} item${returnItems.length > 1 ? "s" : ""})`,
+        notes: notes || `Manual ${orderType === "online" ? "online" : "POS"} return processed`,
+        createdBy: payload.userId,
+      });
+      await transaction.save({ session });
+
       await session.commitTransaction();
 
       return NextResponse.json(
@@ -230,6 +238,7 @@ export async function POST(req: NextRequest) {
           refund,
           refundAmount: totalRefundAmount,
           walletBalance: (wallet as any)[walletField],
+          transactionId: transaction._id,
         },
         { status: 201 }
       );

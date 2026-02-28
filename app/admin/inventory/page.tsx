@@ -241,10 +241,14 @@ function WalletBadge({ method, wallet, paying }: { method: PayMethod; wallet: Wa
 
 // ── Inventory Summary Stats ───────────────────────────────────────────────────
 
+
+// Replace the InventorySummary function with this updated version:
+
 function InventorySummary({ inventory }: { inventory: InventoryItem[] }) {
   const stats = inventory.reduce(
     (acc, item) => {
-      const totalPurchased = item.batches?.reduce((s, b) => s + b.quantity, 0) ?? 0;
+      // FIX #1: Exclude return batches from "purchased" calculation
+      const totalPurchased = item.batches?.filter(b => !b.isReturn).reduce((s, b) => s + b.quantity, 0) ?? 0;
       const currentStock = item.stock ?? 0;
       const totalSold = Math.max(totalPurchased - currentStock, 0);
       const isSoldOut = currentStock === 0;
@@ -327,6 +331,12 @@ function InventorySummary({ inventory }: { inventory: InventoryItem[] }) {
     </div>
   );
 }
+
+// ALSO UPDATE in the inventory table rendering section:
+// Find this line (around line 500-600):
+//   const totalPurchased = item.batches?.reduce((s, b) => s + b.quantity, 0) ?? 0;
+// Replace with:
+//   const totalPurchased = item.batches?.filter(b => !b.isReturn).reduce((s, b) => s + b.quantity, 0) ?? 0;
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -856,7 +866,7 @@ export default function InventoryPage() {
                     </thead>
                     <tbody className="divide-y">
                       {paginatedInventory.map(item => {
-                        const totalPurchased = item.batches?.reduce((s, b) => s + b.quantity, 0) ?? 0;
+                        const totalPurchased = item.batches?.filter(b => !b.isReturn).reduce((s, b) => s + b.quantity, 0) ?? 0;
                         const currentStock = item.stock ?? 0;
                         const totalSold = Math.max(totalPurchased - currentStock, 0);
                         const isSoldOut = currentStock === 0;
