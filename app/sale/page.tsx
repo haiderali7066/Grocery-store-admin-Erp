@@ -136,23 +136,40 @@ function FlashCard({ product, index }: { product: SaleProduct; index: number }) 
   const imageUrl = product.mainImage || "/placeholder.svg";
 
   const handleAddToCart = (e: React.MouseEvent) => {
-    e.preventDefault(); 
+    e.preventDefault();
     e.stopPropagation();
     setIsAdding(true);
-    addItem({ id: product._id, name: product.name, price: salePrice, quantity: 1, image: imageUrl, weight: `${product.unitSize} ${product.unitType}` });
+    addItem({
+      id: product._id,
+      name: product.name,
+      price: salePrice,
+      quantity: 1,
+      image: imageUrl,
+      weight: `${product.unitSize} ${product.unitType}`,
+    });
     setShowSuccess(true);
     setTimeout(() => { setIsAdding(false); setShowSuccess(false); }, 1000);
   };
 
   const handleBuyNow = (e: React.MouseEvent) => {
-    e.preventDefault(); 
+    e.preventDefault();
     e.stopPropagation();
-    addItem({ id: product._id, name: product.name, price: salePrice, quantity: 1, image: imageUrl, weight: `${product.unitSize} ${product.unitType}` });
+    addItem({
+      id: product._id,
+      name: product.name,
+      price: salePrice,
+      quantity: 1,
+      image: imageUrl,
+      weight: `${product.unitSize} ${product.unitType}`,
+    });
     router.push("/cart");
   };
 
   return (
-    <div className="group relative bg-white rounded-xl overflow-hidden border border-gray-100 hover:shadow-lg hover:border-gray-200 transition-all duration-300 flex flex-col h-full" style={{ animationDelay: `${index * 60}ms` }}>
+    <div
+      className="group relative bg-white rounded-xl overflow-hidden border border-gray-100 hover:shadow-lg hover:border-gray-200 transition-all duration-300 flex flex-col h-full"
+      style={{ animationDelay: `${index * 60}ms` }}
+    >
       <div className="relative aspect-square w-full overflow-hidden bg-gray-50">
         <Image src={imageUrl} alt={product.name} fill className="object-cover object-center group-hover:scale-105 transition-transform duration-500" sizes="(max-width: 768px) 50vw, 33vw" />
         <div className="absolute top-2 left-2 flex flex-col gap-1 z-10">
@@ -186,12 +203,16 @@ function FlashCard({ product, index }: { product: SaleProduct; index: number }) 
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 mt-auto">
-          <button onClick={handleAddToCart} disabled={isAdding || outOfStock}
+          <button
+            onClick={handleAddToCart}
+            disabled={isAdding || outOfStock}
             className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-200 border ${showSuccess ? "bg-green-100 border-green-200 text-green-700" : "bg-white border-gray-200 text-gray-900 hover:border-gray-900 hover:bg-gray-50"} disabled:opacity-50`}
           >
             {showSuccess ? <><Check className="w-3 h-3 sm:w-4 sm:h-4" /> Added</> : <><ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" /> Add</>}
           </button>
-          <button onClick={handleBuyNow} disabled={outOfStock}
+          <button
+            onClick={handleBuyNow}
+            disabled={outOfStock}
             className="flex items-center justify-center py-2 px-2 rounded-lg text-xs sm:text-sm font-semibold text-white bg-green-700 hover:bg-green-800 transition-colors shadow-sm disabled:bg-gray-200 disabled:text-gray-400"
           >
             Buy Now
@@ -206,7 +227,8 @@ function FlashCard({ product, index }: { product: SaleProduct; index: number }) 
 
 function BundleCard({ bundle, index }: { bundle: SaleBundle; index: number }) {
   const router = useRouter();
-  const { addItem } = useCart();
+  // ✅ FIX: Use addBundle instead of addItem so bundleProducts are stored in cart
+  const { addBundle } = useCart();
   const [showSuccess, setShowSuccess] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -215,17 +237,29 @@ function BundleCard({ bundle, index }: { bundle: SaleBundle; index: number }) {
   const savings = retailTotal - salePrice;
   const savingsPct = retailTotal > 0 ? Math.round((savings / retailTotal) * 100) : 0;
 
+  // ✅ FIX: Build a proper BundleCartInput with real product IDs and data.
+  // This is what CartProvider.addBundle() expects, and what the checkout/orders
+  // API needs to validate each product against the database.
+  const bundleCartPayload = {
+    bundleId: bundle._id,
+    name: bundle.name,
+    bundlePrice: salePrice,
+    originalPrice: retailTotal,
+    discount: bundle.discount || 0,
+    image: bundle.image || bundle.products[0]?.product?.mainImage || "/placeholder.svg",
+    products: bundle.products.map((bp) => ({
+      productId: bp.product._id,        // ✅ real MongoDB ObjectId — used by checkout API
+      name: bp.product.name,
+      quantity: bp.quantity,
+      retailPrice: bp.product.retailPrice,
+      image: bp.product.mainImage,
+    })),
+  };
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addItem({
-      id: bundle._id,
-      name: bundle.name,
-      price: salePrice,
-      quantity: 1,
-      image: bundle.image || bundle.products[0]?.product?.mainImage || "/placeholder.svg",
-      weight: `${bundle.products.length} items`,
-    });
+    addBundle(bundleCartPayload); // ✅ was addItem(...) — which lost bundleProducts
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 1000);
   };
@@ -233,14 +267,7 @@ function BundleCard({ bundle, index }: { bundle: SaleBundle; index: number }) {
   const handleBuyNow = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addItem({
-      id: bundle._id,
-      name: bundle.name,
-      price: salePrice,
-      quantity: 1,
-      image: bundle.image || bundle.products[0]?.product?.mainImage || "/placeholder.svg",
-      weight: `${bundle.products.length} items`,
-    });
+    addBundle(bundleCartPayload); // ✅ was addItem(...)
     router.push("/cart");
   };
 
@@ -311,13 +338,9 @@ function BundleCard({ bundle, index }: { bundle: SaleBundle; index: number }) {
           className="flex items-center justify-center w-full gap-1 text-xs text-gray-500 hover:text-gray-700 py-1"
         >
           {expanded ? (
-            <>
-              <ChevronUp className="h-3 w-3" /> Hide Pricing
-            </>
+            <><ChevronUp className="h-3 w-3" /> Hide Pricing</>
           ) : (
-            <>
-              <ChevronDown className="h-3 w-3" /> Show Pricing
-            </>
+            <><ChevronDown className="h-3 w-3" /> Show Pricing</>
           )}
         </button>
 
@@ -375,13 +398,9 @@ function BundleCard({ bundle, index }: { bundle: SaleBundle; index: number }) {
             }`}
           >
             {showSuccess ? (
-              <>
-                <Check className="w-3 h-3 sm:w-4 sm:h-4" /> Added
-              </>
+              <><Check className="w-3 h-3 sm:w-4 sm:h-4" /> Added</>
             ) : (
-              <>
-                <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" /> Add
-              </>
+              <><ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" /> Add</>
             )}
           </button>
           <button
@@ -409,9 +428,9 @@ export default function SalePage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/sale").then(r => r.json()),
-      fetch("/api/sale/products").then(r => r.json()),
-      fetch("/api/sale/bundles").then(r => r.json()),
+      fetch("/api/sale").then((r) => r.json()),
+      fetch("/api/sale/products").then((r) => r.json()),
+      fetch("/api/sale/bundles").then((r) => r.json()),
     ])
       .then(([saleData, prodData, bundleData]) => {
         setConfig(saleData.sale ?? null);
@@ -434,8 +453,17 @@ export default function SalePage() {
 
       {/* Hero */}
       <section className="relative overflow-hidden bg-[#14532d]">
-        <div className="absolute inset-0 opacity-[0.06]" style={{ backgroundImage: "repeating-linear-gradient(45deg, #facc15 0, #facc15 1px, transparent 0, transparent 50%)", backgroundSize: "14px 14px" }} />
-        <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(ellipse 70% 60% at 50% 40%, rgba(21,128,61,0.8) 0%, transparent 70%)" }} />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: "repeating-linear-gradient(45deg, #facc15 0, #facc15 1px, transparent 0, transparent 50%)",
+            backgroundSize: "14px 14px",
+          }}
+        />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "radial-gradient(ellipse 70% 60% at 50% 40%, rgba(21,128,61,0.8) 0%, transparent 70%)" }}
+        />
         <div className="relative h-2 w-full bg-gradient-to-r from-yellow-500 via-yellow-300 to-yellow-500" />
 
         <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 pt-14 pb-0 text-center">
@@ -443,7 +471,10 @@ export default function SalePage() {
             <Flame className="h-3.5 w-3.5" />
             {isLoading ? "Flash Sale" : config?.badgeText || "Flash Sale"}
           </div>
-          <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-white leading-[0.9] mb-5 tracking-tight" style={{ fontFamily: "'Georgia', serif", textShadow: "0 4px 32px rgba(0,0,0,0.4)" }}>
+          <h1
+            className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-white leading-[0.9] mb-5 tracking-tight"
+            style={{ fontFamily: "'Georgia', serif", textShadow: "0 4px 32px rgba(0,0,0,0.4)" }}
+          >
             {isLoading ? <span className="animate-pulse">Flash Sale</span> : config?.title || "Flash Sale"}
           </h1>
           <p className="text-green-200 text-base md:text-lg font-medium mb-10 max-w-lg mx-auto leading-relaxed">
@@ -503,13 +534,17 @@ export default function SalePage() {
           {/* Filter tabs — only show if there are both products and bundles */}
           {!isLoading && products.length > 0 && bundles.length > 0 && (
             <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
-              {(["all", "products", "bundles"] as const).map(tab => (
+              {(["all", "products", "bundles"] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all capitalize ${activeTab === tab ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
                 >
-                  {tab === "all" ? `All (${totalItems})` : tab === "products" ? `Products (${products.length})` : `Bundles (${bundles.length})`}
+                  {tab === "all"
+                    ? `All (${totalItems})`
+                    : tab === "products"
+                    ? `Products (${products.length})`
+                    : `Bundles (${bundles.length})`}
                 </button>
               ))}
             </div>
@@ -537,11 +572,18 @@ export default function SalePage() {
             <div className="w-20 h-20 bg-green-50 border-2 border-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
               <Zap className="h-9 w-9 text-green-600" />
             </div>
-            <h2 className="text-2xl font-black text-gray-800 mb-2">{saleActive ? "No Flash Sale Products Yet" : "No Active Sale"}</h2>
+            <h2 className="text-2xl font-black text-gray-800 mb-2">
+              {saleActive ? "No Flash Sale Products Yet" : "No Active Sale"}
+            </h2>
             <p className="text-gray-500 text-sm mb-8 max-w-sm mx-auto">
-              {saleActive ? "The admin hasn't tagged any products for this sale yet." : "Check back soon for our next flash sale event!"}
+              {saleActive
+                ? "The admin hasn't tagged any products for this sale yet."
+                : "Check back soon for our next flash sale event!"}
             </p>
-            <Link href="/products" className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white font-bold px-8 py-3 rounded-xl transition-colors text-sm">
+            <Link
+              href="/products"
+              className="inline-flex items-center gap-2 bg-green-700 hover:bg-green-800 text-white font-bold px-8 py-3 rounded-xl transition-colors text-sm"
+            >
               Browse All Products <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
@@ -550,17 +592,21 @@ export default function SalePage() {
         {/* Bundles section */}
         {!isLoading && showBundles && bundles.length > 0 && (
           <div className="mb-10">
-            {(activeTab === "all") && (
+            {activeTab === "all" && (
               <div className="flex items-center gap-3 mb-5">
                 <div className="flex items-center gap-2 bg-green-700 text-white font-black text-xs uppercase tracking-widest px-3 py-2 rounded-full">
                   <Package className="h-3 w-3" /> Bundles
                 </div>
                 <div className="h-px flex-1 bg-gray-200" />
-                <span className="text-xs text-gray-400">{bundles.length} bundle{bundles.length !== 1 ? "s" : ""}</span>
+                <span className="text-xs text-gray-400">
+                  {bundles.length} bundle{bundles.length !== 1 ? "s" : ""}
+                </span>
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
-              {bundles.map((b, i) => <BundleCard key={b._id} bundle={b} index={i} />)}
+              {bundles.map((b, i) => (
+                <BundleCard key={b._id} bundle={b} index={i} />
+              ))}
             </div>
           </div>
         )}
@@ -568,24 +614,31 @@ export default function SalePage() {
         {/* Products section */}
         {!isLoading && showProducts && products.length > 0 && (
           <div>
-            {(activeTab === "all" && bundles.length > 0) && (
+            {activeTab === "all" && bundles.length > 0 && (
               <div className="flex items-center gap-3 mb-5">
                 <div className="flex items-center gap-2 bg-yellow-400 text-gray-900 font-black text-xs uppercase tracking-widest px-3 py-2 rounded-full">
                   <Zap className="h-3 w-3 fill-gray-900" /> Individual Products
                 </div>
                 <div className="h-px flex-1 bg-gray-200" />
-                <span className="text-xs text-gray-400">{products.length} product{products.length !== 1 ? "s" : ""}</span>
+                <span className="text-xs text-gray-400">
+                  {products.length} product{products.length !== 1 ? "s" : ""}
+                </span>
               </div>
             )}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
-              {products.map((p, i) => <FlashCard key={p._id} product={p} index={i} />)}
+              {products.map((p, i) => (
+                <FlashCard key={p._id} product={p} index={i} />
+              ))}
             </div>
           </div>
         )}
 
         {totalItems > 0 && (
           <div className="mt-12 text-center">
-            <Link href="/products" className="inline-flex items-center gap-2 border-2 border-green-700 text-green-700 hover:bg-green-700 hover:text-white font-bold px-8 py-3 rounded-xl transition-all text-sm">
+            <Link
+              href="/products"
+              className="inline-flex items-center gap-2 border-2 border-green-700 text-green-700 hover:bg-green-700 hover:text-white font-bold px-8 py-3 rounded-xl transition-all text-sm"
+            >
               Browse All Products <ArrowRight className="h-4 w-4" />
             </Link>
           </div>

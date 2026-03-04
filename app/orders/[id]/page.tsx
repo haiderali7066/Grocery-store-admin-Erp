@@ -18,8 +18,10 @@ import {
   Loader2,
   AlertCircle,
   Banknote,
+  ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import {
   Dialog,
@@ -37,22 +39,41 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 interface OrderItem {
+  _id?: string;
   product: {
     _id: string;
     name: string;
+    mainImage?: string;
     images?: string[];
   } | null;
+  name: string;
+  image?: string | null;
   quantity: number;
   price: number;
   subtotal: number;
+  // Bundle fields (set when this line came from a bundle)
+  bundleId?: string | null;
+  bundleName?: string | null;
+  isBundle?: boolean;
 }
 
 interface OrderDetail {
   _id: string;
   orderNumber: string;
   items: OrderItem[];
-  shippingAddress: any;
+  shippingAddress: {
+    fullName?: string;
+    email?: string;
+    phone?: string;
+    street?: string;
+    city?: string;
+    province?: string;
+    zipCode?: string;
+    country?: string;
+  };
   subtotal: number;
   gstAmount: number;
   shippingCost?: number;
@@ -69,77 +90,216 @@ interface OrderDetail {
   deliveredDate?: string;
 }
 
+// ── Bundle grouping helper ────────────────────────────────────────────────────
+
+interface BundleGroup {
+  bundleId: string;
+  bundleName: string;
+  items: OrderItem[];
+  groupTotal: number;
+}
+
+/**
+ * Splits order items into:
+ *  - `bundles`  — groups of items that share a bundleId
+ *  - `regular`  — standalone product lines
+ */
+function groupItems(items: OrderItem[]): {
+  bundles: BundleGroup[];
+  regular: OrderItem[];
+} {
+  const bundleMap = new Map<string, BundleGroup>();
+  const regular: OrderItem[] = [];
+
+  for (const item of items) {
+    if (item.bundleId) {
+      if (!bundleMap.has(item.bundleId)) {
+        bundleMap.set(item.bundleId, {
+          bundleId:   item.bundleId,
+          bundleName: item.bundleName || "Bundle",
+          items:      [],
+          groupTotal: 0,
+        });
+      }
+      const group = bundleMap.get(item.bundleId)!;
+      group.items.push(item);
+      group.groupTotal += item.subtotal ?? item.price * item.quantity;
+    } else {
+      regular.push(item);
+    }
+  }
+
+  return { bundles: Array.from(bundleMap.values()), regular };
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function ItemImage({ item }: { item: OrderItem }) {
+  const src =
+    item.image ||
+    item.product?.mainImage ||
+    item.product?.images?.[0] ||
+    "/placeholder.svg";
+
+  return (
+    <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100 shrink-0 border border-gray-200">
+      <Image src={src} alt={item.name} fill className="object-cover" unoptimized />
+    </div>
+  );
+}
+
+function RegularItemRow({
+  item,
+  canReview,
+  onReview,
+}: {
+  item: OrderItem;
+  canReview: boolean;
+  onReview: (id: string, name: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+      <ItemImage item={item} />
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-gray-900">{item.name}</p>
+        <p className="text-sm text-gray-500">
+          Qty: {item.quantity} × Rs. {item.price.toLocaleString()}
+        </p>
+      </div>
+      <div className="text-right shrink-0">
+        <p className="font-bold text-gray-900 whitespace-nowrap">
+          Rs. {(item.subtotal ?? item.price * item.quantity).toLocaleString()}
+        </p>
+        {canReview && item.product?._id && (
+          <Button
+            onClick={() => onReview(item.product!._id, item.name)}
+            size="sm"
+            className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs print:hidden"
+          >
+            <Star className="h-3 w-3" /> Review
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BundleGroupCard({
+  group,
+  canReview,
+  onReview,
+}: {
+  group: BundleGroup;
+  canReview: boolean;
+  onReview: (id: string, name: string) => void;
+}) {
+  return (
+    <div className="border-2 border-green-100 rounded-xl overflow-hidden">
+      {/* Bundle header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-green-50 border-b border-green-100">
+        <div className="flex items-center gap-2">
+          <ShoppingBag className="h-4 w-4 text-green-700" />
+          <span className="font-bold text-green-800 text-sm">{group.bundleName}</span>
+          <span className="text-[10px] font-black bg-green-200 text-green-800 px-2 py-0.5 rounded-full uppercase">
+            Bundle
+          </span>
+        </div>
+        <span className="font-bold text-green-700 text-sm whitespace-nowrap">
+          Rs. {group.groupTotal.toLocaleString()}
+        </span>
+      </div>
+
+      {/* Bundle line items */}
+      <div className="divide-y divide-gray-100 bg-white">
+        {group.items.map((item, i) => (
+          <div key={i} className="flex items-center gap-4 px-4 py-3">
+            <ItemImage item={item} />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-gray-800 text-sm">{item.name}</p>
+              <p className="text-xs text-gray-500">
+                Qty: {item.quantity} × Rs. {item.price.toLocaleString()}
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="font-semibold text-gray-800 text-sm whitespace-nowrap">
+                Rs. {(item.subtotal ?? item.price * item.quantity).toLocaleString()}
+              </p>
+              {canReview && item.product?._id && (
+                <Button
+                  onClick={() => onReview(item.product!._id, item.name)}
+                  size="sm"
+                  className="mt-1.5 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs print:hidden"
+                >
+                  <Star className="h-3 w-3" /> Review
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function OrderDetailPage() {
-  const params = useParams();
+  const params  = useParams();
   const orderId = params.id as string;
-  const [order, setOrder] = useState<OrderDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
 
+  const [order,      setOrder]      = useState<OrderDetail | null>(null);
+  const [isLoading,  setIsLoading]  = useState(true);
+
+  // Refund dialog
   const [showRefundDialog, setShowRefundDialog] = useState(false);
-  const [refundReason, setRefundReason] = useState("defective");
-  const [refundNotes, setRefundNotes] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [refundReason,     setRefundReason]     = useState("defective");
+  const [refundNotes,      setRefundNotes]      = useState("");
+  const [isSubmitting,     setIsSubmitting]     = useState(false);
 
-  const [showReviewDialog, setShowReviewDialog] = useState(false);
-  const [reviewingProduct, setReviewingProduct] = useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [reviewForm, setReviewForm] = useState({ rating: 5, comment: "" });
-  const [reviewLoading, setReviewLoading] = useState(false);
-  const [reviewError, setReviewError] = useState("");
-  const [reviewSuccess, setReviewSuccess] = useState("");
+  // Review dialog
+  const [showReviewDialog,  setShowReviewDialog]  = useState(false);
+  const [reviewingProduct,  setReviewingProduct]  = useState<{ id: string; name: string } | null>(null);
+  const [reviewForm,        setReviewForm]        = useState({ rating: 5, comment: "" });
+  const [reviewLoading,     setReviewLoading]     = useState(false);
+  const [reviewError,       setReviewError]       = useState("");
+  const [reviewSuccess,     setReviewSuccess]     = useState("");
 
   useEffect(() => {
-    const fetchOrder = async () => {
+    if (!orderId) return;
+    (async () => {
       try {
         const res = await fetch(`/api/orders/${orderId}`);
         if (!res.ok) throw new Error("Failed to fetch order");
         const data = await res.json();
         setOrder(data.order);
-      } catch (error) {
-        console.error(error);
+      } catch (err) {
+        console.error(err);
       } finally {
         setIsLoading(false);
       }
-    };
-    if (orderId) fetchOrder();
+    })();
   }, [orderId]);
-
-  const downloadInvoice = () => {
-    window.print();
-  };
 
   const handleRefundRequest = async () => {
     if (!order) return;
-
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/refunds/request", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: order._id,
-          reason: `${refundReason}: ${refundNotes}`,
-        }),
+        body:    JSON.stringify({ orderId: order._id, reason: `${refundReason}: ${refundNotes}` }),
       });
-
       const data = await res.json();
-
       if (res.ok) {
-        alert(
-          "✅ Refund request submitted successfully!\n\n" +
-            "We will review your request and respond within 24 hours.\n" +
-            "Note: Rs 300 delivery charges will be deducted from your refund amount.",
-        );
+        alert("✅ Refund request submitted!\n\nWe'll review it within 24 hours.\nNote: Rs 300 delivery charges will be deducted.");
         setShowRefundDialog(false);
         setRefundReason("defective");
         setRefundNotes("");
       } else {
         alert(`❌ ${data.error || "Failed to submit refund request"}`);
       }
-    } catch (error) {
-      console.error("Refund request error:", error);
+    } catch (err) {
+      console.error(err);
       alert("❌ Error submitting refund request. Please try again.");
     } finally {
       setIsSubmitting(false);
@@ -157,40 +317,20 @@ export default function OrderDetailPage() {
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reviewingProduct) return;
-
     setReviewError("");
     setReviewSuccess("");
-
-    if (!reviewForm.comment.trim()) {
-      setReviewError("Please write a review comment");
-      return;
-    }
-
+    if (!reviewForm.comment.trim()) { setReviewError("Please write a review comment"); return; }
     setReviewLoading(true);
     try {
       const res = await fetch("/api/products/reviews", {
-        method: "POST",
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: reviewingProduct.id,
-          rating: reviewForm.rating,
-          comment: reviewForm.comment.trim(),
-        }),
+        body:    JSON.stringify({ productId: reviewingProduct.id, rating: reviewForm.rating, comment: reviewForm.comment.trim() }),
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to submit review");
-      }
-
-      setReviewSuccess(
-        data.message ||
-          "Review submitted successfully! It will appear after admin approval.",
-      );
-      setTimeout(() => {
-        setShowReviewDialog(false);
-      }, 2000);
+      if (!res.ok) throw new Error(data.error || "Failed to submit review");
+      setReviewSuccess(data.message || "Review submitted! It will appear after admin approval.");
+      setTimeout(() => setShowReviewDialog(false), 2000);
     } catch (err: any) {
       setReviewError(err.message);
     } finally {
@@ -198,23 +338,13 @@ export default function OrderDetailPage() {
     }
   };
 
-  const renderStars = (
-    rating: number,
-    interactive = false,
-    onClick?: (r: number) => void,
-  ) => (
+  const renderStars = (rating: number, interactive = false, onClick?: (r: number) => void) => (
     <div className="flex gap-1 justify-center">
       {Array.from({ length: 5 }).map((_, i) => (
         <Star
           key={i}
           size={interactive ? 32 : 20}
-          className={`${
-            i < rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-          } ${
-            interactive
-              ? "cursor-pointer hover:scale-110 transition-transform"
-              : ""
-          }`}
+          className={`${i < rating ? "fill-yellow-400 text-yellow-400" : "text-gray-300"} ${interactive ? "cursor-pointer hover:scale-110 transition-transform" : ""}`}
           onClick={() => interactive && onClick?.(i + 1)}
         />
       ))}
@@ -225,208 +355,141 @@ export default function OrderDetailPage() {
     if (!order) return false;
     if (order.isPOS) return false;
     if (order.orderStatus === "cancelled") return false;
-    if (order.orderStatus === "delivered" || order.orderStatus === "shipped")
-      return true;
-    return false;
+    return order.orderStatus === "delivered" || order.orderStatus === "shipped";
   };
 
   const canReview = order?.orderStatus === "delivered";
-  const isCOD = order?.paymentMethod === "cod";
+  const isCOD     = order?.paymentMethod === "cod";
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "pending":
-      case "confirmed":
-      case "processing":
-        return <Package className="h-5 w-5" />;
-      case "shipped":
-        return <Truck className="h-5 w-5" />;
-      case "delivered":
-        return <CheckCircle className="h-5 w-5" />;
-      default:
-        return <Package className="h-5 w-5" />;
+      case "shipped":   return <Truck         className="h-5 w-5" />;
+      case "delivered": return <CheckCircle   className="h-5 w-5" />;
+      default:          return <Package       className="h-5 w-5" />;
     }
   };
 
-  if (isLoading)
-    return (
-      <AuthProvider>
-        <div className="min-h-screen">
-          <Navbar />
-          <main className="p-6 text-center">
-            <Loader2 className="h-12 w-12 animate-spin text-green-700 mx-auto mb-4" />
-            <p>Loading order details...</p>
-          </main>
-          <Footer />
-        </div>
-      </AuthProvider>
-    );
+  // ── Loading / not found ───────────────────────────────────────────────────
 
-  if (!order)
-    return (
-      <AuthProvider>
-        <div className="min-h-screen">
-          <Navbar />
-          <main className="p-6 text-center text-red-600">Order not found</main>
-          <Footer />
-        </div>
-      </AuthProvider>
-    );
+  if (isLoading) return (
+    <AuthProvider>
+      <div className="min-h-screen"><Navbar />
+        <main className="p-6 text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-green-700 mx-auto mb-4" />
+          <p>Loading order details…</p>
+        </main>
+        <Footer />
+      </div>
+    </AuthProvider>
+  );
+
+  if (!order) return (
+    <AuthProvider>
+      <div className="min-h-screen"><Navbar />
+        <main className="p-6 text-center text-red-600">Order not found</main>
+        <Footer />
+      </div>
+    </AuthProvider>
+  );
+
+  // ── Group items ───────────────────────────────────────────────────────────
+  const { bundles, regular } = groupItems(order.items);
+  const hasBundles  = bundles.length  > 0;
+  const hasRegular  = regular.length  > 0;
 
   return (
     <AuthProvider>
       <div className="min-h-screen bg-gray-50">
         <Navbar />
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Button
-            variant="outline"
-            asChild
-            className="mb-4 rounded-xl print:hidden"
-          >
+
+          <Button variant="outline" asChild className="mb-4 rounded-xl print:hidden">
             <Link href="/orders">
               <ArrowLeft className="h-4 w-4 mr-2" /> Back to Orders
             </Link>
           </Button>
 
-          {/* Order Info */}
+          {/* ── Order header ── */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  Order #{order.orderNumber}
-                </h1>
-                <p className="text-gray-600 mt-1">
-                  Placed on {new Date(order.createdAt).toLocaleDateString()}
-                </p>
+                <h1 className="text-2xl font-bold text-gray-900">Order #{order.orderNumber}</h1>
+                <p className="text-gray-600 mt-1">Placed on {new Date(order.createdAt).toLocaleDateString()}</p>
+                {order.shippingAddress?.fullName && (
+                  <p className="text-gray-500 text-sm mt-1">For: {order.shippingAddress.fullName}</p>
+                )}
               </div>
-              <div className="flex flex-col gap-2">
-                <span
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold ${
-                    order.orderStatus === "delivered"
-                      ? "bg-green-100 text-green-800"
-                      : order.orderStatus === "shipped"
-                        ? "bg-blue-100 text-blue-800"
-                        : order.orderStatus === "pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : order.orderStatus === "cancelled"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-800"
-                  }`}
-                >
-                  {getStatusIcon(order.orderStatus)}
-                  {order.orderStatus.toUpperCase()}
-                </span>
-              </div>
+              <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold self-start md:self-auto ${
+                order.orderStatus === "delivered"  ? "bg-green-100 text-green-800"  :
+                order.orderStatus === "shipped"    ? "bg-blue-100  text-blue-800"   :
+                order.orderStatus === "pending"    ? "bg-yellow-100 text-yellow-800" :
+                order.orderStatus === "cancelled"  ? "bg-red-100   text-red-800"    :
+                "bg-gray-100 text-gray-800"
+              }`}>
+                {getStatusIcon(order.orderStatus)}
+                {order.orderStatus.toUpperCase()}
+              </span>
             </div>
           </Card>
 
-          {/* Refund Button */}
+          {/* ── Refund banner ── */}
           {canRequestRefund() && (
             <Card className="p-4 mb-6 bg-orange-50 border-orange-200 border print:hidden">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <p className="font-semibold text-orange-900">
-                    Not satisfied with your order?
-                  </p>
-                  <p className="text-sm text-orange-700">
-                    Request a refund and we'll process it within 24 hours
-                  </p>
+                  <p className="font-semibold text-orange-900">Not satisfied with your order?</p>
+                  <p className="text-sm text-orange-700">Request a refund and we'll process it within 24 hours</p>
                 </div>
-                <Dialog
-                  open={showRefundDialog}
-                  onOpenChange={setShowRefundDialog}
-                >
+                <Dialog open={showRefundDialog} onOpenChange={setShowRefundDialog}>
                   <DialogTrigger asChild>
                     <Button className="bg-orange-600 hover:bg-orange-700 rounded-xl whitespace-nowrap">
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      Request Refund
+                      <RotateCcw className="h-4 w-4 mr-2" /> Request Refund
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-md rounded-2xl">
                     <DialogHeader>
                       <DialogTitle>Request Refund</DialogTitle>
-                      <DialogDescription>
-                        Please provide details about why you want to return this
-                        order
-                      </DialogDescription>
+                      <DialogDescription>Provide details about why you want to return this order</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 mt-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Reason for Return *
-                        </label>
-                        <Select
-                          value={refundReason}
-                          onValueChange={setRefundReason}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                        <label className="block text-sm font-medium mb-2">Reason for Return *</label>
+                        <Select value={refundReason} onValueChange={setRefundReason}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="defective">
-                              Defective Product
-                            </SelectItem>
-                            <SelectItem value="wrong_item">
-                              Wrong Item Received
-                            </SelectItem>
-                            <SelectItem value="not_as_described">
-                              Not As Described
-                            </SelectItem>
-                            <SelectItem value="damaged">
-                              Damaged During Shipping
-                            </SelectItem>
-                            <SelectItem value="expired">
-                              Expired Product
-                            </SelectItem>
-                            <SelectItem value="changed_mind">
-                              Changed My Mind
-                            </SelectItem>
+                            <SelectItem value="defective">Defective Product</SelectItem>
+                            <SelectItem value="wrong_item">Wrong Item Received</SelectItem>
+                            <SelectItem value="not_as_described">Not As Described</SelectItem>
+                            <SelectItem value="damaged">Damaged During Shipping</SelectItem>
+                            <SelectItem value="expired">Expired Product</SelectItem>
+                            <SelectItem value="changed_mind">Changed My Mind</SelectItem>
                             <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-
                       <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Additional Details *
-                        </label>
+                        <label className="block text-sm font-medium mb-2">Additional Details *</label>
                         <Textarea
                           value={refundNotes}
                           onChange={(e) => setRefundNotes(e.target.value)}
-                          placeholder="Please provide more details about your return request..."
+                          placeholder="Please describe your return request…"
                           rows={4}
                           className="resize-none"
                         />
                       </div>
-
                       <Card className="p-3 bg-blue-50 border-blue-200 border">
-                        <p className="text-xs text-blue-800 font-semibold">
-                          Refund Policy:
-                        </p>
+                        <p className="text-xs text-blue-800 font-semibold">Refund Policy:</p>
                         <ul className="text-xs text-blue-700 mt-2 space-y-1 list-disc list-inside">
                           <li>Rs 300 delivery charges will be deducted</li>
-                          <li>Refund processed within 24-48 hours</li>
-                          <li>
-                            Product must be returned in original condition
-                          </li>
+                          <li>Refund processed within 24–48 hours</li>
+                          <li>Product must be returned in original condition</li>
                         </ul>
                       </Card>
-
                       <div className="flex gap-3">
-                        <Button
-                          onClick={handleRefundRequest}
-                          disabled={isSubmitting || !refundNotes.trim()}
-                          className="flex-1 bg-orange-600 hover:bg-orange-700 rounded-xl"
-                        >
-                          {isSubmitting ? "Submitting..." : "Submit Request"}
+                        <Button onClick={handleRefundRequest} disabled={isSubmitting || !refundNotes.trim()} className="flex-1 bg-orange-600 hover:bg-orange-700 rounded-xl">
+                          {isSubmitting ? "Submitting…" : "Submit Request"}
                         </Button>
-                        <Button
-                          onClick={() => setShowRefundDialog(false)}
-                          variant="outline"
-                          className="flex-1 rounded-xl"
-                        >
-                          Cancel
-                        </Button>
+                        <Button onClick={() => setShowRefundDialog(false)} variant="outline" className="flex-1 rounded-xl">Cancel</Button>
                       </div>
                     </div>
                   </DialogContent>
@@ -435,129 +498,81 @@ export default function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Items with Review Buttons */}
+          {/* ── Order items ── */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <h2 className="text-lg font-bold mb-4">Order Items</h2>
-            <div className="space-y-3">
-              {order.items.map((item, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl"
-                >
-                  {item.product?.images?.[0] && (
-                    <img
-                      src={item.product.images[0]}
-                      alt={item.product.name}
-                      className="w-16 h-16 object-cover rounded-lg shrink-0"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900">
-                      {item.product?.name || "Product"}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Qty: {item.quantity} × Rs. {item.price.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-bold text-gray-900 whitespace-nowrap">
-                      Rs. {item.subtotal.toLocaleString()}
-                    </p>
-                    {canReview && item.product?._id && (
-                      <Button
-                        onClick={() =>
-                          openReviewDialog(
-                            item.product!._id,
-                            item.product!.name,
-                          )
-                        }
-                        size="sm"
-                        className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs print:hidden"
-                      >
-                        <Star className="h-3 w-3" />
-                        Review
-                      </Button>
-                    )}
-                  </div>
-                </div>
+
+            <div className="space-y-4">
+              {/* Bundle groups */}
+              {hasBundles && bundles.map((group) => (
+                <BundleGroupCard
+                  key={group.bundleId}
+                  group={group}
+                  canReview={!!canReview}
+                  onReview={openReviewDialog}
+                />
               ))}
+
+              {/* Divider when both bundles and regular items exist */}
+              {hasBundles && hasRegular && (
+                <div className="flex items-center gap-3 py-1">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Individual Items</span>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+              )}
+
+              {/* Regular items */}
+              {hasRegular && regular.map((item, i) => (
+                <RegularItemRow
+                  key={i}
+                  item={item}
+                  canReview={!!canReview}
+                  onReview={openReviewDialog}
+                />
+              ))}
+
+              {/* Fallback: nothing to show (shouldn't happen) */}
+              {!hasBundles && !hasRegular && (
+                <p className="text-center text-gray-400 py-8">No items found in this order.</p>
+              )}
             </div>
           </Card>
 
-          {/* Tracking Info */}
+          {/* ── Tracking info ── */}
           {order.trackingNumber && (
             <Card className="p-6 border-0 shadow-md mb-6 bg-blue-50 border-blue-200 border">
               <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Truck className="h-5 w-5" />
-                Tracking Information
+                <Truck className="h-5 w-5" /> Tracking Information
               </h2>
               <div className="space-y-2 text-sm">
-                <p>
-                  <span className="text-gray-600 font-medium">
-                    Tracking Number:{" "}
-                  </span>
-                  <span className="font-semibold">{order.trackingNumber}</span>
-                </p>
-                {order.trackingProvider && (
-                  <p>
-                    <span className="text-gray-600 font-medium">
-                      Provider:{" "}
-                    </span>
-                    <span className="font-semibold">
-                      {order.trackingProvider}
-                    </span>
-                  </p>
-                )}
-                {order.shippedDate && (
-                  <p>
-                    <span className="text-gray-600 font-medium">
-                      Shipped On:{" "}
-                    </span>
-                    <span className="font-semibold">
-                      {new Date(order.shippedDate).toLocaleDateString()}
-                    </span>
-                  </p>
-                )}
-                {order.deliveredDate && (
-                  <p>
-                    <span className="text-gray-600 font-medium">
-                      Delivered On:{" "}
-                    </span>
-                    <span className="font-semibold">
-                      {new Date(order.deliveredDate).toLocaleDateString()}
-                    </span>
-                  </p>
-                )}
+                <p><span className="text-gray-600 font-medium">Tracking Number: </span><span className="font-semibold">{order.trackingNumber}</span></p>
+                {order.trackingProvider && <p><span className="text-gray-600 font-medium">Provider: </span><span className="font-semibold">{order.trackingProvider}</span></p>}
+                {order.shippedDate   && <p><span className="text-gray-600 font-medium">Shipped On: </span><span className="font-semibold">{new Date(order.shippedDate).toLocaleDateString()}</span></p>}
+                {order.deliveredDate && <p><span className="text-gray-600 font-medium">Delivered On: </span><span className="font-semibold">{new Date(order.deliveredDate).toLocaleDateString()}</span></p>}
                 {order.trackingURL && (
-                  <Button
-                    asChild
-                    className="mt-3 w-full bg-blue-600 hover:bg-blue-700 rounded-xl print:hidden"
-                  >
-                    <Link href={order.trackingURL} target="_blank">
-                      <Truck className="h-4 w-4 mr-2" />
-                      Track Package
-                    </Link>
+                  <Button asChild className="mt-3 w-full bg-blue-600 hover:bg-blue-700 rounded-xl print:hidden">
+                    <Link href={order.trackingURL} target="_blank"><Truck className="h-4 w-4 mr-2" />Track Package</Link>
                   </Button>
                 )}
               </div>
             </Card>
           )}
 
-          {/* Shipping Address */}
+          {/* ── Shipping address ── */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <h2 className="text-lg font-bold mb-4">Shipping Address</h2>
             <div className="text-gray-700 text-sm space-y-1">
-              <p>{order.shippingAddress?.street}</p>
-              <p>{order.shippingAddress?.city}</p>
-              <p>{order.shippingAddress?.province}</p>
-              <p>{order.shippingAddress?.zipCode}</p>
-              {order.shippingAddress?.country && (
-                <p>{order.shippingAddress.country}</p>
-              )}
+              {order.shippingAddress?.fullName && <p className="font-semibold">{order.shippingAddress.fullName}</p>}
+              {order.shippingAddress?.phone    && <p>{order.shippingAddress.phone}</p>}
+              {order.shippingAddress?.street   && <p>{order.shippingAddress.street}</p>}
+              {order.shippingAddress?.city     && <p>{order.shippingAddress.city}{order.shippingAddress.province ? `, ${order.shippingAddress.province}` : ""}</p>}
+              {order.shippingAddress?.zipCode  && <p>{order.shippingAddress.zipCode}</p>}
+              {order.shippingAddress?.country  && <p>{order.shippingAddress.country}</p>}
             </div>
           </Card>
 
-          {/* Order Summary - MATCHING CHECKOUT */}
+          {/* ── Order summary ── */}
           <Card className="p-6 border-0 shadow-md mb-6 bg-white">
             <h2 className="text-lg font-bold mb-4">Order Summary</h2>
             <div className="space-y-3">
@@ -566,25 +581,19 @@ export default function OrderDetailPage() {
                 <span>Rs. {order.subtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-700 font-medium">
-                <span>Tax </span>
+                <span>Tax</span>
                 <span>Rs. {order.gstAmount.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-gray-700 font-medium">
-                <span className="flex items-center gap-1">
-                  <Truck className="h-4 w-4" /> Shipping
-                </span>
-                {(order.shippingCost ?? 0) === 0 ? (
-                  <span className="text-green-600 font-bold">Free</span>
-                ) : (
-                  <span>Rs. {(order.shippingCost ?? 0).toFixed(2)}</span>
-                )}
+                <span className="flex items-center gap-1"><Truck className="h-4 w-4" /> Shipping</span>
+                {(order.shippingCost ?? 0) === 0
+                  ? <span className="text-green-600 font-bold">Free</span>
+                  : <span>Rs. {(order.shippingCost ?? 0).toFixed(2)}</span>}
               </div>
 
               {isCOD && (
                 <div className="flex justify-between text-orange-600 font-medium bg-orange-50 -mx-2 px-2 py-2 rounded-lg">
-                  <span className="flex items-center gap-2">
-                    <Banknote className="h-4 w-4" /> Payment Method
-                  </span>
+                  <span className="flex items-center gap-2"><Banknote className="h-4 w-4" /> Payment Method</span>
                   <span className="font-bold">Cash on Delivery</span>
                 </div>
               )}
@@ -592,9 +601,7 @@ export default function OrderDetailPage() {
               <div className="flex justify-between pt-3 border-t border-gray-200">
                 <span className="text-lg font-black text-gray-900">Total</span>
                 <div className="text-right">
-                  <p className="text-2xl font-black text-green-700">
-                    Rs. {order.total.toFixed(2)}
-                  </p>
+                  <p className="text-2xl font-black text-green-700">Rs. {order.total.toFixed(2)}</p>
                   <p className="text-[10px] text-gray-400 uppercase font-black mt-1">
                     {isCOD ? "PAY ON DELIVERY" : "PKR"}
                   </p>
@@ -603,94 +610,53 @@ export default function OrderDetailPage() {
             </div>
 
             <Button
-              onClick={downloadInvoice}
+              onClick={() => window.print()}
               className="mt-6 w-full bg-green-700 hover:bg-green-800 rounded-xl print:hidden"
             >
               <Download className="h-4 w-4 mr-2" /> Download Invoice
             </Button>
           </Card>
 
-          {/* Review Dialog */}
+          {/* ── Review dialog ── */}
           <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
             <DialogContent className="rounded-2xl max-w-md">
               <DialogHeader>
-                <DialogTitle>
-                  Review: {reviewingProduct?.name || "Product"}
-                </DialogTitle>
+                <DialogTitle>Review: {reviewingProduct?.name || "Product"}</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmitReview} className="space-y-4 mt-2">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Your Rating
-                  </label>
-                  {renderStars(reviewForm.rating, true, (r) =>
-                    setReviewForm({ ...reviewForm, rating: r }),
-                  )}
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Your Rating</label>
+                  {renderStars(reviewForm.rating, true, (r) => setReviewForm({ ...reviewForm, rating: r }))}
                   <p className="text-center text-xs text-gray-400 mt-2">
-                    {reviewForm.rating === 5
-                      ? "Excellent"
-                      : reviewForm.rating === 4
-                        ? "Good"
-                        : reviewForm.rating === 3
-                          ? "Average"
-                          : reviewForm.rating === 2
-                            ? "Poor"
-                            : "Very Poor"}
+                    {["", "Very Poor", "Poor", "Average", "Good", "Excellent"][reviewForm.rating]}
                   </p>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">
-                    Your Review
-                  </label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">Your Review</label>
                   <Textarea
                     placeholder="Share your experience with this product…"
                     value={reviewForm.comment}
-                    onChange={(e) =>
-                      setReviewForm({ ...reviewForm, comment: e.target.value })
-                    }
+                    onChange={(e) => setReviewForm({ ...reviewForm, comment: e.target.value })}
                     className="resize-none"
                     rows={4}
                     required
                   />
                 </div>
-
                 {reviewError && (
                   <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    {reviewError}
+                    <AlertCircle className="h-4 w-4 shrink-0" /> {reviewError}
                   </div>
                 )}
-
                 {reviewSuccess && (
                   <div className="flex items-center gap-2 bg-green-50 border border-green-100 text-green-600 px-4 py-3 rounded-xl text-sm">
-                    <CheckCircle className="h-4 w-4 shrink-0" />
-                    {reviewSuccess}
+                    <CheckCircle className="h-4 w-4 shrink-0" /> {reviewSuccess}
                   </div>
                 )}
-
                 <div className="flex gap-2">
-                  <Button
-                    type="submit"
-                    disabled={reviewLoading}
-                    className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl"
-                  >
-                    {reviewLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        Submitting…
-                      </>
-                    ) : (
-                      "Submit Review"
-                    )}
+                  <Button type="submit" disabled={reviewLoading} className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl">
+                    {reviewLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Submitting…</> : "Submit Review"}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setShowReviewDialog(false)}
-                    className="flex-1 rounded-xl"
-                    disabled={reviewLoading}
-                  >
+                  <Button type="button" variant="outline" onClick={() => setShowReviewDialog(false)} className="flex-1 rounded-xl" disabled={reviewLoading}>
                     Cancel
                   </Button>
                 </div>
@@ -701,25 +667,12 @@ export default function OrderDetailPage() {
         <Footer />
       </div>
 
-      {/* Print Styles */}
       <style jsx global>{`
         @media print {
-          body * {
-            visibility: hidden;
-          }
-          .print\\:hidden {
-            display: none !important;
-          }
-          main,
-          main * {
-            visibility: visible;
-          }
-          main {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-          }
+          body * { visibility: hidden; }
+          .print\\:hidden { display: none !important; }
+          main, main * { visibility: visible; }
+          main { position: absolute; left: 0; top: 0; width: 100%; }
         }
       `}</style>
     </AuthProvider>
