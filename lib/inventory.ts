@@ -1,3 +1,5 @@
+// FILE PATH: lib/fifo.ts
+
 import { connectDB } from './db';
 import { InventoryBatch, Product, Order } from './models/index';
 
@@ -8,27 +10,36 @@ import { InventoryBatch, Product, Order } from './models/index';
 
 interface FIFODeduction {
   quantity: number;
-  buyingRate: number;
+  buyingRate: number;  // landed cost (used for COGS calculation)
   batchId: string;
 }
 
 /**
- * Get FIFO batches for a product (ordered by creation date)
+ * Get FIFO batches for a product (oldest first, with remaining stock)
  */
 export async function getFIFOBatches(productId: string) {
   await connectDB();
 
   return await InventoryBatch.find({
     product: productId,
-    status: { $ne: 'finished' },
+    remainingQuantity: { $gt: 0 },       // Only batches that still have stock
+    status: { $in: ['active', 'partial'] }, // Exclude finished batches
   })
-    .sort({ createdAt: 1 })
+    .sort({ createdAt: 1 })  // Oldest first = FIFO
     .lean();
 }
 
 /**
- * Deduct inventory using FIFO method
- * Returns the cost of goods sold for profit calculation
+ * Deduct inventory using FIFO method.
+ *
+ * Key fix: deducts from `remainingQuantity` (not `quantity`).
+ * `quantity`          = original units purchased in this batch (never changes)
+ * `remainingQuantity` = units still available to sell (decremented here)
+ *
+ * When a batch is exhausted, product.retailPrice is updated to the next
+ * batch's sellingPrice so the POS / store always shows the correct FIFO price.
+ *
+ * Returns the cost of goods sold for profit calculation.
  */
 export async function deductInventoryFIFO(
   productId: string,
@@ -37,62 +48,93 @@ export async function deductInventoryFIFO(
   await connectDB();
 
   const batches = await getFIFOBatches(productId);
-  let remainingQuantity = quantityToDeduct;
+  let remaining = quantityToDeduct;
   let totalCost = 0;
   const deductions: FIFODeduction[] = [];
 
   for (const batch of batches) {
-    if (remainingQuantity <= 0) break;
+    if (remaining <= 0) break;
 
-    const quantityFromBatch = Math.min(remainingQuantity, batch.quantity);
+    const available = batch.remainingQuantity;
+    const takenFromBatch = Math.min(remaining, available);
+    const newRemainingQty = available - takenFromBatch;
 
-    // Update batch
-    const updatedQuantity = batch.quantity - quantityFromBatch;
+    // Deduct from remainingQuantity; mark finished when empty
     await InventoryBatch.findByIdAndUpdate(batch._id, {
-      quantity: updatedQuantity,
-      status: updatedQuantity === 0 ? 'finished' : 'partial',
+      remainingQuantity: newRemainingQty,
+      status: newRemainingQty === 0 ? 'finished' : 'partial',
     });
 
-    // Calculate cost
-    const batchCost = quantityFromBatch * batch.buyingRate;
-    totalCost += batchCost;
+    // buyingRate in InventoryBatch stores the full landed cost (unitCostWithTax)
+    totalCost += takenFromBatch * batch.buyingRate;
 
     deductions.push({
-      quantity: quantityFromBatch,
+      quantity: takenFromBatch,
       buyingRate: batch.buyingRate,
       batchId: batch._id.toString(),
     });
 
-    remainingQuantity -= quantityFromBatch;
+    remaining -= takenFromBatch;
+
+    // ── FIFO Price Rollover ──────────────────────────────────────────────────
+    // When a batch is fully consumed, advance product.retailPrice to the next
+    // available batch's sellingPrice. This keeps the POS / store price correct
+    // without requiring a new purchase to be recorded.
+    if (newRemainingQty === 0) {
+      const nextBatch = await InventoryBatch.findOne({
+        product: productId,
+        remainingQuantity: { $gt: 0 },
+        status: { $in: ['active', 'partial'] },
+        _id: { $ne: batch._id },
+      })
+        .sort({ createdAt: 1 })
+        .lean();
+
+      if (nextBatch) {
+        await Product.findByIdAndUpdate(productId, {
+          retailPrice: nextBatch.sellingPrice,
+          lastBuyingRate: nextBatch.buyingRate,
+        });
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
   }
 
-  // Update product stock
-  const product = await Product.findById(productId);
-  if (product) {
-    product.stock -= quantityToDeduct;
-    await product.save();
-  }
+  // Update product stock count
+  await Product.findByIdAndUpdate(productId, {
+    $inc: { stock: -quantityToDeduct },
+  });
 
   return { totalCost, deductions };
 }
 
 /**
- * Add stock to inventory (new purchase)
+ * Add stock to inventory (new purchase).
+ * Note: batch creation is handled by the purchases API route.
+ * This helper is available for programmatic use.
  */
 export async function addStockFIFO(
   productId: string,
   quantity: number,
-  buyingRate: number,
+  unitCostWithTax: number,  // full landed cost
+  baseRate: number,
+  sellingPrice: number,
   purchaseId: string,
   expiry?: Date
 ) {
   await connectDB();
 
-  // Create new batch
+  const productDoc = await Product.findById(productId);
+  const stockBeforePurchase = productDoc?.stock ?? 0;
+
   const batch = new InventoryBatch({
     product: productId,
     quantity,
-    buyingRate,
+    remainingQuantity: quantity,
+    buyingRate: unitCostWithTax,  // landed cost
+    baseRate,
+    sellingPrice,
+    profitPerUnit: sellingPrice - unitCostWithTax,
     purchaseReference: purchaseId,
     expiry,
     status: 'active',
@@ -100,18 +142,22 @@ export async function addStockFIFO(
 
   await batch.save();
 
-  // Update product stock
-  const product = await Product.findById(productId);
-  if (product) {
-    product.stock += quantity;
-    await product.save();
+  if (productDoc) {
+    productDoc.stock += quantity;
+    // Only update the retail price if the product was previously sold out
+    if (stockBeforePurchase === 0) {
+      productDoc.retailPrice = sellingPrice;
+    }
+    productDoc.lastBuyingRate = unitCostWithTax;
+    await productDoc.save();
   }
 
   return batch;
 }
 
 /**
- * Calculate order profit using FIFO deductions
+ * Calculate order profit using FIFO deductions.
+ * NOTE: This mutates inventory (deducts stock). Call only when recording a sale.
  */
 export async function calculateOrderProfit(
   orderItems: Array<{ productId: string; quantity: number; sellingPrice: number }>
@@ -123,48 +169,34 @@ export async function calculateOrderProfit(
   for (const item of orderItems) {
     const { totalCost } = await deductInventoryFIFO(item.productId, item.quantity);
     const revenue = item.sellingPrice * item.quantity;
-    const profit = revenue - totalCost;
-    totalProfit += profit;
+    totalProfit += revenue - totalCost;
   }
 
   return totalProfit;
 }
 
 /**
- * Get inventory valuation (total stock value at buying rates)
+ * Get inventory valuation (total stock value at landed cost / buying rates)
  */
 export async function getInventoryValuation(productId?: string) {
   await connectDB();
 
-  const query = productId ? { product: productId } : {};
-  const batches = await InventoryBatch.find(query).populate('product');
+  const query = productId ? { product: productId, remainingQuantity: { $gt: 0 } } : { remainingQuantity: { $gt: 0 } };
+  const batches = await InventoryBatch.find(query).populate('product').lean();
 
   let totalValue = 0;
-  const valuationData: Array<{
-    productId: string;
-    productName: string;
-    quantity: number;
-    value: number;
-  }> = [];
-
-  // Group by product
-  const productMap = new Map();
+  const productMap = new Map<string, { productId: string; productName: string; quantity: number; value: number }>();
 
   for (const batch of batches) {
-    const key = batch.product._id.toString();
+    const p = batch.product as any;
+    const key = p._id.toString();
     if (!productMap.has(key)) {
-      productMap.set(key, {
-        productId: key,
-        productName: batch.product.name,
-        quantity: 0,
-        value: 0,
-      });
+      productMap.set(key, { productId: key, productName: p.name, quantity: 0, value: 0 });
     }
-
-    const item = productMap.get(key);
-    item.quantity += batch.quantity;
-    item.value += batch.quantity * batch.buyingRate;
-    totalValue += batch.quantity * batch.buyingRate;
+    const entry = productMap.get(key)!;
+    entry.quantity += batch.remainingQuantity;
+    entry.value    += batch.remainingQuantity * batch.buyingRate; // buyingRate = landed cost
+    totalValue     += batch.remainingQuantity * batch.buyingRate;
   }
 
   return {
@@ -182,10 +214,9 @@ export async function getExpiringStock(daysUntilExpiry: number = 7) {
   const expiryDate = new Date();
   expiryDate.setDate(expiryDate.getDate() + daysUntilExpiry);
 
-  const expiringBatches = await InventoryBatch.find({
+  return await InventoryBatch.find({
     expiry: { $lte: expiryDate, $gte: new Date() },
+    remainingQuantity: { $gt: 0 },
     status: { $ne: 'finished' },
   }).populate('product');
-
-  return expiringBatches;
 }

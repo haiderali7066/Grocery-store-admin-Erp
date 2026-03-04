@@ -71,10 +71,25 @@ const menuItems: MenuItem[] = [
     href: "/admin/products",
     permission: "inventory",
   },
+  // Suppliers & Purchases (Accountant, Manager, Admin)
+  {
+    label: "Suppliers",
+    icon: Truck,
+    href: "/admin/suppliers",
+    permission: "suppliers",
+    roles: ["admin", "manager", "accountant"],
+  },
+
   {
     label: "Categories",
     icon: Tags,
     href: "/admin/categories",
+    permission: "inventory",
+  },
+  {
+    label: "Inventory",
+    icon: BarChart3,
+    href: "/admin/inventory",
     permission: "inventory",
   },
   {
@@ -83,12 +98,17 @@ const menuItems: MenuItem[] = [
     href: "/admin/customers",
     permission: "customers", // All staff can access
   },
+
+  // Reports (Manager, Accountant, Admin)
   {
-    label: "Inventory",
-    icon: BarChart3,
-    href: "/admin/inventory",
-    permission: "inventory",
+    label: "Reports",
+    icon: FileText,
+    href: "/admin/reports",
+    permission: "reports",
+    roles: ["admin", "manager", "accountant"],
   },
+
+  
 
   // Orders (Staff, Manager, Admin)
   {
@@ -104,15 +124,7 @@ const menuItems: MenuItem[] = [
     permission: "refunds", // All staff can access
   },
 
-  // Suppliers & Purchases (Accountant, Manager, Admin)
-  {
-    label: "Suppliers",
-    icon: Truck,
-    href: "/admin/suppliers",
-    permission: "suppliers",
-    roles: ["admin", "manager", "accountant"],
-  },
-
+  
   // Financial (Accountant, Admin)
   {
     label: "Wallet & Finance",
@@ -136,15 +148,7 @@ const menuItems: MenuItem[] = [
     roles: ["admin", "manager", "accountant"],
   },
 
-  // Reports (Manager, Accountant, Admin)
-  {
-    label: "Reports",
-    icon: FileText,
-    href: "/admin/reports",
-    permission: "reports",
-    roles: ["admin", "manager", "accountant"],
-  },
-
+  
   // Customer Management (Manager, Admin)
   {
     label: "Reviews",

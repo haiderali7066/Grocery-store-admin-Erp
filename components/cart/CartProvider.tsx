@@ -1,232 +1,385 @@
-"use client";
+'use client';
+
+// FILE PATH: components/cart/CartProvider.tsx
 
 import React, {
   createContext,
   useContext,
-  useEffect,
   useState,
+  useEffect,
   useCallback,
-} from "react";
+} from 'react';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
+/** One FIFO batch as returned by /api/products */
+export interface FIFOBatch {
+  _id:               string;
+  remainingQuantity: number;
+  sellingPrice:      number;
+  buyingRate:        number;
+}
+
+/**
+ * A cart line is keyed by `cartKey`.
+ *
+ * • Regular products:  cartKey = `${id}__${price}`
+ *   When a product spans two FIFO batches with different prices the cart
+ *   creates two separate lines — one per batch price.
+ *
+ * • Bundles:           cartKey = `${bundleId}__bundle`
+ *   Bundles are pre-priced and bypass FIFO entirely.
+ */
 export interface CartItem {
-  id: string;
-  name: string;
-  price: number;
+  /** Unique line key — use this for removeItem / updateQuantity */
+  cartKey:  string;
+  id:       string;   // product _id  (or bundleId for bundles)
+  name:     string;
+  price:    number;
   quantity: number;
-  image?: string;
-  weight?: string;
-  gst?: number;
+  weight?:  string;
+  image?:   string;
   discount?: number;
-  // Bundle-specific fields
-  isBundle?: boolean;
-  bundleId?: string;
+  gst?:     number;
+  /** Available stock — used to enforce ceiling in the UI */
+  stock?:   number;
+
+  // ── Bundle-specific ──────────────────────────────────────────────────────
+  isBundle?:           boolean;
+  bundleId?:           string;
+  bundleName?:         string;
+  bundleDiscount?:     number;
+  bundleOriginalPrice?: number;
   bundleProducts?: {
-    productId: string;
-    name: string;
-    quantity: number;
-    price: number;
-    image?: string;
+    productId:   string;
+    name:        string;
+    quantity:    number;
+    retailPrice: number;
+    image?:      string;
   }[];
 }
 
-// ── BundleCartInput: what callers pass to addBundle() ─────────────────────────
 export interface BundleCartInput {
-  bundleId: string;
-  name: string;
-  bundlePrice: number;     // final price after all discounts
-  originalPrice: number;   // sum of retail prices (for savings display)
-  image?: string;
+  bundleId:      string;
+  name:          string;
+  bundlePrice:   number;
+  originalPrice: number;
+  discount?:     number;
+  image?:        string;
   products: {
-    productId: string;     // MongoDB ObjectId string — REQUIRED for order API
-    name: string;
-    quantity: number;
+    productId:   string;
+    name:        string;
+    quantity:    number;
     retailPrice: number;
-    image?: string;
+    image?:      string;
   }[];
+}
+
+/**
+ * Payload for addItem().
+ * Pass `fifoBatches` (from /api/products) to enable real-time batch pricing.
+ * If omitted the item is added at `price` as before — fully backward-compatible.
+ */
+export interface AddItemPayload {
+  id:       string;
+  name:     string;
+  price:    number;   // base / discounted price (fallback when no fifoBatches)
+  quantity?: number;
+  weight?:  string;
+  image?:   string;
+  discount?: number;
+  gst?:     number;
+  stock?:   number;
+  /** Full FIFO batch queue for this product (oldest first) */
+  fifoBatches?: FIFOBatch[];
 }
 
 interface TaxSettings {
-  taxEnabled: boolean;
-  taxRate: number;
-  taxName: string;
-  shippingCost: number;
+  taxEnabled:            boolean;
+  taxRate:               number;
+  taxName:               string;
+  shippingCost:          number;
   freeShippingThreshold: number;
 }
 
-interface CartContextValue {
-  items: CartItem[];
-  addItem: (item: CartItem) => void;
-  addBundle: (bundle: BundleCartInput) => void;
-  removeItem: (id: string) => void;
-  updateQuantity: (id: string, quantity: number) => void;
-  clearCart: () => void;
-  subtotal: number;
-  taxAmount: number;
-  taxRate: number;
-  taxName: string;
-  taxEnabled: boolean;
-  shippingCost: number;
-  total: number;
-  // legacy alias
-  gstAmount: number;
+interface CartContextType {
+  items:          CartItem[];
+  /** Add a regular product (with optional FIFO batch support) */
+  addItem:        (payload: AddItemPayload) => void;
+  /** Add a bundle (bypasses FIFO) */
+  addBundle:      (bundle: BundleCartInput) => void;
+  /** Remove a line by cartKey */
+  removeItem:     (cartKey: string) => void;
+  /** Update quantity of a line by cartKey */
+  updateQuantity: (cartKey: string, quantity: number) => void;
+  clearCart:      () => void;
+  subtotal:       number;
+  taxAmount:      number;
+  taxRate:        number;
+  taxName:        string;
+  taxEnabled:     boolean;
+  shippingCost:   number;
+  total:          number;
+  gstAmount:      number;
 }
 
-// ── Context ──────────────────────────────────────────────────────────────────
+// ─── FIFO helper ──────────────────────────────────────────────────────────────
 
-const CartContext = createContext<CartContextValue | undefined>(undefined);
+/**
+ * Return the sellingPrice for the unit at position `unitIndex` (0-based)
+ * by walking the FIFO batch queue oldest-first.
+ *
+ * Example: batches = [{remaining:2, price:100}, {remaining:3, price:120}]
+ *   index 0 → 100   (batch-1, unit-1)
+ *   index 1 → 100   (batch-1, unit-2)
+ *   index 2 → 120   (batch-2, unit-1)
+ */
+function getPriceAtIndex(batches: FIFOBatch[], unitIndex: number): number {
+  let skip = unitIndex;
+  for (const b of batches) {
+    if (skip < b.remainingQuantity) return b.sellingPrice;
+    skip -= b.remainingQuantity;
+  }
+  // Fallback to last known batch price
+  return batches[batches.length - 1]?.sellingPrice ?? 0;
+}
 
-// ── Provider ─────────────────────────────────────────────────────────────────
+// ─── Context ──────────────────────────────────────────────────────────────────
+
+const CartContext = createContext<CartContextType | undefined>(undefined);
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'khas_cart_v2'; // v2 = cartKey-based format
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
-  const [isHydrated, setIsHydrated] = useState(false);
-  const [tax, setTax] = useState<TaxSettings>({
-    taxEnabled: true,
-    taxRate: 17,
-    taxName: "GST",
-    shippingCost: 0,
+  const [items,       setItems]       = useState<CartItem[]>([]);
+  const [isHydrated,  setIsHydrated]  = useState(false);
+  const [tax,         setTax]         = useState<TaxSettings>({
+    taxEnabled:            true,
+    taxRate:               17,
+    taxName:               'GST',
+    shippingCost:          0,
     freeShippingThreshold: 0,
   });
 
-  // Load cart from localStorage on mount
+  // ── Hydration ──────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
     try {
-      const stored = localStorage.getItem("cart");
-      if (stored) setItems(JSON.parse(stored));
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setItems(JSON.parse(saved));
     } catch (e) {
-      console.error("[CartProvider] Failed to load cart:", e);
+      console.error('[CartProvider] Failed to load cart:', e);
+      localStorage.removeItem(STORAGE_KEY);
     } finally {
       setIsHydrated(true);
     }
   }, []);
 
-  // Persist cart whenever it changes (after hydration)
+  // ── Persistence ────────────────────────────────────────────────────────────
+
   useEffect(() => {
-    if (!isHydrated || typeof window === "undefined") return;
+    if (!isHydrated || typeof window === 'undefined') return;
     try {
-      localStorage.setItem("cart", JSON.stringify(items));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch (e) {
-      console.error("[CartProvider] Failed to save cart:", e);
+      console.error('[CartProvider] Failed to save cart:', e);
     }
   }, [items, isHydrated]);
 
-  // Fetch tax + shipping settings once
+  // ── Fetch store settings ───────────────────────────────────────────────────
+
   useEffect(() => {
-    fetch("/api/admin/settings")
+    fetch('/api/admin/settings')
       .then((r) => r.json())
       .then((data) => {
         const s = data.settings;
         if (!s) return;
         setTax({
-          taxEnabled: s.taxEnabled ?? true,
-          taxRate: s.taxRate ?? 17,
-          taxName: s.taxName || "GST",
-          shippingCost: s.shippingCost ?? 0,
+          taxEnabled:            s.taxEnabled            ?? true,
+          taxRate:               s.taxRate               ?? 17,
+          taxName:               s.taxName               || 'GST',
+          shippingCost:          s.shippingCost          ?? 0,
           freeShippingThreshold: s.freeShippingThreshold ?? 0,
         });
       })
-      .catch((e) => console.error("[CartProvider] Failed to load settings:", e));
+      .catch((e) => console.error('[CartProvider] Failed to load settings:', e));
   }, []);
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
+  // ── addItem (with FIFO batch support) ─────────────────────────────────────
 
-  const addItem = useCallback((newItem: CartItem) => {
+  const addItem = useCallback((payload: AddItemPayload) => {
     setItems((prev) => {
-      const existing = prev.find((i) => i.id === newItem.id && !i.isBundle);
-      if (existing) {
-        return prev.map((i) =>
-          i.id === newItem.id && !i.isBundle
-            ? { ...i, quantity: i.quantity + newItem.quantity }
-            : i,
-        );
+      const unitsToAdd   = payload.quantity ?? 1;
+      const fifoBatches  = payload.fifoBatches;
+
+      // ── Without FIFO batches: original single-price behaviour ─────────────
+      if (!fifoBatches || fifoBatches.length === 0) {
+        const cartKey = `${payload.id}__${payload.price}`;
+
+        // Stock guard
+        const inCart = prev
+          .filter((i) => i.id === payload.id && !i.isBundle)
+          .reduce((s, i) => s + i.quantity, 0);
+        if (payload.stock !== undefined && inCart >= payload.stock) return prev;
+
+        const existing = prev.find((i) => i.cartKey === cartKey);
+        if (existing) {
+          return prev.map((i) =>
+            i.cartKey === cartKey
+              ? { ...i, quantity: i.quantity + unitsToAdd }
+              : i
+          );
+        }
+        return [
+          ...prev,
+          {
+            cartKey,
+            id:       payload.id,
+            name:     payload.name,
+            price:    payload.price,
+            quantity: unitsToAdd,
+            weight:   payload.weight,
+            image:    payload.image,
+            discount: payload.discount,
+            gst:      payload.gst,
+            stock:    payload.stock,
+          },
+        ];
       }
-      return [...prev, newItem];
+
+      // ── With FIFO batches: split across batch price boundaries ────────────
+      // Add units one at a time; for each unit look up its correct batch price
+      // and increment (or create) the matching cart line.
+      let nextState = [...prev];
+
+      for (let u = 0; u < unitsToAdd; u++) {
+        const totalInCart = nextState
+          .filter((i) => i.id === payload.id && !i.isBundle)
+          .reduce((s, i) => s + i.quantity, 0);
+
+        // Per-unit stock guard
+        if (payload.stock !== undefined && totalInCart >= payload.stock) break;
+
+        const unitPrice = getPriceAtIndex(fifoBatches, totalInCart);
+        const cartKey   = `${payload.id}__${unitPrice}`;
+
+        const existingIdx = nextState.findIndex((i) => i.cartKey === cartKey);
+        if (existingIdx >= 0) {
+          nextState = nextState.map((i, idx) =>
+            idx === existingIdx ? { ...i, quantity: i.quantity + 1 } : i
+          );
+        } else {
+          nextState = [
+            ...nextState,
+            {
+              cartKey,
+              id:       payload.id,
+              name:     payload.name,
+              price:    unitPrice,
+              quantity: 1,
+              weight:   payload.weight,
+              image:    payload.image,
+              discount: payload.discount,
+              gst:      payload.gst,
+              stock:    payload.stock,
+            },
+          ];
+        }
+      }
+
+      return nextState;
     });
   }, []);
 
-  /**
-   * addBundle — adds a bundle as a SINGLE cart line item.
-   *
-   * The key difference from addItem:
-   *   - Sets isBundle = true
-   *   - Stores bundleProducts[] with real productId strings (MongoDB ObjectIds)
-   *   - Sets gst = 0 so per-item tax is skipped (bundle is pre-priced)
-   *
-   * When the order is placed, the API sees isBundle=true and expands
-   * bundleProducts into individual inventory deductions.
-   */
+  // ── addBundle (unchanged — bundles bypass FIFO) ───────────────────────────
+
   const addBundle = useCallback((bundle: BundleCartInput) => {
-    // Guard: ensure every product has a valid productId
-    for (const p of bundle.products) {
-      if (!p.productId || p.productId.trim() === "") {
-        console.error(
-          "[CartProvider] addBundle: product missing productId",
-          bundle.name,
-          p,
-        );
-        return; // abort — don't add broken bundle
+    if (!bundle.bundleId) {
+      console.error('[CartProvider] Bundle missing ID');
+      return;
+    }
+    for (const p of bundle.products || []) {
+      if (!p.productId || typeof p.productId !== 'string' || !p.productId.trim()) {
+        console.error('[CartProvider] Bundle product missing productId:', p);
+        return;
       }
     }
 
+    const cartKey = `${bundle.bundleId}__bundle`;
+
     setItems((prev) => {
-      const existing = prev.find((i) => i.isBundle && i.bundleId === bundle.bundleId);
+      const existing = prev.find((i) => i.cartKey === cartKey);
       if (existing) {
-        // Increment quantity of existing bundle entry
         return prev.map((i) =>
-          i.isBundle && i.bundleId === bundle.bundleId
-            ? { ...i, quantity: i.quantity + 1 }
-            : i,
+          i.cartKey === cartKey ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
-
-      const newItem: CartItem = {
-        id: bundle.bundleId,
-        bundleId: bundle.bundleId,
-        name: bundle.name,
-        price: bundle.bundlePrice,          // discounted final price
-        quantity: 1,
-        image: bundle.image,
-        isBundle: true,
-        gst: 0,                             // excluded from per-item tax
-        discount: Math.max(0, bundle.originalPrice - bundle.bundlePrice),
-        // ✅ bundleProducts carries real productId strings for the order API
-        bundleProducts: bundle.products.map((p) => ({
-          productId: p.productId,
-          name: p.name,
-          quantity: p.quantity,
-          price: p.retailPrice,
-          image: p.image,
-        })),
-      };
-      return [...prev, newItem];
+      return [
+        ...prev,
+        {
+          cartKey,
+          id:                  bundle.bundleId,
+          bundleId:            bundle.bundleId,
+          name:                bundle.name,
+          price:               bundle.bundlePrice,
+          quantity:            1,
+          image:               bundle.image,
+          isBundle:            true,
+          gst:                 0, // bundles are pre-priced; no per-item tax
+          bundleDiscount:      bundle.discount || 0,
+          bundleOriginalPrice: bundle.originalPrice,
+          bundleProducts:      bundle.products.map((p) => ({
+            productId:   p.productId,
+            name:        p.name,
+            quantity:    p.quantity,
+            retailPrice: p.retailPrice,
+            image:       p.image,
+          })),
+        },
+      ];
     });
   }, []);
 
-  const removeItem = useCallback((id: string) => {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+  // ── removeItem / updateQuantity (now use cartKey) ─────────────────────────
+
+  const removeItem = useCallback((cartKey: string) => {
+    setItems((prev) => prev.filter((i) => i.cartKey !== cartKey));
   }, []);
 
-  const updateQuantity = useCallback((id: string, quantity: number) => {
-    if (quantity <= 0) {
-      setItems((prev) => prev.filter((i) => i.id !== id));
-    } else {
-      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, quantity } : i)));
-    }
-  }, []);
+  const updateQuantity = useCallback(
+    (cartKey: string, quantity: number) => {
+      if (quantity <= 0) {
+        setItems((prev) => prev.filter((i) => i.cartKey !== cartKey));
+        return;
+      }
+      setItems((prev) =>
+        prev.map((item) => {
+          if (item.cartKey !== cartKey) return item;
+          // Respect stock ceiling
+          const capped =
+            item.stock !== undefined
+              ? Math.min(quantity, item.stock)
+              : quantity;
+          return { ...item, quantity: capped };
+        })
+      );
+    },
+    []
+  );
 
   const clearCart = useCallback(() => {
     setItems([]);
-    if (typeof window !== "undefined") localStorage.removeItem("cart");
+    if (typeof window !== 'undefined') localStorage.removeItem(STORAGE_KEY);
   }, []);
 
-  // ── Computed values ────────────────────────────────────────────────────────
+  // ── Computed totals ────────────────────────────────────────────────────────
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
-  // Bundles have gst=0 so they're excluded from per-item tax calculation
+  // Bundles use gst=0; regular items fall back to store taxRate
   const taxAmount = tax.taxEnabled
     ? items.reduce((sum, i) => {
         const rate = i.gst != null ? i.gst : tax.taxRate;
@@ -241,7 +394,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const total = subtotal + taxAmount + shippingCost;
 
-  const value: CartContextValue = {
+  const value: CartContextType = {
     items,
     addItem,
     addBundle,
@@ -250,21 +403,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     clearCart,
     subtotal,
     taxAmount,
-    taxRate: tax.taxRate,
-    taxName: tax.taxName,
+    taxRate:    tax.taxRate,
+    taxName:    tax.taxName,
     taxEnabled: tax.taxEnabled,
     shippingCost,
     total,
-    gstAmount: taxAmount,
+    gstAmount:  taxAmount,
   };
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+  return (
+    <CartContext.Provider value={value}>{children}</CartContext.Provider>
+  );
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
-export function useCart(): CartContextValue {
+export function useCart(): CartContextType {
   const ctx = useContext(CartContext);
-  if (!ctx) throw new Error("useCart must be used inside <CartProvider>");
+  if (!ctx) throw new Error('useCart must be used inside <CartProvider>');
   return ctx;
 }

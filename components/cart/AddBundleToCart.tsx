@@ -1,167 +1,231 @@
+// FILE PATH: components/product/AddProductToCart.tsx
+// ✅ FIXED: Proper product ID validation and cart item creation
+
 "use client";
 
-// FILE PATH: components/cart/AddBundleToCart.tsx
-//
-// Usage on any bundle card:
-//   <AddBundleToCart bundle={bundle} />
-//
-// Works with bundles fetched from EITHER:
-//   - /api/admin/sale/bundles  → products[].product is a populated object
-//   - /api/sale/bundles        → same populated shape
-//
-// Bundle product shape from API (after .populate):
-//   bundle.products = [
-//     { product: { _id: "abc123", name: "...", retailPrice: 200, mainImage: "..." }, quantity: 2 },
-//     ...
-//   ]
-
 import { useState } from "react";
-import { useCart, BundleCartInput } from "@/components/cart/CartProvider";
-import { ShoppingCart, CheckCircle, AlertCircle } from "lucide-react";
+import { useCart } from "@/components/cart/CartProvider";
+import { ShoppingCart, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-// The populated product object shape returned by the API
-interface PopulatedProduct {
-  _id: string;
+export interface Product {
+  _id: string; // ✅ MongoDB ObjectId from database
   name: string;
   retailPrice: number;
   mainImage?: string;
   unitSize?: number;
   unitType?: string;
-}
-
-// Each entry in bundle.products after population
-interface BundleProductEntry {
-  product: PopulatedProduct;
-  quantity: number;
-}
-
-// The full bundle object as returned by the API
-export interface BundleForCart {
-  _id: string;
-  name: string;
-  image?: string;
-  products: BundleProductEntry[];
-  bundlePrice: number;      // base price set at creation
-  discount: number;
-  discountType: "percentage" | "fixed";
+  stock?: number;
+  gst?: number;
+  discount?: number;
+  discountType?: "percentage" | "fixed";
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getFinalPrice(b: BundleForCart): number {
-  if (!b.discount) return b.bundlePrice;
-  return b.discountType === "percentage"
-    ? b.bundlePrice * (1 - b.discount / 100)
-    : Math.max(0, b.bundlePrice - b.discount);
+function isValidMongoId(id: string): boolean {
+  return /^[a-f0-9]{24}$/.test(id);
+}
+
+function getSalePrice(product: Product): number {
+  if (!product.discount) return product.retailPrice ?? 0;
+  return product.discountType === "percentage"
+    ? product.retailPrice * (1 - product.discount / 100)
+    : Math.max(0, product.retailPrice - product.discount);
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function AddBundleToCart({
-  bundle,
+export function AddProductToCart({
+  product,
   className,
+  quantity: initialQuantity = 1,
 }: {
-  bundle: BundleForCart;
+  product: Product;
   className?: string;
+  quantity?: number;
 }) {
-  const { addBundle } = useCart();
+  const { addItem } = useCart();
   const [added, setAdded] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [quantity, setQuantity] = useState(Math.max(1, initialQuantity));
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     setErrorMsg(null);
+    setIsLoading(true);
 
-    // ── Validate bundle data before touching cart ──────────────────────────
-    if (!bundle._id) {
-      setErrorMsg("Invalid bundle — missing ID.");
-      return;
-    }
+    try {
+      // ── Validate product data ──────────────────────────────────────────
+      if (!product._id) {
+        console.error("[AddProductToCart] Product missing _id:", product);
+        setErrorMsg("Invalid product. Please refresh the page.");
+        return;
+      }
 
-    if (!bundle.products?.length) {
-      setErrorMsg("Bundle has no products.");
-      return;
-    }
-
-    for (const bp of bundle.products) {
-      // bp.product must be a populated object (not null/string/undefined)
-      if (
-        !bp.product ||
-        typeof bp.product !== "object" ||
-        !bp.product._id
-      ) {
-        console.error(
-          `[AddBundleToCart] Bundle "${bundle.name}" — product entry has no _id:`,
-          bp
-        );
+      // ✅ CRITICAL: Verify MongoDB ObjectId format
+      if (!isValidMongoId(product._id)) {
+        console.error("[AddProductToCart] Invalid product._id format:", {
+          productId: product._id,
+          product: product.name,
+        });
         setErrorMsg(
-          "This bundle has incomplete product data. Please refresh the page and try again."
+          `Invalid product ID format: "${product._id}". Please refresh and try again.`
         );
         return;
       }
+
+      if (!product.name || product.name.trim() === "") {
+        setErrorMsg("Product name is missing.");
+        return;
+      }
+
+      if (product.retailPrice == null || product.retailPrice < 0) {
+        setErrorMsg("Product price is invalid.");
+        return;
+      }
+
+      if (quantity < 1) {
+        setErrorMsg("Quantity must be at least 1.");
+        return;
+      }
+
+      // Check stock
+      if (product.stock != null && product.stock < quantity) {
+        setErrorMsg(
+          `Not enough stock. Available: ${product.stock}, Requested: ${quantity}`
+        );
+        return;
+      }
+
+      // ── Calculate sale price ───────────────────────────────────────────
+      const salePrice = getSalePrice(product);
+
+      // ── Build cart item ───────────────────────────────────────────────
+      const cartItem = {
+        id: product._id, // ✅ Use MongoDB ObjectId
+        name: product.name,
+        price: salePrice,
+        quantity,
+        image: product.mainImage || undefined,
+        weight: product.unitType
+          ? `${product.unitSize} ${product.unitType}`
+          : undefined,
+        discount: product.discount || 0,
+        gst: product.gst || 17,
+      };
+
+      console.log("[AddProductToCart] Adding to cart:", {
+        productId: product._id,
+        productName: product.name,
+        salePrice,
+        quantity,
+        cartItem,
+      });
+
+      // ── Add to cart ────────────────────────────────────────────────────
+      addItem(cartItem);
+
+      setAdded(true);
+      setErrorMsg(null);
+      setQuantity(initialQuantity);
+
+      // Reset "added" state after 2 seconds
+      setTimeout(() => setAdded(false), 2200);
+    } catch (err) {
+      console.error("[AddProductToCart] Unexpected error:", err);
+      setErrorMsg("An unexpected error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-
-    // ── Build BundleCartInput ─────────────────────────────────────────────
-    const finalPrice = getFinalPrice(bundle);
-
-    const retailTotal = bundle.products.reduce(
-      (sum, bp) => sum + (bp.product.retailPrice || 0) * bp.quantity,
-      0
-    );
-
-    const input: BundleCartInput = {
-      bundleId: bundle._id,
-      name: bundle.name,
-      bundlePrice: finalPrice,      // what customer actually pays
-      originalPrice: retailTotal,   // retail total before bundle discount
-      image: bundle.image || bundle.products[0]?.product.mainImage,
-      products: bundle.products.map((bp) => ({
-        productId: bp.product._id,          // ✅ real MongoDB ObjectId
-        name: bp.product.name,
-        quantity: bp.quantity,
-        retailPrice: bp.product.retailPrice || 0,
-        image: bp.product.mainImage,
-      })),
-    };
-
-    // Debug log — verify productIds look like ObjectIds before cart add
-    console.log(
-      "[AddBundleToCart] Adding bundle:",
-      bundle.name,
-      "| finalPrice:", finalPrice,
-      "| products:", input.products.map((p) => `${p.name}(${p.productId})`)
-    );
-
-    addBundle(input);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 2200);
   };
 
   return (
-    <div className="w-full space-y-1.5">
+    <div className="w-full space-y-2">
+      {/* Quantity Selector */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setQuantity(Math.max(1, quantity - 1))}
+          disabled={quantity === 1 || isLoading}
+          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min="1"
+          max={product.stock || 999}
+          value={quantity}
+          onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+          disabled={isLoading}
+          className="w-12 text-center border rounded-lg px-2 py-1 text-sm font-semibold"
+        />
+        <button
+          onClick={() =>
+            setQuantity(
+              Math.min(product.stock || 999, quantity + 1)
+            )
+          }
+          disabled={
+            (product.stock != null && quantity >= product.stock) ||
+            isLoading
+          }
+          className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          +
+        </button>
+      </div>
+
+      {/* Stock Status */}
+      {product.stock != null && (
+        <p
+          className={`text-xs font-medium ${
+            product.stock <= 0
+              ? "text-red-500"
+              : product.stock <= 10
+              ? "text-orange-500"
+              : "text-green-600"
+          }`}
+        >
+          {product.stock <= 0
+            ? "Out of stock"
+            : `${product.stock} in stock`}
+        </p>
+      )}
+
+      {/* Add to Cart Button */}
       <Button
         onClick={handleAdd}
-        className={`w-full bg-green-700 hover:bg-green-800 gap-2 transition-all ${className ?? ""}`}
+        disabled={isLoading || added || (product.stock != null && product.stock <= 0)}
+        className={`w-full bg-green-700 hover:bg-green-800 gap-2 transition-all disabled:opacity-60 ${className ?? ""}`}
       >
         {added ? (
           <>
             <CheckCircle className="h-4 w-4" />
             Added to Cart!
           </>
+        ) : isLoading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Adding...
+          </>
         ) : (
           <>
             <ShoppingCart className="h-4 w-4" />
-            Add Bundle to Cart
+            {product.stock != null && product.stock <= 0
+              ? "Out of Stock"
+              : "Add to Cart"}
           </>
         )}
       </Button>
 
+      {/* Error Message */}
       {errorMsg && (
         <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-          {errorMsg}
+          <span>{errorMsg}</span>
         </div>
       )}
     </div>

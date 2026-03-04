@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
 
     // Credit the wallet
     wallet[walletKey] = (wallet[walletKey] || 0) + Number(amount);
+    wallet.markModified(walletKey); // Ensure Mongoose detects the change on dynamic bracket-notation keys
     wallet.lastUpdated = new Date();
     await wallet.save();
 

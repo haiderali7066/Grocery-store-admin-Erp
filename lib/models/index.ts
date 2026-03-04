@@ -33,6 +33,7 @@ export const UserSchema = new Schema(
     resetOTP: { type: String, select: false },
     resetOTPExpire: { type: Date, select: false },
     tempPassword: { type: String, default: null },
+    createdByStaff: { type: Boolean, default: false },
   },
   { timestamps: true },
 );
@@ -554,10 +555,10 @@ export const TransactionSchema = new Schema(
     category: { type: String, required: true },
     amount: { type: Number, required: true },
     source: {
-      type: String,
-      enum: ["cash", "bank", "easypaisa", "jazzcash", "card"],
-      required: true,
-    },
+  type: String,
+  enum: ["cash", "bank", "easyPaisa", "jazzCash", "card"],
+  required: true,
+},
     destination: String,
     reference: { type: Schema.Types.ObjectId, refPath: "referenceModel" },
     referenceModel: {

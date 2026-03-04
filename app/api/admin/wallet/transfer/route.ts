@@ -83,6 +83,8 @@ export async function POST(req: NextRequest) {
     // Execute transfer
     wallet[fromMethod] = sourceBalance - Number(amount);
     wallet[toMethod] = (wallet[toMethod] || 0) + Number(amount);
+    wallet.markModified(fromMethod); // Ensure Mongoose detects change on dynamic bracket-notation keys
+    wallet.markModified(toMethod);   // Same fix for destination wallet
     wallet.lastUpdated = new Date();
     await wallet.save();
 

@@ -38,6 +38,9 @@ import {
   Hash,
   Clock,
   Download,
+  Globe,
+  UserPlus,
+  Users,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -51,6 +54,7 @@ interface Customer {
   createdAt: string;
   posOrders?: number;
   totalSpent?: number;
+  createdByStaff?: boolean;
 }
 
 interface SaleItem {
@@ -85,40 +89,48 @@ interface SaleStats {
 }
 
 type ToastType = "success" | "error" | null;
+type SourceFilter = "all" | "online" | "manual";
 
 const PAYMENT_ICONS: Record<string, any> = {
-  cash: Banknote,
-  card: CreditCard,
+  cash:   Banknote,
+  card:   CreditCard,
   online: Smartphone,
   manual: Banknote,
 };
 
 const PAYMENT_COLORS: Record<string, string> = {
-  cash: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  card: "bg-blue-50 text-blue-700 border-blue-200",
+  cash:   "bg-emerald-50 text-emerald-700 border-emerald-200",
+  card:   "bg-blue-50 text-blue-700 border-blue-200",
   online: "bg-purple-50 text-purple-700 border-purple-200",
   manual: "bg-gray-50 text-gray-600 border-gray-200",
 };
 
+const SOURCE_TABS: { key: SourceFilter; label: string; icon: any; color: string }[] = [
+  { key: "all",    label: "All Customers",    icon: Users,    color: "text-gray-700"   },
+  { key: "online", label: "Online Users",     icon: Globe,    color: "text-blue-600"   },
+  { key: "manual", label: "Walk-in / Manual", icon: UserPlus, color: "text-amber-600"  },
+];
+
 // ── CSV Download Helper ───────────────────────────────────────────────────────
 
 function downloadCSV(customers: Customer[]) {
-  const headers = ["Name", "Email", "Phone", "City", "Street Address", "POS Visits", "Total Spent (Rs)", "Joined"];
+  const headers = ["Name", "Email", "Phone", "City", "Street Address", "Type", "POS Visits", "Total Spent (Rs)", "Joined"];
   const rows = customers.map((c) => [
     `"${c.name.replace(/"/g, '""')}"`,
     `"${c.email}"`,
     `"${c.phone || ""}"`,
     `"${c.addresses?.[0]?.city || ""}"`,
     `"${c.addresses?.[0]?.street || ""}"`,
+    `"${c.createdByStaff ? "Walk-in" : "Online"}"`,
     c.posOrders ?? 0,
     c.totalSpent ?? 0,
     `"${new Date(c.createdAt).toLocaleDateString("en-PK")}"`,
   ]);
   const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
   a.download = `customers-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
@@ -127,35 +139,28 @@ function downloadCSV(customers: Customer[]) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [allCustomers, setAllCustomers] = useState<Customer[]>([]); // for download
-  const [total, setTotal] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [downloading, setDownloading] = useState(false);
+  const [customers,    setCustomers]    = useState<Customer[]>([]);
+  const [total,        setTotal]        = useState(0);
+  const [isLoading,    setIsLoading]    = useState(true);
+  const [search,       setSearch]       = useState("");
+  const [page,         setPage]         = useState(1);
+  const [source,       setSource]       = useState<SourceFilter>("all");
+  const [downloading,  setDownloading]  = useState(false);
 
-  const [showForm, setShowForm] = useState(false);
-  const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
-  const [viewCustomer, setViewCustomer] = useState<Customer | null>(null);
-  const [sales, setSales] = useState<POSSaleRecord[]>([]);
-  const [saleStats, setSaleStats] = useState<SaleStats | null>(null);
-  const [salesLoading, setSalesLoading] = useState(false);
-  const [expandedSale, setExpandedSale] = useState<string | null>(null);
-  // Debug: show raw API response
-  const [debugInfo, setDebugInfo] = useState<string>("");
+  const [showForm,      setShowForm]      = useState(false);
+  const [editCustomer,  setEditCustomer]  = useState<Customer | null>(null);
+  const [viewCustomer,  setViewCustomer]  = useState<Customer | null>(null);
+  const [sales,         setSales]         = useState<POSSaleRecord[]>([]);
+  const [saleStats,     setSaleStats]     = useState<SaleStats | null>(null);
+  const [salesLoading,  setSalesLoading]  = useState(false);
+  const [expandedSale,  setExpandedSale]  = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ type: ToastType; message: string }>({
-    type: null,
-    message: "",
+    type: null, message: "",
   });
 
   const [form, setForm] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    city: "",
-    street: "",
+    name: "", email: "", phone: "", city: "", street: "",
   });
   const [formLoading, setFormLoading] = useState(false);
 
@@ -167,7 +172,7 @@ export default function CustomersPage() {
   const fetchCustomers = async () => {
     setIsLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: "20" });
+      const params = new URLSearchParams({ page: String(page), limit: "20", source });
       if (search) params.set("search", search);
       const res = await fetch(`/api/admin/customers?${params}`);
       if (res.ok) {
@@ -184,13 +189,14 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
-  }, [page, search]);
+  }, [page, search, source]);
 
   // Download all customers (fetch all pages)
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await fetch(`/api/admin/customers?page=1&limit=1000`);
+      const params = new URLSearchParams({ page: "1", limit: "1000", source });
+      const res = await fetch(`/api/admin/customers?${params}`);
       if (res.ok) {
         const data = await res.json();
         downloadCSV(data.customers || []);
@@ -206,10 +212,10 @@ export default function CustomersPage() {
   const openEdit = (c: Customer) => {
     setEditCustomer(c);
     setForm({
-      name: c.name,
-      email: c.email,
-      phone: c.phone || "",
-      city: c.addresses?.[0]?.city || "",
+      name:   c.name,
+      email:  c.email,
+      phone:  c.phone || "",
+      city:   c.addresses?.[0]?.city   || "",
       street: c.addresses?.[0]?.street || "",
     });
     setShowForm(true);
@@ -227,21 +233,16 @@ export default function CustomersPage() {
     setSales([]);
     setSaleStats(null);
     setExpandedSale(null);
-    setDebugInfo("");
     try {
-      const res = await fetch(`/api/admin/customers/${c._id}/orders`);
+      const res  = await fetch(`/api/admin/customers/${c._id}/orders`);
       const data = await res.json();
-      console.log("API response for", c.name, ":", data);
-      setDebugInfo(JSON.stringify({ status: res.status, salesCount: data.sales?.length, stats: data.stats, error: data.error }, null, 2));
       if (res.ok) {
         setSales(data.sales || []);
         setSaleStats(data.stats || null);
       } else {
         showToast("error", data.error || "Failed to load purchase history");
       }
-    } catch (err: any) {
-      console.error("Ledger fetch error:", err);
-      setDebugInfo("Fetch error: " + err.message);
+    } catch {
       showToast("error", "Failed to load purchase history");
     } finally {
       setSalesLoading(false);
@@ -255,17 +256,15 @@ export default function CustomersPage() {
     }
     setFormLoading(true);
     try {
-      const url = editCustomer
-        ? `/api/admin/customers/${editCustomer._id}`
-        : "/api/admin/customers";
+      const url    = editCustomer ? `/api/admin/customers/${editCustomer._id}` : "/api/admin/customers";
       const method = editCustomer ? "PATCH" : "POST";
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          phone: form.phone,
+          name:      form.name,
+          email:     form.email,
+          phone:     form.phone,
           addresses: [{ street: form.street, city: form.city }],
         }),
       });
@@ -304,7 +303,9 @@ export default function CustomersPage() {
         <div className={`fixed top-6 right-6 z-50 flex items-center gap-3 px-5 py-3 rounded-xl shadow-xl text-white transition-all ${
           toast.type === "success" ? "bg-green-600" : "bg-red-500"
         }`}>
-          {toast.type === "success" ? <CheckCircle className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+          {toast.type === "success"
+            ? <CheckCircle className="h-5 w-5" />
+            : <AlertCircle className="h-5 w-5" />}
           <span className="text-sm font-semibold">{toast.message}</span>
         </div>
       )}
@@ -334,15 +335,36 @@ export default function CustomersPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <Input
-          placeholder="Search by name, email or phone…"
-          value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-          className="pl-9 rounded-xl"
-        />
+      {/* Source Tabs + Search */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        {/* Tabs */}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 shrink-0">
+          {SOURCE_TABS.map(({ key, label, icon: Icon, color }) => (
+            <button
+              key={key}
+              onClick={() => { setSource(key); setPage(1); }}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                source === key
+                  ? `bg-white shadow ${color}`
+                  : "text-gray-400 hover:text-gray-600"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Search by name, email or phone…"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            className="pl-9 rounded-xl"
+          />
+        </div>
       </div>
 
       {/* Table */}
@@ -354,6 +376,7 @@ export default function CustomersPage() {
                 <th className="text-left px-5 py-3 font-bold text-gray-500 uppercase text-xs tracking-wide">Customer</th>
                 <th className="text-left px-5 py-3 font-bold text-gray-500 uppercase text-xs tracking-wide">Phone</th>
                 <th className="text-left px-5 py-3 font-bold text-gray-500 uppercase text-xs tracking-wide">City</th>
+                <th className="text-center px-4 py-3 font-bold text-gray-500 uppercase text-xs tracking-wide">Type</th>
                 <th className="text-center px-4 py-3 font-bold text-gray-500 uppercase text-xs tracking-wide">POS Visits</th>
                 <th className="text-right px-5 py-3 font-bold text-gray-500 uppercase text-xs tracking-wide">Total Spent</th>
                 <th className="text-left px-5 py-3 font-bold text-gray-500 uppercase text-xs tracking-wide">Joined</th>
@@ -363,13 +386,13 @@ export default function CustomersPage() {
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12">
+                  <td colSpan={8} className="text-center py-12">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-gray-300" />
                   </td>
                 </tr>
               ) : customers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16 text-gray-400">
+                  <td colSpan={8} className="text-center py-16 text-gray-400">
                     <User className="h-8 w-8 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No customers found</p>
                   </td>
@@ -377,10 +400,15 @@ export default function CustomersPage() {
               ) : (
                 customers.map((c) => (
                   <tr key={c._id} className="hover:bg-gray-50/60 transition-colors">
+                    {/* Customer Name + Email */}
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 bg-green-100 rounded-full flex items-center justify-center shrink-0">
-                          <span className="text-sm font-bold text-green-700">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
+                          c.createdByStaff ? "bg-amber-100" : "bg-blue-100"
+                        }`}>
+                          <span className={`text-sm font-bold ${
+                            c.createdByStaff ? "text-amber-700" : "text-blue-700"
+                          }`}>
                             {c.name.charAt(0).toUpperCase()}
                           </span>
                         </div>
@@ -390,6 +418,8 @@ export default function CustomersPage() {
                         </div>
                       </div>
                     </td>
+
+                    {/* Phone */}
                     <td className="px-5 py-3.5">
                       {c.phone ? (
                         <span className="flex items-center gap-1.5 text-gray-700 font-medium">
@@ -400,27 +430,50 @@ export default function CustomersPage() {
                         <span className="text-gray-300 text-xs">—</span>
                       )}
                     </td>
+
+                    {/* City */}
                     <td className="px-5 py-3.5 text-gray-500 text-sm">
                       {c.addresses?.[0]?.city || <span className="text-gray-300 text-xs">—</span>}
                     </td>
+
+                    {/* Type badge */}
+                    <td className="px-4 py-3.5 text-center">
+                      {c.createdByStaff ? (
+                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-1 rounded-full border border-amber-200">
+                          <UserPlus className="h-3 w-3" />
+                          Walk-in
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[10px] font-bold px-2.5 py-1 rounded-full border border-blue-200">
+                          <Globe className="h-3 w-3" />
+                          Online
+                        </span>
+                      )}
+                    </td>
+
+                    {/* POS Visits */}
                     <td className="px-4 py-3.5 text-center">
                       <span className="inline-flex items-center gap-1.5 bg-purple-50 text-purple-700 text-xs font-bold px-2.5 py-1 rounded-full border border-purple-200">
                         <Store className="h-3 w-3" />
                         {c.posOrders ?? 0}
                       </span>
                     </td>
+
+                    {/* Total Spent */}
                     <td className="px-5 py-3.5 text-right">
                       <span className="font-bold text-green-700 text-sm">
                         Rs {(c.totalSpent ?? 0).toLocaleString()}
                       </span>
                     </td>
+
+                    {/* Joined */}
                     <td className="px-5 py-3.5 text-gray-400 text-xs">
                       {new Date(c.createdAt).toLocaleDateString("en-PK", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
+                        day: "numeric", month: "short", year: "numeric",
                       })}
                     </td>
+
+                    {/* Actions */}
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-1">
                         <button
@@ -457,7 +510,7 @@ export default function CustomersPage() {
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
             <p className="text-xs text-gray-400">Page {page} of {totalPages}</p>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)} className="rounded-lg">Previous</Button>
+              <Button variant="outline" size="sm" disabled={page === 1}         onClick={() => setPage((p) => p - 1)} className="rounded-lg">Previous</Button>
               <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} className="rounded-lg">Next</Button>
             </div>
           </div>
@@ -496,7 +549,9 @@ export default function CustomersPage() {
             ))}
             <div className="flex gap-2 pt-2">
               <Button onClick={handleSave} disabled={formLoading} className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl">
-                {formLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : editCustomer ? "Save Changes" : "Create Customer"}
+                {formLoading
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : editCustomer ? "Save Changes" : "Create Customer"}
               </Button>
               <Button variant="outline" onClick={() => setShowForm(false)} className="flex-1 rounded-xl">Cancel</Button>
             </div>
@@ -517,7 +572,20 @@ export default function CustomersPage() {
                       <span className="text-2xl font-black">{viewCustomer.name.charAt(0).toUpperCase()}</span>
                     </div>
                     <div>
-                      <h2 className="text-xl font-black tracking-tight">{viewCustomer.name}</h2>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-black tracking-tight">{viewCustomer.name}</h2>
+                        {viewCustomer.createdByStaff ? (
+                          <span className="inline-flex items-center gap-1 bg-amber-400/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-400/30">
+                            <UserPlus className="h-2.5 w-2.5" />
+                            Walk-in
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 bg-blue-400/20 text-blue-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-400/30">
+                            <Globe className="h-2.5 w-2.5" />
+                            Online
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-2 space-y-1">
                         <div className="flex items-center gap-2 text-white/70 text-xs">
                           <Mail className="h-3 w-3 shrink-0" />
@@ -563,10 +631,10 @@ export default function CustomersPage() {
                 {/* Stat cards */}
                 <div className="grid grid-cols-4 gap-2.5">
                   {[
-                    { label: "Total Visits",  value: salesLoading ? "…" : (saleStats?.totalSales ?? 0),                                         icon: Store,     color: "bg-white/10"       },
-                    { label: "Total Spent",   value: salesLoading ? "…" : `Rs ${(saleStats?.totalSpent ?? 0).toLocaleString()}`,                  icon: Receipt,   color: "bg-emerald-500/20" },
-                    { label: "Avg. Bill",     value: salesLoading ? "…" : `Rs ${Math.round(saleStats?.avgOrder ?? 0).toLocaleString()}`,          icon: TrendingUp,color: "bg-blue-500/20"    },
-                    { label: "Items Bought",  value: salesLoading ? "…" : (saleStats?.totalItems ?? 0),                                          icon: Package,   color: "bg-purple-500/20"  },
+                    { label: "Total Visits",  value: salesLoading ? "…" : (saleStats?.totalSales ?? 0),                                        icon: Store,     color: "bg-white/10"       },
+                    { label: "Total Spent",   value: salesLoading ? "…" : `Rs ${(saleStats?.totalSpent ?? 0).toLocaleString()}`,                icon: Receipt,   color: "bg-emerald-500/20" },
+                    { label: "Avg. Bill",     value: salesLoading ? "…" : `Rs ${Math.round(saleStats?.avgOrder ?? 0).toLocaleString()}`,        icon: TrendingUp, color: "bg-blue-500/20"   },
+                    { label: "Items Bought",  value: salesLoading ? "…" : (saleStats?.totalItems ?? 0),                                        icon: Package,   color: "bg-purple-500/20"  },
                   ].map(({ label, value, icon: Icon, color }) => (
                     <div key={label} className={`${color} rounded-xl p-3 border border-white/10`}>
                       <Icon className="h-3.5 w-3.5 mb-1.5 opacity-60" />
@@ -585,14 +653,6 @@ export default function CustomersPage() {
                     POS Purchase History
                   </h3>
 
-                  {/* Debug panel — remove after confirming working */}
-                  {/* {debugInfo && (
-                    <details className="mb-3 text-xs bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                      <summary className="cursor-pointer font-bold text-yellow-700">Debug Info (check server logs too)</summary>
-                      <pre className="mt-2 text-yellow-800 overflow-auto">{debugInfo}</pre>
-                    </details>
-                  )} */}
-
                   {salesLoading ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3">
                       <Loader2 className="h-8 w-8 animate-spin text-purple-400" />
@@ -602,16 +662,13 @@ export default function CustomersPage() {
                     <div className="text-center py-20 text-gray-400">
                       <ShoppingBag className="h-10 w-10 mx-auto mb-3 opacity-30" />
                       <p className="text-sm font-semibold">No POS purchases found</p>
-                      <p className="text-xs mt-1 opacity-60 max-w-xs mx-auto">
-                        Check debug info above and server terminal for details
-                      </p>
                     </div>
                   ) : (
                     <div className="space-y-2.5">
                       {sales.map((sale) => {
-                        const PayIcon = PAYMENT_ICONS[sale.paymentMethod] || Banknote;
+                        const PayIcon   = PAYMENT_ICONS[sale.paymentMethod] || Banknote;
                         const isExpanded = expandedSale === sale._id;
-                        const payColor = PAYMENT_COLORS[sale.paymentMethod] || "bg-gray-50 text-gray-600 border-gray-200";
+                        const payColor  = PAYMENT_COLORS[sale.paymentMethod] || "bg-gray-50 text-gray-600 border-gray-200";
 
                         return (
                           <div key={sale._id} className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md hover:border-purple-200 transition-all">

@@ -1,3 +1,5 @@
+// FILE PATH: app/api/admin/purchases/route.ts
+
 import { connectDB } from "@/lib/db";
 import {
   Purchase,
@@ -58,13 +60,24 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Capture stock BEFORE adding new purchase quantity
+      const stockBeforePurchase = productDoc.stock ?? 0;
+
       // Update product stock
       productDoc.stock += item.quantity;
 
-      // Update product retail price with selling price from this batch
-      productDoc.retailPrice = item.sellingPrice;
+      // ─── FIFO PRICING RULE ────────────────────────────────────────────────
+      // Only update retailPrice when the product was completely sold out
+      // (or is brand new). If existing stock remains, the active FIFO batch's
+      // price is still in use — do NOT overwrite it.
+      // retailPrice is kept in sync with the current FIFO batch's sellingPrice:
+      //   • here: when product had no remaining stock
+      //   • in fifo.ts: when the active batch is exhausted during a sale
+      if (stockBeforePurchase === 0) {
+        productDoc.retailPrice = item.sellingPrice;
+      }
 
-      // Store the landed cost as lastBuyingRate
+      // Always track the landed cost of the latest batch for reference
       productDoc.lastBuyingRate = item.unitCostWithTax;
 
       await productDoc.save();
@@ -77,8 +90,8 @@ export async function POST(req: NextRequest) {
         product: productDoc._id,
         quantity: item.quantity,
         remainingQuantity: item.quantity,
-        buyingRate: item.unitCostWithTax, // Full landed cost
-        baseRate: item.buyingRate, // Base price before tax & freight
+        buyingRate: item.unitCostWithTax,   // Full landed cost (used for COGS/FIFO)
+        baseRate: item.buyingRate,           // Base price before tax & freight
         taxValue: item.taxValue,
         taxType: item.taxType === "percentage" ? "percent" : "fixed",
         freightPerUnit: item.freightPerUnit || 0,

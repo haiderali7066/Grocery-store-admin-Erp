@@ -56,19 +56,19 @@ export function Footer() {
       label: "Facebook",
       href: settings?.facebookUrl,
       icon: <Facebook className="h-5 w-5" />,
-      colorClass: "text-[#1877F2] bg-white", // Official Facebook Blue
+      colorClass: "text-[#1877F2] bg-black", // Official Facebook Blue
     },
     {
       label: "Instagram",
       href: settings?.instagramUrl,
       icon: <Instagram className="h-5 w-5" />,
-      colorClass: "text-[#E1306C] bg-white", // Official Instagram Pink
+      colorClass: "text-[#E1306C] bg-black", // Official Instagram Pink
     },
     {
       label: "YouTube",
       href: settings?.youtubeUrl,
       icon: <Youtube className="h-5 w-5" />,
-      colorClass: "text-[#FF0000] bg-white", // Official YouTube Red
+      colorClass: "text-[#FF0000] bg-black", // Official YouTube Red
     },
     {
       label: "WhatsApp",
@@ -76,7 +76,7 @@ export function Footer() {
         ? `https://wa.me/${settings.whatsappNumber.replace(/\D/g, "")}`
         : null,
       icon: <MessageCircle className="h-5 w-5" />,
-      colorClass: "text-[#25D366] bg-white", // Official WhatsApp Green
+      colorClass: "text-[#25D366] bg-black", // Official WhatsApp Green
     },
   ].filter((x) => x.href);
 
@@ -168,7 +168,7 @@ export function Footer() {
                         href={social.href!}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`p-2 rounded-full transition-transform hover:scale-110 shadow-sm ${social.colorClass}`}
+                        className={`p-2 rounded-full  transition-transform hover:scale-110 shadow-sm ${social.colorClass}`}
                         aria-label={social.label}
                       >
                         {social.icon}

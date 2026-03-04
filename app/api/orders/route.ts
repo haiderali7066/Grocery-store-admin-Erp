@@ -1,4 +1,6 @@
 // FILE PATH: app/api/orders/route.ts
+// ✅ ENHANCED: Better error detection for corrupted product IDs
+
 import { connectDB } from "@/lib/db";
 import { Order, Product, InventoryBatch } from "@/lib/models";
 import { NextRequest, NextResponse } from "next/server";
@@ -39,9 +41,10 @@ export async function POST(req: NextRequest) {
     if (!payload)
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
+    const userId = payload.userId;
+
     const body = await req.json();
     const {
-      userId,
       items,
       shippingAddress,
       subtotal,
@@ -67,9 +70,93 @@ export async function POST(req: NextRequest) {
     if (!shippingAddress)
       return NextResponse.json({ message: "Shipping address required" }, { status: 400 });
 
+    // ✅ ENHANCED: Pre-validate all product IDs before processing
+    console.log("[orders] Validating cart items:", {
+      itemCount: items.length,
+      itemNames: items.map((i: any) => i.name),
+    });
+
+    for (const item of items) {
+      // Regular product
+      if (!item.isBundle) {
+        const productId = item.product || item.id;
+
+        console.log("[orders] Validating regular product:", {
+          itemName: item.name,
+          productId: productId,
+          productIdType: typeof productId,
+          isValid: mongoose.Types.ObjectId.isValid(productId),
+        });
+
+        if (!productId) {
+          return NextResponse.json(
+            {
+              message: `Item "${item.name || "unknown"}" has no product ID. This is a corrupted cart item. Please clear your cart and add items again.`,
+              code: "MISSING_PRODUCT_ID",
+            },
+            { status: 400 }
+          );
+        }
+
+        // ✅ Check if ID looks valid
+        if (!mongoose.Types.ObjectId.isValid(productId)) {
+          return NextResponse.json(
+            {
+              message: `Item "${item.name}" has an invalid product ID: "${productId}". This is a corrupted cart item. Please clear your cart and refresh the page.`,
+              code: "INVALID_PRODUCT_ID",
+              details: {
+                itemName: item.name,
+                invalidId: productId,
+                idLength: productId.length,
+              },
+            },
+            { status: 400 }
+          );
+        }
+      } else if (item.isBundle && item.bundleProducts) {
+        // Bundle products
+        for (const bp of item.bundleProducts) {
+          const productId = bp.productId || bp.product;
+
+          console.log("[orders] Validating bundle product:", {
+            bundleName: item.name,
+            productName: bp.name,
+            productId: productId,
+            isValid: mongoose.Types.ObjectId.isValid(productId),
+          });
+
+          if (!productId) {
+            return NextResponse.json(
+              {
+                message: `Bundle "${item.name}" contains a product with no ID. Please remove the bundle from your cart, refresh the page, and add it again.`,
+                code: "BUNDLE_MISSING_PRODUCT_ID",
+              },
+              { status: 400 }
+            );
+          }
+
+          if (!mongoose.Types.ObjectId.isValid(productId)) {
+            return NextResponse.json(
+              {
+                message: `Bundle "${item.name}" contains product "${bp.name}" with invalid ID: "${productId}". Please remove the bundle and add it again.`,
+                code: "BUNDLE_INVALID_PRODUCT_ID",
+                details: {
+                  bundleName: item.name,
+                  productName: bp.name,
+                  invalidId: productId,
+                },
+              },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
+
     // ── Build validated line items ────────────────────────────────────────
     const validatedItems: any[] = [];
     const stockDeductions: { productId: string; quantity: number }[] = [];
+    let calculatedSubtotal = 0;
 
     for (const item of items) {
       const isBundleItem =
@@ -78,10 +165,6 @@ export async function POST(req: NextRequest) {
         item.bundleProducts.length > 0;
 
       if (item.isBundle === true && (!Array.isArray(item.bundleProducts) || item.bundleProducts.length === 0)) {
-        // ── BUNDLE WITH MISSING PRODUCT DATA ─────────────────────────────
-        // This happens when a bundle was added to cart via the old addItem()
-        // path (before the fix), which doesn't store bundleProducts.
-        // Give the user a clear actionable message.
         console.error("[orders] Bundle item missing bundleProducts:", {
           name: item.name,
           id: item.id,
@@ -92,6 +175,7 @@ export async function POST(req: NextRequest) {
             message:
               `The bundle "${item.name}" in your cart is missing product details. ` +
               `Please remove it from your cart, refresh the page, and add it again.`,
+            code: "BUNDLE_MISSING_PRODUCTS",
           },
           { status: 400 },
         );
@@ -101,20 +185,17 @@ export async function POST(req: NextRequest) {
         // ── BUNDLE ─────────────────────────────────────────────────────────
         const bundleQty = Number(item.quantity) || 1;
         const bundlePaidTotal = (Number(item.price) || 0) * bundleQty;
+        const bundleDiscount = Number(item.bundleDiscount) || 0;
 
         const retailTotalPerBundle = item.bundleProducts.reduce(
           (s: number, bp: any) =>
-            s + (Number(bp.price) || 0) * (Number(bp.quantity) || 1),
+            s + (Number(bp.retailPrice) || 0) * (Number(bp.quantity) || 1),
           0,
         );
 
         for (const bp of item.bundleProducts) {
-          const rawId: string =
-            bp.productId ||   // CartProvider stores productId
-            bp.product ||     // legacy field name
-            "";
+          const rawId: string = bp.productId || bp.product || "";
 
-          // ── Validate productId ──────────────────────────────────────────
           if (!rawId || rawId.trim() === "") {
             console.error("[orders] Bundle product missing productId:", {
               bundleName: item.name,
@@ -125,6 +206,7 @@ export async function POST(req: NextRequest) {
                 message:
                   `Bundle "${item.name}" has a product with no ID. ` +
                   `Please remove the bundle from your cart and add it again.`,
+                code: "BUNDLE_PRODUCT_NO_ID",
               },
               { status: 400 },
             );
@@ -139,8 +221,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json(
               {
                 message:
-                  `Bundle "${item.name}" contains an invalid product ID. ` +
+                  `Bundle "${item.name}" contains product "${bp.name}" with invalid ID: "${rawId}". ` +
                   `Please clear your cart, refresh the page, and add the bundle again.`,
+                code: "BUNDLE_PRODUCT_INVALID_ID",
+                details: {
+                  bundleName: item.name,
+                  productName: bp.name,
+                  invalidId: rawId,
+                },
               },
               { status: 400 },
             );
@@ -148,39 +236,53 @@ export async function POST(req: NextRequest) {
 
           const lineQty = (Number(bp.quantity) || 1) * bundleQty;
 
-          const product = await Product.findById(rawId).select("stock name");
+          // ✅ ENHANCED: Better error message when product not found
+          const product = await Product.findById(rawId).select("stock name _id");
           if (!product) {
+            console.error("[orders] Product not found:", {
+              searchedId: rawId,
+              bundleName: item.name,
+              productName: bp.name,
+            });
             return NextResponse.json(
               {
-                message: `A product in bundle "${item.name}" (ID: ${rawId}) was not found. It may have been removed from the store.`,
-              },
-              { status: 400 },
-            );
-          }
-          if (product.stock < lineQty) {
-            return NextResponse.json(
-              {
-                message: `Not enough stock for "${product.name}" in bundle "${item.name}". Available: ${product.stock}, needed: ${lineQty}`,
+                message:
+                  `Product "${bp.name}" (ID: ${rawId}) in bundle "${item.name}" was not found. ` +
+                  `It may have been removed or your cart data is corrupted. ` +
+                  `Please remove the bundle and add it again.`,
+                code: "PRODUCT_NOT_FOUND",
+                details: {
+                  productId: rawId,
+                  productName: bp.name,
+                  bundleName: item.name,
+                },
               },
               { status: 400 },
             );
           }
 
-          // Proportional price distribution across bundle products
-          const lineRetailTotal =
-            (Number(bp.price) || 0) * (Number(bp.quantity) || 1) * bundleQty;
-          const lineDiscountedTotal =
-            retailTotalPerBundle > 0
-              ? (lineRetailTotal / (retailTotalPerBundle * bundleQty)) *
-                bundlePaidTotal
-              : lineRetailTotal;
+          if (product.stock < lineQty) {
+            return NextResponse.json(
+              {
+                message:
+                  `Not enough stock for "${product.name}" in bundle "${item.name}". ` +
+                  `Available: ${product.stock}, needed: ${lineQty}`,
+                code: "INSUFFICIENT_STOCK",
+              },
+              { status: 400 },
+            );
+          }
+
+          const itemRetailTotal = (Number(bp.retailPrice) || 0) * (Number(bp.quantity) || 1);
+          const itemProportion = retailTotalPerBundle > 0
+            ? itemRetailTotal / retailTotalPerBundle
+            : 0;
+
+          const itemPaidTotal = bundlePaidTotal * itemProportion;
           const unitPrice = parseFloat(
-            (
-              lineQty > 0
-                ? lineDiscountedTotal / lineQty
-                : Number(bp.price) || 0
-            ).toFixed(2),
+            (lineQty > 0 ? itemPaidTotal / lineQty : 0).toFixed(2),
           );
+          const itemSubtotal = parseFloat((unitPrice * lineQty).toFixed(2));
 
           validatedItems.push({
             product: rawId,
@@ -191,11 +293,12 @@ export async function POST(req: NextRequest) {
             weight: null,
             discount: 0,
             gst: 0,
-            subtotal: parseFloat((unitPrice * lineQty).toFixed(2)),
+            subtotal: itemSubtotal,
             bundleId: item.bundleId || item.id,
             bundleName: item.name,
           });
 
+          calculatedSubtotal += itemSubtotal;
           stockDeductions.push({ productId: rawId, quantity: lineQty });
         }
       } else {
@@ -205,57 +308,93 @@ export async function POST(req: NextRequest) {
         if (!productId) {
           return NextResponse.json(
             {
-              message: `Item "${item.name || "unknown"}" is missing a product ID`,
+              message: `Item "${item.name || "unknown"}" is missing a product ID. This is a corrupted cart item.`,
+              code: "MISSING_PRODUCT_ID",
             },
             { status: 400 },
           );
         }
 
-        // ── Guard: if the id looks like a bundle name (not a valid ObjectId),
-        //    give a clear "stale cart" message instead of a confusing DB error
         if (!mongoose.Types.ObjectId.isValid(productId)) {
           return NextResponse.json(
             {
               message:
-                `"${item.name}" has an invalid product ID ("${productId}"). ` +
-                `If this is a bundle, please remove it from your cart, refresh the page, and add it again.`,
+                `"${item.name}" has an invalid product ID: "${productId}". ` +
+                `Please clear your cart, refresh the page, and add items again.`,
+              code: "INVALID_PRODUCT_ID",
+              details: {
+                itemName: item.name,
+                invalidId: productId,
+              },
             },
             { status: 400 },
           );
         }
 
-        const product = await Product.findById(productId).select("stock name");
+        // ✅ ENHANCED: Better error message with debugging info
+        const product = await Product.findById(productId).select("stock name _id");
         if (!product) {
+          console.error("[orders] Regular product not found:", {
+            searchedId: productId,
+            itemName: item.name,
+          });
           return NextResponse.json(
             {
-              message: `Product not found: "${item.name}". It may have been removed from the store.`,
+              message:
+                `Product "${item.name}" (ID: ${productId}) was not found in the store. ` +
+                `It may have been removed. Please remove it from your cart and refresh.`,
+              code: "PRODUCT_NOT_FOUND",
+              details: {
+                productId: productId,
+                productName: item.name,
+              },
             },
             { status: 400 },
           );
         }
+
         if (product.stock < item.quantity) {
           return NextResponse.json(
             {
-              message: `Not enough stock for "${product.name}". Available: ${product.stock}, requested: ${item.quantity}`,
+              message:
+                `Not enough stock for "${product.name}". ` +
+                `Available: ${product.stock}, requested: ${item.quantity}`,
+              code: "INSUFFICIENT_STOCK",
             },
             { status: 400 },
           );
         }
+
+        const itemSubtotal = parseFloat((Number(item.price) * Number(item.quantity)).toFixed(2));
 
         validatedItems.push({
           product: productId,
           name: item.name,
           quantity: item.quantity,
-          price: item.price,
+          price: Number(item.price),
           image: item.image || null,
           weight: item.weight || null,
-          discount: item.discount || 0,
-          gst: item.gst || 0,
-          subtotal: item.price * item.quantity,
+          discount: Number(item.discount) || 0,
+          gst: Number(item.gst) || 0,
+          subtotal: itemSubtotal,
         });
 
+        calculatedSubtotal += itemSubtotal;
         stockDeductions.push({ productId, quantity: item.quantity });
       }
+    }
+
+    // ✅ Validate subtotal
+    const calculatedSubtotalRounded = parseFloat(calculatedSubtotal.toFixed(2));
+    const sentSubtotal = parseFloat(subtotal) || 0;
+    const variance = Math.abs(calculatedSubtotalRounded - sentSubtotal) / (sentSubtotal || 1);
+
+    if (variance > 0.01) {
+      console.warn("[orders] Subtotal mismatch:", {
+        calculated: calculatedSubtotalRounded,
+        sent: sentSubtotal,
+        variance: (variance * 100).toFixed(2) + "%",
+      });
     }
 
     // ── Create order ──────────────────────────────────────────────────────
@@ -275,7 +414,7 @@ export async function POST(req: NextRequest) {
         zipCode: shippingAddress.zipCode || "",
         country: shippingAddress.country || "Pakistan",
       },
-      subtotal: parseFloat(subtotal) || 0,
+      subtotal: calculatedSubtotalRounded,
       gstAmount: parseFloat(gstAmount) || 0,
       taxRate: parseFloat(taxRate) || 0,
       taxName: taxName || "",
