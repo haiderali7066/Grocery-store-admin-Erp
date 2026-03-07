@@ -35,6 +35,7 @@ interface Product {
   unitSize: number;
   unitType: string;
   stock: number;
+  gst: number;   // ADD THIS
   category?: string | Record<string, unknown>;
   mainImage?: string;
   images?: string[];
@@ -94,8 +95,10 @@ function ProductDetailContent() {
       : product.discount;
 
   const priceAfterDiscount = Math.max(0, product.retailPrice - discountAmount);
-  const finalPrice = priceAfterDiscount * 1.17;
-  const originalPrice = product.retailPrice * 1.17;
+const gstMultiplier = 1 + (product.gst || 0) / 100;
+
+const finalPrice = priceAfterDiscount;
+const originalPrice = product.retailPrice;
   const savings = originalPrice - finalPrice;
 
   const allImages = [
