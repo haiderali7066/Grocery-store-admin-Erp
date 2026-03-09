@@ -1,4 +1,5 @@
-// app/api/admin/orders/[id]/mark-cod-paid/route.ts
+// FILE PATH: app/api/admin/orders/[id]/mark-cod-paid/route.ts
+
 import { connectDB } from "@/lib/db";
 import { Order, Wallet, Transaction, InventoryBatch } from "@/lib/models";
 import { NextRequest, NextResponse } from "next/server";
@@ -7,33 +8,40 @@ import mongoose from "mongoose";
 
 const isValidObjectId = (id: string) => mongoose.Types.ObjectId.isValid(id);
 
-// Calculate profit for the order based on FIFO cost
+function toProductId(product: any): string {
+  if (!product) return "";
+  if (typeof product === "object" && product._id) return product._id.toString();
+  return product.toString();
+}
+
+// ✅ Fetch order WITHOUT populate so item.product is a raw ObjectId → no CastError
 async function calculateOrderProfit(order: any): Promise<number> {
   let totalProfit = 0;
 
   for (const item of order.items) {
     if (!item.product) continue;
 
-    const quantity = item.quantity;
-    const sellingPrice = item.price;
-    let remainingQty = quantity;
-    let totalCost = 0;
+    const productId = toProductId(item.product);
+    const qty       = item.quantity || 0;
+    const sellPrice = item.price    || 0;
+    let   remaining = qty;
+    let   totalCost = 0;
 
     const batches = await InventoryBatch.find({
-      product: item.product,
-      status: { $in: ["active", "partial", "finished"] },
+      product: new mongoose.Types.ObjectId(productId),
+      status:  { $in: ["active", "partial", "finished"] },
     })
       .sort({ createdAt: 1 })
       .lean();
 
     for (const batch of batches) {
-      if (remainingQty <= 0) break;
-      const qtyFromBatch = Math.min(remainingQty, batch.quantity);
-      totalCost += qtyFromBatch * (batch.buyingRate || 0);
-      remainingQty -= qtyFromBatch;
+      if (remaining <= 0) break;
+      const take = Math.min(remaining, batch.quantity);
+      totalCost += take * (batch.buyingRate || 0);
+      remaining -= take;
     }
 
-    totalProfit += sellingPrice * quantity - totalCost;
+    totalProfit += sellPrice * qty - totalCost;
   }
 
   return totalProfit;
@@ -43,103 +51,84 @@ export async function POST(req: NextRequest, { params }: { params: any }) {
   try {
     await connectDB();
 
-    const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    const payload = verifyToken(token);
-
-    if (!payload || !["admin", "manager"].includes(payload.role)) {
+    const payload = verifyToken(getTokenFromCookie(req.headers.get("cookie") || ""));
+    if (!payload || !["admin", "manager"].includes(payload.role))
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    }
 
-    const resolvedParams = await params;
-    const orderId = resolvedParams.id;
-
-    if (!isValidObjectId(orderId)) {
+    const orderId = (await params).id;
+    if (!isValidObjectId(orderId))
       return NextResponse.json({ message: "Invalid order ID" }, { status: 400 });
-    }
 
     const { amount, notes } = await req.json();
-
-    if (!amount || amount <= 0) {
+    if (!amount || amount <= 0)
       return NextResponse.json({ message: "Valid amount is required" }, { status: 400 });
-    }
 
-    const order = await Order.findById(orderId).populate("items.product");
-    if (!order) {
+    // ✅ NO .populate() — keep item.product as raw ObjectId for profit calc
+    const order = (await Order.findById(orderId).lean()) as any;
+    if (!order)
       return NextResponse.json({ message: "Order not found" }, { status: 404 });
-    }
 
-    if (order.paymentMethod !== "cod") {
+    if (order.paymentMethod !== "cod")
       return NextResponse.json({ message: "This is not a COD order" }, { status: 400 });
-    }
 
-    if (order.codPaymentStatus === "paid") {
+    if (order.codPaymentStatus === "paid")
       return NextResponse.json({ message: "COD payment already marked as paid" }, { status: 400 });
-    }
 
-    // ── Hybrid COD accounting ─────────────────────────────────────────────
-    // codDeliveryCharge was already collected via EasyPaisa (advance).
-    // The `amount` passed here is what the rider collected in cash (remaining amount).
-    // Full order total = codDeliveryCharge (EasyPaisa, already in wallet) + amount (cash now)
-    const codDeliveryCharge = order.codDeliveryCharge || 0; // already credited to easyPaisa wallet when order was verified
-    const shippingCost = order.shippingCost || 0;
+    const codDeliveryCharge = order.codDeliveryCharge || 0;
+    const shippingCost      = order.shippingCost      || 0;
+    const isHybrid          = codDeliveryCharge > 0;
 
-    // The cash amount received from rider goes to cash wallet (excluding shipping)
-    // Note: shippingCost was already subtracted from the advance if applicable,
-    // here we just record what the rider handed over.
-    const cashAmountForWallet = amount; // full rider handover goes to cash (no deduction here)
-
-    // Calculate profit
+    // ✅ item.product is raw ObjectId — safe for InventoryBatch query
     const profit = await calculateOrderProfit(order);
 
-    // Update order
-    order.codPaymentStatus = "paid";
-    order.codPaidAt = new Date();
-    order.codPaidBy = new mongoose.Types.ObjectId(payload.userId);
-    order.profit = profit;
-    order.paymentStatus = "verified";
-    await order.save();
+    // Update order document
+    await Order.findByIdAndUpdate(orderId, {
+      $set: {
+        codPaymentStatus: "paid",
+        codPaidAt:        new Date(),
+        codPaidBy:        new mongoose.Types.ObjectId(payload.userId),
+        profit,
+        paymentStatus:    "verified",
+      },
+    });
 
-    // Credit cash wallet with rider's handover amount
+    // Credit cash wallet
     let wallet = await Wallet.findOne();
-    if (!wallet) {
+    if (!wallet)
       wallet = await Wallet.create({ cash: 0, bank: 0, easyPaisa: 0, jazzCash: 0, card: 0 });
-    }
 
-    wallet.cash += cashAmountForWallet;
+    wallet.cash       += amount;
     wallet.lastUpdated = new Date();
     await wallet.save();
 
-    // Transaction record
-    const isHybrid = codDeliveryCharge > 0;
     await Transaction.create({
-      type: "income",
-      category: "COD Order Payment",
-      amount: cashAmountForWallet,
-      source: "cash",
-      reference: order._id,
+      type:           "income",
+      category:       "COD Order Payment",
+      amount,
+      source:         "cash",
+      reference:      order._id,
       referenceModel: "Order",
-      description: isHybrid
-        ? `COD cash collected for Order #${order.orderNumber}. Advance Rs. ${codDeliveryCharge} was paid via EasyPaisa at checkout. Rider handed Rs. ${amount} cash. Profit: Rs. ${profit.toFixed(2)}.`
-        : `COD payment received for Order #${order.orderNumber}. Total: Rs. ${order.total}, Shipping: Rs. ${shippingCost}, Net: Rs. ${cashAmountForWallet}, Profit: Rs. ${profit.toFixed(2)}.`,
+      description:    isHybrid
+        ? `COD cash collected for Order #${order.orderNumber}. Advance Rs.${codDeliveryCharge} was paid via EasyPaisa. Rider handed Rs.${amount} cash. Profit: Rs.${profit.toFixed(2)}.`
+        : `COD payment received for Order #${order.orderNumber}. Total: Rs.${order.total}, Shipping: Rs.${shippingCost}, Net: Rs.${amount}, Profit: Rs.${profit.toFixed(2)}.`,
       notes:
         notes ||
         (isHybrid
-          ? `Hybrid COD — EasyPaisa advance Rs. ${codDeliveryCharge} + cash Rs. ${amount} from rider.`
-          : `Full cash collected from rider. Delivery charges (Rs. ${shippingCost}) excluded.`),
+          ? `Hybrid COD — EasyPaisa advance Rs.${codDeliveryCharge} + cash Rs.${amount} from rider.`
+          : `Full cash collected from rider. Delivery charges (Rs.${shippingCost}) excluded.`),
       createdBy: payload.userId,
     });
 
     return NextResponse.json(
       {
-        message: "COD cash payment recorded successfully",
-        order,
-        profit: profit.toFixed(2),
-        cashAmountReceived: amount,
+        message:                      "COD cash payment recorded successfully",
+        profit:                       profit.toFixed(2),
+        cashAmountReceived:           amount,
         codDeliveryChargeAlreadyPaid: codDeliveryCharge,
-        totalOrderAmount: order.total,
-        walletCashBalance: wallet.cash,
+        totalOrderAmount:             order.total,
+        walletCashBalance:            wallet.cash,
       },
-      { status: 200 },
+      { status: 200 }
     );
   } catch (err: any) {
     console.error("Mark COD paid error:", err);

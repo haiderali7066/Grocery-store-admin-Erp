@@ -1,4 +1,4 @@
-// app/admin/refunds/page.tsx
+// FILE PATH: app/admin/refunds/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import {
   CheckCircle, XCircle, Clock, Eye, Plus, Package, ShoppingBag,
-  TrendingDown, RotateCcw, Search, AlertCircle, Ban,
+  TrendingDown, RotateCcw, Search, AlertCircle, Ban, Truck,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -93,6 +93,7 @@ export default function RefundsPage() {
   const [showDetail, setShowDetail] = useState(false);
   const [approvalNotes, setApprovalNotes] = useState("");
   const [approvalAmount, setApprovalAmount] = useState("");
+  const [deliveryLoss, setDeliveryLoss] = useState("0");   // ← NEW
   const [actionLoading, setActionLoading] = useState(false);
 
   // Easy Return dialog
@@ -103,7 +104,6 @@ export default function RefundsPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [returnReason, setReturnReason] = useState("customer_request");
   const [returnNotes, setReturnNotes] = useState("");
-  // returnedItemKeys now comes FRESH from the server on every order search
   const [returnedItemKeys, setReturnedItemKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => { fetchRefunds(); }, []);
@@ -112,7 +112,7 @@ export default function RefundsPage() {
     if (!Array.isArray(refunds)) return setFilteredRefunds([]);
     let f = [...refunds];
     if (statusFilter !== "all") f = f.filter(r => r.status === statusFilter);
-    if (typeFilter !== "all") f = f.filter(r => r.returnType === typeFilter);
+    if (typeFilter   !== "all") f = f.filter(r => r.returnType === typeFilter);
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       f = f.filter(r => {
@@ -140,9 +140,6 @@ export default function RefundsPage() {
   };
 
   // ── Search Order ───────────────────────────────────────────────────────────
-  // FIX: We now hit a dedicated endpoint that returns BOTH the order AND
-  // the already-returned item keys derived fresh from the DB — no stale
-  // client-side state involved.
 
   const handleSearchOrder = async () => {
     if (!searchOrderNumber.trim()) { alert("Please enter an order number"); return; }
@@ -152,19 +149,13 @@ export default function RefundsPage() {
     setReturnedItemKeys(new Set());
 
     try {
-      // The search endpoint now also returns `returnedItemKeys` (array of
-      // productId strings / item names) computed server-side from Refund records.
       const res = await fetch(
         `/api/admin/orders/search?orderNumber=${encodeURIComponent(searchOrderNumber.trim())}&includeReturnedKeys=true`
       );
       if (!res.ok) throw new Error((await res.json()).error || "Order not found");
       const { order, returnedItemKeys: serverReturnedKeys } = await res.json();
 
-      // Build the set from what the server told us (always fresh from DB)
       const returned = new Set<string>(serverReturnedKeys || []);
-
-      // Additionally honour item-level `returned` flags that the manual route
-      // stamps directly on POS sale / order items (belt-and-suspenders).
       for (const item of order.items || []) {
         if (item.returned) {
           const key = item.productId?.toString() || item.product?.toString() || item.name;
@@ -206,7 +197,6 @@ export default function RefundsPage() {
     if (!searchedOrder || selectedItems.size === 0) {
       alert("Please select at least one item to return"); return;
     }
-
     setActionLoading(true);
     try {
       const selectedItemsData = searchedOrder.items
@@ -223,17 +213,16 @@ export default function RefundsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderNumber: searchedOrder.orderNumber,
-          reason: returnReason,
-          notes: returnNotes,
-          items: selectedItemsData,
+          orderNumber:   searchedOrder.orderNumber,
+          reason:        returnReason,
+          notes:         returnNotes,
+          items:         selectedItemsData,
           paymentMethod: searchedOrder.paymentMethod || "cash",
-          orderType: searchedOrder.shippingCost > 0 ? "online" : "pos",
+          orderType:     searchedOrder.shippingCost > 0 ? "online" : "pos",
         }),
       });
 
       const data = await res.json();
-
       if (res.ok) {
         alert(`✅ ${data.message}\n\n💰 Refunded: Rs. ${data.refundAmount?.toLocaleString()}\n💵 Wallet balance updated`);
         resetEasyReturn();
@@ -255,7 +244,7 @@ export default function RefundsPage() {
     setReturnNotes("");
   };
 
-  // ── Approve / Reject ───────────────────────────────────────────────────────
+  // ── Approve ────────────────────────────────────────────────────────────────
 
   const handleApprove = async () => {
     if (!selectedRefund) return;
@@ -264,13 +253,25 @@ export default function RefundsPage() {
       const res = await fetch(`/api/admin/refunds/${selectedRefund._id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ approvalAmount: parseFloat(approvalAmount), notes: approvalNotes }),
+        body: JSON.stringify({
+          approvalAmount: parseFloat(approvalAmount),
+          deliveryLoss:   parseFloat(deliveryLoss) || 0,   // ← send delivery loss
+          notes:          approvalNotes,
+        }),
       });
-      if (res.ok) { alert("Refund approved!"); setShowDetail(false); fetchRefunds(); }
-      else { const e = await res.json(); alert(`Error: ${e.error}`); }
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ ${data.message}`);
+        setShowDetail(false);
+        fetchRefunds();
+      } else {
+        alert(`Error: ${data.error}`);
+      }
     } catch { alert("Error approving refund"); }
     finally { setActionLoading(false); }
   };
+
+  // ── Reject ─────────────────────────────────────────────────────────────────
 
   const handleReject = async () => {
     if (!selectedRefund) return;
@@ -285,6 +286,21 @@ export default function RefundsPage() {
       else { const e = await res.json(); alert(`Error: ${e.error}`); }
     } catch { alert("Error rejecting refund"); }
     finally { setActionLoading(false); }
+  };
+
+  // ── Open detail and prefill amounts ───────────────────────────────────────
+
+  const openDetail = (refund: RefundRequest) => {
+    setSelectedRefund(refund);
+    setShowDetail(true);
+    setApprovalNotes("");
+
+    const isOnline = refund.returnType === "online";
+    const defaultDeliveryLoss = isOnline ? (refund.deliveryCost ?? 300) : 0;
+    const netAmount = refund.requestedAmount - defaultDeliveryLoss;
+
+    setApprovalAmount(String(netAmount > 0 ? netAmount : refund.requestedAmount));
+    setDeliveryLoss(String(defaultDeliveryLoss));
   };
 
   if (loading) return (
@@ -321,7 +337,6 @@ export default function RefundsPage() {
               </DialogHeader>
 
               <div className="space-y-6 mt-4">
-                {/* Step 1 */}
                 <Card className="p-4 bg-blue-50 border-blue-200">
                   <label className="block text-sm font-bold mb-2">Step 1: Find Order</label>
                   <div className="flex gap-2">
@@ -338,15 +353,12 @@ export default function RefundsPage() {
                   </div>
                 </Card>
 
-                {/* Step 2 — order found */}
                 {searchedOrder && (
                   <>
                     <Card className="p-4 bg-green-50 border-green-200">
                       <div className="flex items-center justify-between mb-3">
                         <div>
-                          <h3 className="text-lg font-bold text-green-900">
-                            {searchedOrder.orderNumber}
-                          </h3>
+                          <h3 className="text-lg font-bold text-green-900">{searchedOrder.orderNumber}</h3>
                           <p className="text-sm text-green-700">
                             Total: Rs. {searchedOrder.total?.toLocaleString()} · {searchedOrder.paymentMethod?.toUpperCase()} · {new Date(searchedOrder.createdAt).toLocaleDateString()}
                           </p>
@@ -360,20 +372,17 @@ export default function RefundsPage() {
                         <div className="mb-3 flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-300 rounded-xl text-sm text-amber-800 font-medium">
                           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
                           <span>
-                            {returnedItemKeys.size} item(s) have already been returned and <strong>cannot be returned again</strong>. They are shown grayed out below.
+                            {returnedItemKeys.size} item(s) already returned and <strong>cannot be returned again</strong>. Shown grayed out below.
                           </span>
                         </div>
                       )}
 
-                      <label className="block text-sm font-bold mb-2 text-green-900">
-                        Step 2: Select Items to Return
-                      </label>
+                      <label className="block text-sm font-bold mb-2 text-green-900">Step 2: Select Items to Return</label>
 
                       <div className="space-y-2">
                         {searchedOrder.items.map((item: any, index: number) => {
                           const returned = isItemReturned(item);
-                          const checked = selectedItems.has(index);
-
+                          const checked  = selectedItems.has(index);
                           return (
                             <div
                               key={index}
@@ -387,31 +396,20 @@ export default function RefundsPage() {
                               }`}
                             >
                               <div className="shrink-0 w-5 h-5 flex items-center justify-center">
-                                {returned ? (
-                                  <Ban className="h-5 w-5 text-gray-400" />
-                                ) : (
-                                  <input type="checkbox" checked={checked} readOnly className="w-5 h-5 accent-orange-500 pointer-events-none" />
-                                )}
+                                {returned
+                                  ? <Ban className="h-5 w-5 text-gray-400" />
+                                  : <input type="checkbox" checked={checked} readOnly className="w-5 h-5 accent-orange-500 pointer-events-none" />
+                                }
                               </div>
-
                               <div className="flex-1 grid grid-cols-12 gap-2 items-center">
                                 <div className="col-span-5">
-                                  <p className={`font-semibold ${returned ? "line-through text-gray-400" : ""}`}>
-                                    {item.name}
-                                  </p>
-                                  {returned && (
-                                    <p className="text-xs font-bold text-red-500 mt-0.5">
-                                      Already returned
-                                      {item.returnedAt && ` · ${new Date(item.returnedAt).toLocaleDateString()}`}
-                                    </p>
-                                  )}
+                                  <p className={`font-semibold ${returned ? "line-through text-gray-400" : ""}`}>{item.name}</p>
+                                  {returned && <p className="text-xs font-bold text-red-500 mt-0.5">Already returned</p>}
                                 </div>
                                 <div className="col-span-2 text-center text-sm text-gray-600">Qty: {item.quantity}</div>
                                 <div className="col-span-2 text-center text-sm text-gray-600">@ Rs. {item.price?.toLocaleString()}</div>
                                 <div className="col-span-3 text-right">
-                                  <p className={`font-bold ${returned ? "text-gray-400" : "text-green-700"}`}>
-                                    Rs. {item.subtotal?.toLocaleString()}
-                                  </p>
+                                  <p className={`font-bold ${returned ? "text-gray-400" : "text-green-700"}`}>Rs. {item.subtotal?.toLocaleString()}</p>
                                 </div>
                               </div>
                             </div>
@@ -421,24 +419,17 @@ export default function RefundsPage() {
 
                       {returnableCount === 0 && (
                         <div className="mt-4 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 font-semibold text-sm">
-                          <XCircle className="h-5 w-5 shrink-0" />
-                          All items have already been returned. No further returns allowed.
+                          <XCircle className="h-5 w-5 shrink-0" /> All items have already been returned.
                         </div>
                       )}
 
                       {selectedItems.size > 0 && (
                         <div className="mt-4 pt-4 border-t border-green-300">
                           <div className="flex justify-between items-center">
-                            <span className="font-bold text-green-900">
-                              {selectedItems.size} item(s) selected for return:
-                            </span>
-                            <span className="text-2xl font-black text-orange-700">
-                              Rs. {selectedTotal.toLocaleString()}
-                            </span>
+                            <span className="font-bold text-green-900">{selectedItems.size} item(s) selected:</span>
+                            <span className="text-2xl font-black text-orange-700">Rs. {selectedTotal.toLocaleString()}</span>
                           </div>
-                          <p className="text-xs text-green-700 mt-1">
-                            ✓ Stock will be restocked · Wallet balance will be deducted · Item removed from order history
-                          </p>
+                          <p className="text-xs text-green-700 mt-1">✓ Stock restocked · Wallet deducted</p>
                         </div>
                       )}
                     </Card>
@@ -449,11 +440,7 @@ export default function RefundsPage() {
                         <div className="grid grid-cols-2 gap-4">
                           <div>
                             <label className="block text-xs font-medium mb-1">Reason *</label>
-                            <select
-                              value={returnReason}
-                              onChange={e => setReturnReason(e.target.value)}
-                              className="w-full px-3 py-2 border rounded-lg text-sm bg-white"
-                            >
+                            <select value={returnReason} onChange={e => setReturnReason(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
                               <option value="defective">Defective Product</option>
                               <option value="wrong_item">Wrong Item</option>
                               <option value="expired">Expired</option>
@@ -479,9 +466,7 @@ export default function RefundsPage() {
                         disabled={actionLoading || selectedItems.size === 0}
                         className="w-full bg-orange-600 hover:bg-orange-700 py-6 text-lg font-bold disabled:opacity-50"
                       >
-                        {actionLoading
-                          ? "Processing…"
-                          : `✓ Process Return & Restock (${selectedItems.size} items · Rs. ${selectedTotal.toLocaleString()})`}
+                        {actionLoading ? "Processing…" : `✓ Process Return & Restock (${selectedItems.size} items · Rs. ${selectedTotal.toLocaleString()})`}
                       </Button>
                     )}
                   </>
@@ -501,17 +486,14 @@ export default function RefundsPage() {
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           {[
-            { label: "Total Pending",  val: refunds.filter(r => r.status === "pending").length,                                                                              color: "text-yellow-600", Icon: Clock       },
-            { label: "Online Refunds", val: refunds.filter(r => r.returnType === "online").length,                                                                           color: "text-purple-600", Icon: ShoppingBag },
-            { label: "POS Returns",    val: refunds.filter(r => r.returnType === "pos_manual").length,                                                                       color: "text-orange-600", Icon: Package     },
-            { label: "Total Refunded", val: `Rs ${refunds.filter(r => ["completed","approved"].includes(r.status)).reduce((s, r) => s + (r.refundedAmount || 0), 0).toFixed(0)}`, color: "text-red-600",    Icon: TrendingDown },
+            { label: "Total Pending",  val: refunds.filter(r => r.status === "pending").length,                                                                               color: "text-yellow-600", Icon: Clock        },
+            { label: "Online Refunds", val: refunds.filter(r => r.returnType === "online").length,                                                                            color: "text-purple-600", Icon: ShoppingBag  },
+            { label: "POS Returns",    val: refunds.filter(r => r.returnType === "pos_manual").length,                                                                        color: "text-orange-600", Icon: Package      },
+            { label: "Total Refunded", val: `Rs ${refunds.filter(r => ["completed","approved"].includes(r.status)).reduce((s, r) => s + (r.refundedAmount || 0), 0).toFixed(0)}`, color: "text-red-600", Icon: TrendingDown },
           ].map((s, i) => (
             <Card key={i} className="p-4">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">{s.label}</p>
-                  <p className={`text-2xl font-bold ${s.color}`}>{s.val}</p>
-                </div>
+                <div><p className="text-sm text-gray-600">{s.label}</p><p className={`text-2xl font-bold ${s.color}`}>{s.val}</p></div>
                 <s.Icon className={`h-8 w-8 opacity-60 ${s.color}`} />
               </div>
             </Card>
@@ -567,7 +549,7 @@ export default function RefundsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                       <div><p className="text-gray-500">Requested</p><p className="font-semibold text-red-600">Rs {fmt(refund.requestedAmount)}</p></div>
                       {refund.refundedAmount ? <div><p className="text-gray-500">Refunded</p><p className="font-semibold text-green-600">Rs {fmt(refund.refundedAmount)}</p></div> : null}
-                      {refund.deliveryCost && refund.deliveryCost > 0 ? <div><p className="text-gray-500">Delivery Cost</p><p className="font-semibold text-orange-600">- Rs {fmt(refund.deliveryCost)}</p></div> : null}
+                      {refund.deliveryCost && refund.deliveryCost > 0 ? <div><p className="text-gray-500">Delivery Loss</p><p className="font-semibold text-orange-600">Rs {fmt(refund.deliveryCost)}</p></div> : null}
                       <div><p className="text-gray-500">Reason</p><p className="font-semibold capitalize">{refund.reason.replace(/_/g, " ")}</p></div>
                       <div><p className="text-gray-500">Date</p><p className="font-semibold">{new Date(refund.createdAt).toLocaleDateString()}</p></div>
                     </div>
@@ -582,12 +564,7 @@ export default function RefundsPage() {
                       </div>
                     )}
                   </div>
-                  <Button onClick={() => {
-                    setSelectedRefund(refund);
-                    setShowDetail(true);
-                    setApprovalAmount(refund.returnType === "online" ? String(refund.requestedAmount - 300) : String(refund.requestedAmount));
-                    setApprovalNotes("");
-                  }} variant="outline" size="sm">
+                  <Button onClick={() => openDetail(refund)} variant="outline" size="sm">
                     <Eye size={16} className="mr-2" /> View
                   </Button>
                 </div>
@@ -619,7 +596,7 @@ export default function RefundsPage() {
                     <div className="border rounded-xl overflow-hidden">
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b">
-                          <tr>{["Item", "Qty", "Unit Price", "Line Total", "Restocked"].map(h => (
+                          <tr>{["Item","Qty","Unit Price","Line Total","Restocked"].map(h => (
                             <th key={h} className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
                           ))}</tr>
                         </thead>
@@ -647,28 +624,76 @@ export default function RefundsPage() {
                   </div>
                 )}
 
-                {selectedRefund.returnType === "online" && (
-                  <Card className="p-4 bg-orange-50 border-orange-200">
-                    <p className="text-sm font-semibold text-orange-800">⚠️ Online Order: Rs 300 delivery cost deducted from refund</p>
-                  </Card>
-                )}
-
                 {selectedRefund.status === "pending" && (
                   <>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Approval Amount (Rs)</label>
-                      <Input type="number" step="0.01" value={approvalAmount} onChange={e => setApprovalAmount(e.target.value)} />
+                    {/* ── Approval inputs ── */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1">
+                          Net Refund Amount (Rs) <span className="text-red-500">*</span>
+                        </label>
+                        <Input
+                          type="number" step="0.01"
+                          value={approvalAmount}
+                          onChange={e => setApprovalAmount(e.target.value)}
+                          placeholder="Amount to refund to customer"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Amount actually credited back to customer</p>
+                      </div>
+
+                      {/* Delivery loss — shown for all but especially useful for online */}
+                      <div>
+                        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                          <Truck className="h-3.5 w-3.5 text-orange-500" />
+                          Delivery Loss (Rs)
+                        </label>
+                        <Input
+                          type="number" step="0.01" min="0"
+                          value={deliveryLoss}
+                          onChange={e => setDeliveryLoss(e.target.value)}
+                          placeholder="0"
+                          className={parseFloat(deliveryLoss) > 0 ? "border-orange-400" : ""}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          {selectedRefund.returnType === "online"
+                            ? "Delivery cost borne by business (recorded as expense)"
+                            : "Optional: record any courier/handling cost"}
+                        </p>
+                      </div>
                     </div>
+
+                    {/* Live summary */}
+                    {(parseFloat(approvalAmount) > 0 || parseFloat(deliveryLoss) > 0) && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm space-y-1">
+                        <p className="font-bold text-blue-900">Refund Summary</p>
+                        <div className="flex justify-between text-gray-700">
+                          <span>Requested amount</span>
+                          <span>Rs {fmt(selectedRefund.requestedAmount)}</span>
+                        </div>
+                        {parseFloat(deliveryLoss) > 0 && (
+                          <div className="flex justify-between text-orange-700">
+                            <span className="flex items-center gap-1"><Truck className="h-3 w-3" /> Delivery loss (expense)</span>
+                            <span>− Rs {fmt(parseFloat(deliveryLoss))}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-black text-green-800 border-t pt-1">
+                          <span>Net refund to customer</span>
+                          <span>Rs {fmt(parseFloat(approvalAmount) || 0)}</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <label className="block text-sm font-medium mb-1">Notes</label>
                       <Textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)} rows={3} />
                     </div>
+
                     <div className="flex gap-3">
                       <Button onClick={handleApprove} className="flex-1 bg-green-600 hover:bg-green-700" disabled={actionLoading}>
                         <CheckCircle className="h-4 w-4 mr-2" />{actionLoading ? "Processing…" : "Approve & Restock"}
                       </Button>
                       <Button onClick={handleReject} variant="outline" className="flex-1 border-red-600 text-red-600 hover:bg-red-50" disabled={actionLoading}>
-                        <XCircle className="h-4 w-4 mr-2" />Reject
+                        <XCircle className="h-4 w-4 mr-2" /> Reject
                       </Button>
                     </div>
                   </>
@@ -677,9 +702,12 @@ export default function RefundsPage() {
                 {selectedRefund.status !== "pending" && (
                   <div className="p-4 bg-gray-50 rounded-lg space-y-1">
                     <p className="text-sm font-semibold mb-1">Processing Info:</p>
-                    {selectedRefund.refundedAmount ? <p className="text-sm">Refunded: Rs {fmt(selectedRefund.refundedAmount)}</p> : null}
+                    {selectedRefund.refundedAmount  ? <p className="text-sm">Refunded: Rs {fmt(selectedRefund.refundedAmount)}</p>  : null}
+                    {selectedRefund.deliveryCost && selectedRefund.deliveryCost > 0
+                      ? <p className="text-sm text-orange-700">Delivery loss: Rs {fmt(selectedRefund.deliveryCost)}</p>
+                      : null}
                     {selectedRefund.approvedBy ? <p className="text-sm">Processed by: {selectedRefund.approvedBy.name}</p> : null}
-                    {selectedRefund.notes ? <p className="text-sm">Notes: {selectedRefund.notes}</p> : null}
+                    {selectedRefund.notes       ? <p className="text-sm">Notes: {selectedRefund.notes}</p>                  : null}
                   </div>
                 )}
               </div>
