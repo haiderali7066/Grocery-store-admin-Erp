@@ -197,9 +197,7 @@ export function Navbar() {
                   </span>
                 )}
               </div>
-              <span className="font-bold text-gray-800 hidden lg:inline group-hover:text-green-700 transition-colors">
-                Rs. 0.00 {/* Optional: Replace with actual cart total if you have it */}
-              </span>
+              
             </Link>
           </div>
 

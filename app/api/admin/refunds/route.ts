@@ -16,12 +16,11 @@ export async function GET(req: NextRequest) {
   try {
     await connectDB();
     const payload = auth(req);
-    // Allow all staff roles to view refunds
     if (!payload || !["admin", "manager", "accountant", "staff"].includes(payload.role))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const refunds = await Refund.find()
-      .populate({ path: "order", select: "orderNumber total items" })
+      .populate({ path: "order", select: "orderNumber total items shippingCost paymentMethod" })
       .populate({ path: "approvedBy", select: "name" })
       .sort({ createdAt: -1 })
       .lean();
@@ -33,7 +32,9 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── POST — customer creates online refund request ─────────────────────────────
+// ── POST — customer/admin creates an online refund request ───────────────────
+// deliveryCost is now optional in the request body (defaults to 0).
+// The admin sets the actual delivery loss when they approve the request.
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
     const payload = auth(req);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { orderId, reason } = await req.json();
+    const { orderId, reason, deliveryCost } = await req.json();
     if (!orderId || !reason)
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
@@ -49,14 +50,13 @@ export async function POST(req: NextRequest) {
     if (!order)
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-    // Ownership check (admin/staff can do anything)
     if (order.user.toString() !== payload.userId && !["admin", "manager", "accountant", "staff"].includes(payload.role))
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     if (order.isPOS)
       return NextResponse.json({ error: "POS sales cannot be refunded online. Please visit store." }, { status: 400 });
 
-    // ── Per-item one-return guard ─────────────────────────────────────────
+    // ── Per-item one-return guard ──────────────────────────────────────────
     const existingRefunds = await Refund.find({
       order: orderId,
       status: { $in: ["pending", "approved", "completed"] },
@@ -84,22 +84,24 @@ export async function POST(req: NextRequest) {
         error: `${orderItems.length - unreturnedItems.length} item(s) already returned. Only ${unreturnedItems.length} item(s) remain returnable.`
       }, { status: 400 });
 
-    const refundableAmount = unreturnedItems.reduce((sum: number, item: any) => sum + (item.subtotal || item.price * item.quantity || 0), 0);
+    const refundableAmount = unreturnedItems.reduce(
+      (sum: number, item: any) => sum + (item.subtotal || item.price * item.quantity || 0), 0
+    );
 
     const returnItems = unreturnedItems.map((item: any) => ({
       productId: item.product || item.productId || null,
-      name: item.name,
+      name:      item.name,
       returnQty: item.quantity,
       unitPrice: item.price || 0,
       lineTotal: item.subtotal || item.price * item.quantity || 0,
-      restock: true,
+      restock:   true,
     }));
 
     const refund = new Refund({
-      order: orderId,
-      returnType: "online",
-      requestedAmount: refundableAmount,
-      deliveryCost: 300,
+      order:            orderId,
+      returnType:       "online",
+      requestedAmount:  refundableAmount,
+      deliveryCost:     parseFloat(deliveryCost) || 0,  // ← 0 by default, set by caller
       reason,
       returnItems,
       status: "pending",

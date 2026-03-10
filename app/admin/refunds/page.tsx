@@ -30,7 +30,7 @@ interface ReturnItemRecord {
 
 interface RefundRequest {
   _id: string;
-  order?: { _id: string; orderNumber: string; total: number; items: any[] };
+  order?: { _id: string; orderNumber: string; total: number; items: any[]; shippingCost?: number; paymentMethod?: string };
   orderNumber?: string;
   returnType: "online" | "pos_manual";
   requestedAmount: number;
@@ -295,12 +295,19 @@ export default function RefundsPage() {
     setShowDetail(true);
     setApprovalNotes("");
 
-    const isOnline = refund.returnType === "online";
-    const defaultDeliveryLoss = isOnline ? (refund.deliveryCost ?? 300) : 0;
-    const netAmount = refund.requestedAmount - defaultDeliveryLoss;
+    // Auto-pick delivery cost:
+    //   1. Use the actual shippingCost from the populated order (most accurate)
+    //   2. Fall back to whatever was stored on the refund record (e.g. if already processed)
+    //   3. Default 0 for POS / when no shipping was charged
+    const autoDeliveryLoss =
+      refund.order?.shippingCost       // real shipping from order
+      ?? refund.deliveryCost           // previously stored value
+      ?? 0;
 
-    setApprovalAmount(String(netAmount > 0 ? netAmount : refund.requestedAmount));
-    setDeliveryLoss(String(defaultDeliveryLoss));
+    // approvalAmount = items total only (delivery loss is a separate expense,
+    // not deducted from what the customer gets back)
+    setDeliveryLoss(String(autoDeliveryLoss));
+    setApprovalAmount(String(refund.requestedAmount));
   };
 
   if (loading) return (
@@ -584,45 +591,110 @@ export default function RefundsPage() {
                 <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
                   <div><p className="text-sm text-gray-600">Order Number</p><p className="font-semibold">{selectedRefund.order?.orderNumber || selectedRefund.orderNumber}</p></div>
                   <div><p className="text-sm text-gray-600">Type</p><TypeBadge type={selectedRefund.returnType} /></div>
-                  <div><p className="text-sm text-gray-600">Requested Amount</p><p className="font-semibold text-red-600">Rs {fmt(selectedRefund.requestedAmount)}</p></div>
+                  <div><p className="text-sm text-gray-600">Items Subtotal</p><p className="font-semibold text-red-600">Rs {fmt(selectedRefund.requestedAmount)}</p></div>
+                  <div><p className="text-sm text-gray-600">Order Total</p><p className="font-semibold text-gray-900">Rs {fmt(selectedRefund.order?.total ?? selectedRefund.requestedAmount)}</p></div>
+                  {selectedRefund.returnType === "online" && (
+                    <div className="col-span-2 flex items-center gap-6 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                      <div>
+                        <p className="text-xs text-gray-500">Shipping charged to customer</p>
+                        <p className="font-bold text-orange-700">Rs {fmt(selectedRefund.order?.shippingCost ?? 0)}</p>
+                      </div>
+                      <p className="text-xs text-gray-400 flex-1">
+                        ← auto-filled as Delivery Loss below. Edit if the actual courier cost differs.
+                      </p>
+                    </div>
+                  )}
                   <div><p className="text-sm text-gray-600">Status</p><StatusBadge status={selectedRefund.status} /></div>
                   <div><p className="text-sm text-gray-600">Reason</p><p className="font-semibold capitalize">{selectedRefund.reason.replace(/_/g, " ")}</p></div>
                   <div><p className="text-sm text-gray-600">Date</p><p className="font-semibold">{new Date(selectedRefund.createdAt).toLocaleDateString()}</p></div>
                 </div>
 
-                {selectedRefund.returnItems && selectedRefund.returnItems.length > 0 && (
-                  <div>
-                    <p className="text-sm font-bold text-gray-700 mb-2">Returned Items:</p>
-                    <div className="border rounded-xl overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 border-b">
-                          <tr>{["Item","Qty","Unit Price","Line Total","Restocked"].map(h => (
-                            <th key={h} className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">{h}</th>
-                          ))}</tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {selectedRefund.returnItems.map((it, idx) => (
-                            <tr key={idx} className="hover:bg-gray-50">
-                              <td className="px-3 py-2 font-medium">{it.name}</td>
-                              <td className="px-3 py-2">{it.returnQty}</td>
-                              <td className="px-3 py-2">Rs {fmt(it.unitPrice)}</td>
-                              <td className="px-3 py-2 font-bold text-green-700">Rs {fmt(it.lineTotal)}</td>
-                              <td className="px-3 py-2">{it.restock ? <span className="text-green-600 text-xs font-semibold">✓ Yes</span> : <span className="text-gray-400 text-xs">No</span>}</td>
+                {/* Items table — show returnItems if stored, else fall back to order.items */}
+                {(() => {
+                  // Use returnItems from the refund doc (has restock info),
+                  // fall back to order.items for freshly created requests
+                  const rows: { name: string; qty: number; price: number; total: number; restock: boolean }[] =
+                    (selectedRefund.returnItems?.length ?? 0) > 0
+                      ? (selectedRefund.returnItems!.map(it => ({
+                          name: it.name, qty: it.returnQty, price: it.unitPrice,
+                          total: it.lineTotal, restock: it.restock,
+                        })))
+                      : ((selectedRefund.order?.items ?? []).map((it: any) => ({
+                          name: it.name || "Item", qty: it.quantity || 0,
+                          price: it.price || 0, total: it.subtotal || (it.price * it.quantity) || 0,
+                          restock: true,
+                        })));
+
+                  if (!rows.length) return null;
+                  const hasRestockCol = selectedRefund.returnItems?.length > 0;
+                  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+
+                  return (
+                    <div>
+                      <p className="text-sm font-bold text-gray-700 mb-2">
+                        {hasRestockCol ? "Returned Items:" : "Order Items (to be returned):"}
+                      </p>
+                      <div className="border rounded-xl overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-gray-50 border-b">
+                            <tr>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Item</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Qty</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Unit Price</th>
+                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Line Total</th>
+                              {hasRestockCol && <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Restocked</th>}
                             </tr>
-                          ))}
-                        </tbody>
-                        <tfoot className="bg-orange-50 border-t">
-                          <tr>
-                            <td colSpan={3} className="px-3 py-2 text-right text-sm font-bold">Total:</td>
-                            <td colSpan={2} className="px-3 py-2 text-base font-black text-orange-700">
-                              Rs {fmt(selectedRefund.returnItems.reduce((s, i) => s + i.lineTotal, 0))}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y">
+                            {rows.map((r, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 font-medium">{r.name}</td>
+                                <td className="px-3 py-2">{r.qty}</td>
+                                <td className="px-3 py-2">Rs {fmt(r.price)}</td>
+                                <td className="px-3 py-2 font-bold text-green-700">Rs {fmt(r.total)}</td>
+                                {hasRestockCol && (
+                                  <td className="px-3 py-2">
+                                    {r.restock
+                                      ? <span className="text-green-600 text-xs font-semibold">✓ Yes</span>
+                                      : <span className="text-gray-400 text-xs">No</span>}
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-orange-50 border-t">
+                            <tr>
+                              <td colSpan={hasRestockCol ? 3 : 3} className="px-3 py-2 text-right text-sm font-bold text-gray-700">
+                                Items subtotal:
+                              </td>
+                              <td colSpan={hasRestockCol ? 2 : 1} className="px-3 py-2 text-base font-black text-orange-700">
+                                Rs {fmt(grandTotal)}
+                              </td>
+                            </tr>
+                            {selectedRefund.returnType === "online" && (selectedRefund.order?.shippingCost ?? 0) > 0 && (
+                              <tr className="bg-orange-100">
+                                <td colSpan={hasRestockCol ? 3 : 3} className="px-3 py-2 text-right text-sm font-bold text-orange-700 flex items-center justify-end gap-1">
+                                  <Truck className="h-3.5 w-3.5" /> Shipping cost:
+                                </td>
+                                <td colSpan={hasRestockCol ? 2 : 1} className="px-3 py-2 text-base font-black text-orange-700">
+                                  Rs {fmt(selectedRefund.order?.shippingCost ?? 0)}
+                                </td>
+                              </tr>
+                            )}
+                            {selectedRefund.returnType === "online" && (
+                              <tr className="bg-blue-50">
+                                <td colSpan={hasRestockCol ? 3 : 3} className="px-3 py-2 text-right text-sm font-black text-blue-800">Order total paid:</td>
+                                <td colSpan={hasRestockCol ? 2 : 1} className="px-3 py-2 text-base font-black text-blue-800">
+                                  Rs {fmt(selectedRefund.order?.total ?? grandTotal)}
+                                </td>
+                              </tr>
+                            )}
+                          </tfoot>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {selectedRefund.status === "pending" && (
                   <>
@@ -665,19 +737,25 @@ export default function RefundsPage() {
                     {/* Live summary */}
                     {(parseFloat(approvalAmount) > 0 || parseFloat(deliveryLoss) > 0) && (
                       <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm space-y-1">
-                        <p className="font-bold text-blue-900">Refund Summary</p>
+                        <p className="font-bold text-blue-900 mb-2">Refund Summary</p>
+                        {selectedRefund.returnType === "online" && (
+                          <div className="flex justify-between text-gray-500 text-xs">
+                            <span>Order total (incl. shipping)</span>
+                            <span>Rs {fmt(selectedRefund.order?.total ?? selectedRefund.requestedAmount)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between text-gray-700">
-                          <span>Requested amount</span>
+                          <span>Items subtotal (refundable)</span>
                           <span>Rs {fmt(selectedRefund.requestedAmount)}</span>
                         </div>
                         {parseFloat(deliveryLoss) > 0 && (
                           <div className="flex justify-between text-orange-700">
-                            <span className="flex items-center gap-1"><Truck className="h-3 w-3" /> Delivery loss (expense)</span>
-                            <span>− Rs {fmt(parseFloat(deliveryLoss))}</span>
+                            <span className="flex items-center gap-1"><Truck className="h-3 w-3" /> Delivery loss → recorded as expense</span>
+                            <span>Rs {fmt(parseFloat(deliveryLoss))}</span>
                           </div>
                         )}
-                        <div className="flex justify-between font-black text-green-800 border-t pt-1">
-                          <span>Net refund to customer</span>
+                        <div className="flex justify-between font-black text-green-800 border-t border-blue-300 pt-2 mt-1">
+                          <span>Customer refund (wallet deduction)</span>
                           <span>Rs {fmt(parseFloat(approvalAmount) || 0)}</span>
                         </div>
                       </div>

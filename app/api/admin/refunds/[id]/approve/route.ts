@@ -43,7 +43,11 @@ export async function POST(
       // Admin enters the NET amount to refund (after deducting delivery if needed).
       // deliveryLoss is recorded separately as an expense transaction.
       const finalRefundAmount = parseFloat(approvalAmount) || refund.requestedAmount;
-      const parsedDeliveryLoss = parseFloat(deliveryLoss) || refund.deliveryCost || 0;
+      // Use Number() not parseFloat() + || so that explicit 0 from the UI is respected
+      // and does NOT fall back to the old stored deliveryCost (which may be 300).
+      const parsedDeliveryLoss = deliveryLoss !== undefined && deliveryLoss !== null
+        ? Number(deliveryLoss) || 0
+        : Number(refund.deliveryCost) || 0;
 
       // ── Resolve payment method → wallet field ─────────────────────────────
       let paymentMethod = "cash";
@@ -132,10 +136,22 @@ export async function POST(
       for (const item of returnItems) {
         if (!item.restock) continue;
 
-        // productId may be an ObjectId object or plain string — normalise safely
-        const rawId    = item.productId?._id ?? item.productId;
-        const productId = rawId?.toString?.();
-        if (!productId || !mongoose.Types.ObjectId.isValid(productId)) continue;
+        // productId in a lean() returnItems subdoc can be:
+        //   ObjectId object, {_id: ObjectId, ...} populated, or string — handle all
+        const rawId = (
+          item.productId?.toString?.().length === 24
+            ? item.productId                         // plain ObjectId
+            : item.productId?._id ?? item.productId  // populated obj or string
+        );
+        const productId = rawId?.toString?.()?.trim();
+        if (!productId || productId === "null" || productId === "undefined") {
+          console.warn("[Refund Approve] skipping item with no productId:", item.name);
+          continue;
+        }
+        if (!mongoose.Types.ObjectId.isValid(productId)) {
+          console.warn("[Refund Approve] invalid productId for:", item.name, productId);
+          continue;
+        }
 
         const product = await Product.findById(productId).session(session);
         if (!product) continue;
