@@ -113,14 +113,24 @@ export async function GET(req: NextRequest) {
       : [];
 
     // ── 3. Operating Expenses ─────────────────────────────────────────────────
-    // Expenses live in Transaction (type:"expense"). Exclude internal
-    // "Refund" and "Delivery Loss" entries to avoid double-counting.
+    // Expenses live in Transaction (type:"expense"). Excluded from P&L:
+    //   "Refund"           — goods are restocked, no net inventory loss
+    //   "Delivery Loss"    — aggregated separately below
+    //   "Purchase"         — procurement cost (already in COGS via buyingRate)
+    //   "Supplier Payment" — settling a payable, not an operating expense
+    const EXCLUDED_EXPENSE_CATEGORIES = [
+      "Refund",
+      "Delivery Loss",
+      "Purchase",
+      "Supplier Payment",
+    ];
+
     const expenseStats = await Transaction.aggregate([
       {
         $match: {
           ...dateMatch,
           type:     "expense",
-          category: { $nin: ["Refund", "Delivery Loss"] },
+          category: { $nin: EXCLUDED_EXPENSE_CATEGORIES },
         },
       },
       { $group: { _id: "$category", total: { $sum: "$amount" } } },

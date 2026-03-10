@@ -1,45 +1,22 @@
-// app/admin/suppliers/page.tsx
 "use client";
+// FILE PATH: app/admin/suppliers/page.tsx
 
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Plus,
-  Edit,
-  Trash2,
-  Phone,
-  Mail,
-  History,
-  X,
-  Building2,
-  DollarSign,
-  Printer,
-  ChevronLeft,
-  ChevronRight,
-  TrendingUp,
-  TrendingDown,
-  FileText,
-  Calendar,
-  Hash,
-  CreditCard,
-  Banknote,
-  Smartphone,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  Receipt,
+  Plus, Edit, Trash2, Phone, Mail, History, X,
+  Building2, DollarSign, Printer, ChevronLeft, ChevronRight,
+  TrendingUp, TrendingDown, FileText, Hash,
+  CreditCard, Banknote, Smartphone,
+  CheckCircle2, Clock, AlertCircle, Receipt, Wallet as WalletIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -78,56 +55,49 @@ interface Supplier {
   purchases?: PurchaseHistory[];
 }
 
+interface WalletBalances {
+  cash: number;
+  bank: number;
+  easyPaisa: number;
+  jazzCash: number;
+  totalBalance: number;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const HISTORY_PER_PAGE = 10;
 
-const PAYMENT_ICONS: Record<string, React.ReactNode> = {
-  cash: <Banknote className="h-3 w-3" />,
-  bank: <CreditCard className="h-3 w-3" />,
-  easypaisa: <Smartphone className="h-3 w-3" />,
-  jazzcash: <Smartphone className="h-3 w-3" />,
-  cheque: <CreditCard className="h-3 w-3" />,
-};
+// No "card" — four buckets only
+const PAY_SOURCES = [
+  { value: "cash",      label: "Cash",      walletKey: "cash",      pill: "bg-green-50 text-green-700 border-green-200",   icon: <Banknote className="h-3 w-3" /> },
+  { value: "bank",      label: "Bank",      walletKey: "bank",      pill: "bg-blue-50 text-blue-700 border-blue-200",     icon: <CreditCard className="h-3 w-3" /> },
+  { value: "easypaisa", label: "EasyPaisa", walletKey: "easyPaisa", pill: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <Smartphone className="h-3 w-3" /> },
+  { value: "jazzcash",  label: "JazzCash",  walletKey: "jazzCash",  pill: "bg-orange-50 text-orange-700 border-orange-200",  icon: <Smartphone className="h-3 w-3" /> },
+];
 
-const PAYMENT_PILLS: Record<string, string> = {
-  cash: "bg-green-50 text-green-700 border-green-200",
-  bank: "bg-blue-50 text-blue-700 border-blue-200",
-  easypaisa: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  jazzcash: "bg-orange-50 text-orange-700 border-orange-200",
-  cheque: "bg-gray-50 text-gray-700 border-gray-200",
-};
+const PAY_SOURCE_MAP = Object.fromEntries(PAY_SOURCES.map(s => [s.value, s]));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt = (n: number | undefined | null) => (n ?? 0).toFixed(2);
+const fmt     = (n: number | undefined | null) => (n ?? 0).toFixed(2);
+const Rs      = (n: number | undefined | null) => `Rs ${fmt(n)}`;
 const fmtDate = (d: string) => format(new Date(d), "dd MMM yyyy");
 const fmtTime = (d: string) => format(new Date(d), "hh:mm a");
 
-// ── Pagination Component ──────────────────────────────────────────────────────
+// ── Pagination ────────────────────────────────────────────────────────────────
 
-function Pagination({
-  currentPage,
-  totalPages,
-  onPageChange,
-  totalItems,
-  itemsPerPage,
-}: {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (p: number) => void;
-  totalItems: number;
-  itemsPerPage: number;
+function Pagination({ currentPage, totalPages, onPageChange, totalItems, itemsPerPage }: {
+  currentPage: number; totalPages: number; onPageChange: (p: number) => void;
+  totalItems: number; itemsPerPage: number;
 }) {
   if (totalPages <= 1) return null;
 
   const start = (currentPage - 1) * itemsPerPage + 1;
-  const end = Math.min(currentPage * itemsPerPage, totalItems);
+  const end   = Math.min(currentPage * itemsPerPage, totalItems);
 
   const pages: (number | "...")[] = [];
-  if (totalPages <= 7) {
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
-  } else {
+  if (totalPages <= 7) { for (let i = 1; i <= totalPages; i++) pages.push(i); }
+  else {
     pages.push(1);
     if (currentPage > 3) pages.push("...");
     for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
@@ -168,7 +138,7 @@ function Pagination({
   );
 }
 
-// ── Print styles injected globally ───────────────────────────────────────────
+// ── Print styles ──────────────────────────────────────────────────────────────
 
 const PRINT_STYLES = `
 @media print {
@@ -183,33 +153,42 @@ const PRINT_STYLES = `
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function SuppliersPage() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [suppliers,         setSuppliers]         = useState<Supplier[]>([]);
+  const [wallet,            setWallet]            = useState<WalletBalances | null>(null);
+  const [isLoading,         setIsLoading]         = useState(true);
+  const [isModalOpen,       setIsModalOpen]       = useState(false);
+  const [isHistoryOpen,     setIsHistoryOpen]     = useState(false);
+  const [isPaymentOpen,     setIsPaymentOpen]     = useState(false);
+  const [selectedSupplier,  setSelectedSupplier]  = useState<Supplier | null>(null);
+  const [historyPage,       setHistoryPage]       = useState(1);
+  const [expandedRows,      setExpandedRows]      = useState<Set<string>>(new Set());
 
-  const [formData, setFormData] = useState({ name: "", phone: "", email: "", address: "", city: "" });
-  const [paymentData, setPaymentData] = useState({ amount: "", paymentSource: "cash", notes: "" });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData,        setFormData]        = useState({ name: "", phone: "", email: "", address: "", city: "" });
+  const [paymentData,     setPaymentData]     = useState({ amount: "", paymentSource: "cash", notes: "" });
+  const [paymentError,    setPaymentError]    = useState("");
+  const [isSubmitting,    setIsSubmitting]    = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const router = useRouter();
 
-  useEffect(() => { fetchSuppliers(); }, []);
+  useEffect(() => { fetchSuppliers(); fetchWallet(); }, []);
 
-  const fetchSuppliers = async () => {
+  async function fetchSuppliers() {
     try {
       const res = await fetch("/api/admin/suppliers");
       if (res.ok) { const data = await res.json(); setSuppliers(data.suppliers || []); }
     } catch (e) { console.error(e); }
     finally { setIsLoading(false); }
-  };
+  }
 
-  const fetchSupplierDetails = async (id: string) => {
+  async function fetchWallet() {
+    try {
+      const res = await fetch("/api/admin/wallet");
+      if (res.ok) { const data = await res.json(); setWallet(data.wallet || null); }
+    } catch {}
+  }
+
+  async function fetchSupplierDetails(id: string) {
     try {
       const res = await fetch(`/api/admin/suppliers/${id}`);
       if (res.ok) {
@@ -219,8 +198,10 @@ export default function SuppliersPage() {
         setExpandedRows(new Set());
         setIsHistoryOpen(true);
       } else { alert("Could not fetch supplier details"); }
-    } catch (e) { alert("Could not fetch history"); }
-  };
+    } catch { alert("Could not fetch history"); }
+  }
+
+  // ── Create supplier ───────────────────────────────────────────────────────
 
   const handleCreateSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,62 +230,79 @@ export default function SuppliersPage() {
     } catch { alert("Error deleting supplier"); }
   };
 
+  // ── Payment ───────────────────────────────────────────────────────────────
+
   const handlePaySupplier = (supplier: Supplier) => {
     setSelectedSupplier(supplier);
     setPaymentData({ amount: supplier.balance?.toString() || "", paymentSource: "cash", notes: "" });
+    setPaymentError("");
     setIsPaymentOpen(true);
   };
 
+  // Live wallet balance for selected payment source
+  const selectedPaySource = PAY_SOURCE_MAP[paymentData.paymentSource];
+  const walletAvailable   = wallet && selectedPaySource
+    ? (wallet as any)[selectedPaySource.walletKey] ?? 0
+    : null;
+  const payingAmount      = parseFloat(paymentData.amount) || 0;
+  const walletInsufficient = walletAvailable !== null && payingAmount > 0 && payingAmount > walletAvailable;
+
   const handleSubmitPayment = async () => {
     if (!selectedSupplier) return;
+    setPaymentError("");
+
     const amount = parseFloat(paymentData.amount);
-    if (isNaN(amount) || amount <= 0) { alert("Please enter a valid amount"); return; }
+    if (isNaN(amount) || amount <= 0) { setPaymentError("Please enter a valid amount"); return; }
     if (amount > (selectedSupplier.balance || 0)) {
-      alert(`Amount cannot exceed outstanding balance of Rs. ${fmt(selectedSupplier.balance)}`);
+      setPaymentError(`Amount cannot exceed outstanding balance of ${Rs(selectedSupplier.balance)}`);
       return;
     }
+    if (walletInsufficient) {
+      setPaymentError(`Insufficient ${selectedPaySource.label} balance. Available: ${Rs(walletAvailable)}, Required: ${Rs(amount)}`);
+      return;
+    }
+
     setIsProcessingPayment(true);
     try {
       const res = await fetch(`/api/admin/suppliers/${selectedSupplier._id}/pay`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(paymentData),
       });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Payment failed"); }
       const data = await res.json();
-      alert(`✅ ${data.message}\n\nPrevious Balance: Rs. ${data.supplier.previousBalance.toLocaleString()}\nAmount Paid: Rs. ${data.supplier.amountPaid.toLocaleString()}\nNew Balance: Rs. ${data.supplier.newBalance.toLocaleString()}`);
+      if (!res.ok) throw new Error(data.error || "Payment failed");
+
+      alert(`✅ ${data.message}\n\nPrevious Balance: ${Rs(data.supplier.previousBalance)}\nAmount Paid: ${Rs(data.supplier.amountPaid)}\nNew Balance: ${Rs(data.supplier.newBalance)}`);
       setIsPaymentOpen(false);
       setSelectedSupplier(null);
       setPaymentData({ amount: "", paymentSource: "cash", notes: "" });
       fetchSuppliers();
-    } catch (err: any) { alert("Payment failed: " + err.message); }
-    finally { setIsProcessingPayment(false); }
+      fetchWallet();
+    } catch (err: any) {
+      setPaymentError("Payment failed: " + err.message);
+    } finally {
+      setIsProcessingPayment(false);
+    }
   };
 
-  // ── History pagination + stats ─────────────────────────────────────────────
+  // ── History ───────────────────────────────────────────────────────────────
 
   const purchases = selectedSupplier?.purchases || [];
 
-  const stats = useMemo(() => {
-    return purchases.reduce((acc, p) => ({
-      totalOrders: acc.totalOrders + 1,
-      totalBilled: acc.totalBilled + p.totalAmount,
-      totalPaid: acc.totalPaid + p.amountPaid,
-      totalDue: acc.totalDue + p.balanceDue,
-      totalItems: acc.totalItems + (p.products?.reduce((s, pr) => s + pr.quantity, 0) ?? 0),
-    }), { totalOrders: 0, totalBilled: 0, totalPaid: 0, totalDue: 0, totalItems: 0 });
-  }, [purchases]);
+  const stats = useMemo(() => purchases.reduce((acc, p) => ({
+    totalOrders: acc.totalOrders + 1,
+    totalBilled: acc.totalBilled + p.totalAmount,
+    totalPaid:   acc.totalPaid   + p.amountPaid,
+    totalDue:    acc.totalDue    + p.balanceDue,
+    totalItems:  acc.totalItems  + (p.products?.reduce((s, pr) => s + pr.quantity, 0) ?? 0),
+  }), { totalOrders: 0, totalBilled: 0, totalPaid: 0, totalDue: 0, totalItems: 0 }), [purchases]);
 
-  const totalHistoryPages = Math.ceil(purchases.length / HISTORY_PER_PAGE);
+  const totalHistoryPages  = Math.ceil(purchases.length / HISTORY_PER_PAGE);
   const paginatedPurchases = useMemo(() => {
     const start = (historyPage - 1) * HISTORY_PER_PAGE;
     return purchases.slice(start, start + HISTORY_PER_PAGE);
   }, [purchases, historyPage]);
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) {
     return (
@@ -320,6 +318,7 @@ export default function SuppliersPage() {
       <style>{PRINT_STYLES}</style>
 
       <div className="p-6 space-y-6">
+
         {/* Header */}
         <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border">
           <div>
@@ -343,7 +342,7 @@ export default function SuppliersPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {suppliers.map((supplier) => (
+            {suppliers.map(supplier => (
               <Card key={supplier._id} className="group relative overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all">
                 <div className={`h-2 w-full ${(supplier.balance ?? 0) > 0 ? "bg-red-500" : "bg-green-500"}`} />
                 <div className="p-6">
@@ -404,10 +403,10 @@ export default function SuppliersPage() {
           <form onSubmit={handleCreateSupplier} className="space-y-4 mt-4">
             {[
               { label: "Supplier Name *", key: "name", placeholder: "ABC Traders", required: true },
-              { label: "Phone", key: "phone", placeholder: "0300-1234567" },
-              { label: "Email", key: "email", placeholder: "supplier@example.com", type: "email" },
+              { label: "Phone",  key: "phone",   placeholder: "0300-1234567" },
+              { label: "Email",  key: "email",   placeholder: "supplier@example.com", type: "email" },
               { label: "Address", key: "address", placeholder: "Shop 123, Market Street" },
-              { label: "City", key: "city", placeholder: "Lahore" },
+              { label: "City",   key: "city",    placeholder: "Lahore" },
             ].map(({ label, key, placeholder, required, type }) => (
               <div key={key}>
                 <label className="block text-sm font-medium mb-1">{label}</label>
@@ -429,48 +428,98 @@ export default function SuppliersPage() {
       </Dialog>
 
       {/* ── Payment Dialog ── */}
-      <Dialog open={isPaymentOpen} onOpenChange={setIsPaymentOpen}>
+      <Dialog open={isPaymentOpen} onOpenChange={open => { setIsPaymentOpen(open); if (!open) setPaymentError(""); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Pay Supplier</DialogTitle>
             <DialogDescription>Make a payment to <span className="font-bold">{selectedSupplier?.name}</span></DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800"><span className="font-bold">Outstanding Balance:</span> Rs. {fmt(selectedSupplier?.balance)}</p>
+
+            {/* Outstanding balance */}
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-sm text-red-800 font-bold">Outstanding Balance: {Rs(selectedSupplier?.balance)}</p>
             </div>
+
+            {/* Amount */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Payment Amount (Rs) <span className="text-red-500">*</span></label>
-              <Input type="number" value={paymentData.amount} onChange={e => setPaymentData({ ...paymentData, amount: e.target.value })} placeholder="Enter amount" min="0" step="0.01" />
+              <Input type="number" value={paymentData.amount}
+                onChange={e => { setPaymentData({ ...paymentData, amount: e.target.value }); setPaymentError(""); }}
+                placeholder="Enter amount" min="0" step="0.01"
+                className={walletInsufficient ? "border-red-400" : ""} />
             </div>
+
+            {/* Payment source */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Payment Source <span className="text-red-500">*</span></label>
-              <select value={paymentData.paymentSource} onChange={e => setPaymentData({ ...paymentData, paymentSource: e.target.value })} className="w-full border rounded-lg px-3 py-2">
-                <option value="cash">Cash</option>
-                <option value="bank">Bank</option>
-                <option value="easypaisa">EasyPaisa</option>
-                <option value="jazzcash">JazzCash</option>
-                <option value="card">Card</option>
+              <select value={paymentData.paymentSource}
+                onChange={e => { setPaymentData({ ...paymentData, paymentSource: e.target.value }); setPaymentError(""); }}
+                className="w-full border rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500">
+                {PAY_SOURCES.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
               </select>
+
+              {/* Live wallet balance */}
+              {walletAvailable !== null && (
+                <div className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold ${
+                  walletInsufficient
+                    ? "bg-red-50 border-red-200 text-red-700"
+                    : "bg-green-50 border-green-200 text-green-700"
+                }`}>
+                  <WalletIcon className="h-3.5 w-3.5 shrink-0" />
+                  {selectedPaySource?.label} balance: {Rs(walletAvailable)}
+                  {walletInsufficient && (
+                    <span className="ml-auto font-black text-red-700">
+                      ⚠ Shortfall: {Rs(payingAmount - walletAvailable)}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* After-payment preview */}
+              {walletAvailable !== null && payingAmount > 0 && !walletInsufficient && (
+                <p className="text-xs text-gray-500 mt-1 ml-1">
+                  After payment: {Rs(walletAvailable - payingAmount)} remaining in {selectedPaySource?.label}
+                </p>
+              )}
             </div>
+
+            {/* Notes */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes (Optional)</label>
-              <Textarea value={paymentData.notes} onChange={e => setPaymentData({ ...paymentData, notes: e.target.value })} placeholder="e.g., Payment for Invoice #123" rows={3} />
+              <Textarea value={paymentData.notes}
+                onChange={e => setPaymentData({ ...paymentData, notes: e.target.value })}
+                placeholder="e.g., Payment for Invoice #123" rows={2} />
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <p className="text-sm text-amber-800">💡 This will deduct Rs. {paymentData.amount || "0"} from your {paymentData.paymentSource} wallet and reduce the supplier balance.</p>
-            </div>
+
+            {/* Error */}
+            {paymentError && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm">
+                <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                <p className="text-red-700 font-medium">{paymentError}</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPaymentOpen(false)} disabled={isProcessingPayment}>Cancel</Button>
-            <Button className="bg-orange-600 hover:bg-orange-700" onClick={handleSubmitPayment} disabled={isProcessingPayment}>
-              {isProcessingPayment ? "Processing..." : "Make Payment"}
+            <Button
+              className={`${walletInsufficient ? "bg-gray-400 cursor-not-allowed" : "bg-orange-600 hover:bg-orange-700"}`}
+              onClick={handleSubmitPayment}
+              disabled={isProcessingPayment || walletInsufficient}
+            >
+              {isProcessingPayment
+                ? "Processing..."
+                : walletInsufficient
+                  ? "⚠ Insufficient balance"
+                  : "Make Payment"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ════════════════════════════════ HISTORY & REPORT MODAL ════════════════════════════════ */}
+      {/* ════════════════════════════ HISTORY MODAL ════════════════════════════ */}
       {isHistoryOpen && selectedSupplier && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
@@ -487,16 +536,16 @@ export default function SuppliersPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button onClick={handlePrint} variant="outline" className="gap-2 border-gray-200 text-gray-600 hover:bg-gray-50">
+                <Button onClick={() => window.print()} variant="outline" className="gap-2 border-gray-200 text-gray-600 hover:bg-gray-50">
                   <Printer className="h-4 w-4" /> Print Report
                 </Button>
-                <button onClick={() => setIsHistoryOpen(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                <button onClick={() => setIsHistoryOpen(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
                   <X className="h-5 w-5" />
                 </button>
               </div>
             </div>
 
-            {/* ── Printable Content ── */}
+            {/* Printable content */}
             <div id="supplier-print-area" className="flex-1 overflow-y-auto">
 
               {/* Print-only header */}
@@ -511,22 +560,20 @@ export default function SuppliersPage() {
                   <div className="text-right">
                     <p className="text-xs text-gray-400">Generated</p>
                     <p className="text-sm font-bold text-gray-700">{format(new Date(), "dd MMM yyyy, hh:mm a")}</p>
-                    <p className="text-xs text-gray-400 mt-2">Total Transactions</p>
-                    <p className="text-2xl font-black text-gray-900">{purchases.length}</p>
                   </div>
                 </div>
               </div>
 
               <div className="p-6 space-y-6">
 
-                {/* ── KPI Summary Cards ── */}
+                {/* KPI Summary */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {[
-                    { label: "Total Orders",    value: stats.totalOrders,                    icon: <Receipt className="h-4 w-4" />,    color: "bg-slate-50 border-slate-200 text-slate-700" },
-                    { label: "Total Billed",    value: `Rs ${fmt(stats.totalBilled)}`,        icon: <FileText className="h-4 w-4" />,   color: "bg-blue-50 border-blue-200 text-blue-800" },
-                    { label: "Total Paid",      value: `Rs ${fmt(stats.totalPaid)}`,          icon: <TrendingUp className="h-4 w-4" />, color: "bg-green-50 border-green-200 text-green-800" },
-                    { label: "Balance Due",     value: `Rs ${fmt(stats.totalDue)}`,           icon: <TrendingDown className="h-4 w-4" />, color: stats.totalDue > 0 ? "bg-red-50 border-red-200 text-red-800" : "bg-gray-50 border-gray-200 text-gray-400" },
-                    { label: "Items Purchased", value: stats.totalItems.toLocaleString(),     icon: <Building2 className="h-4 w-4" />, color: "bg-indigo-50 border-indigo-200 text-indigo-800" },
+                    { label: "Total Orders",    value: stats.totalOrders,                 icon: <Receipt className="h-4 w-4" />,    color: "bg-slate-50 border-slate-200 text-slate-700" },
+                    { label: "Total Billed",    value: Rs(stats.totalBilled),              icon: <FileText className="h-4 w-4" />,   color: "bg-blue-50 border-blue-200 text-blue-800" },
+                    { label: "Total Paid",      value: Rs(stats.totalPaid),                icon: <TrendingUp className="h-4 w-4" />, color: "bg-green-50 border-green-200 text-green-800" },
+                    { label: "Balance Due",     value: Rs(stats.totalDue),                 icon: <TrendingDown className="h-4 w-4" />, color: stats.totalDue > 0 ? "bg-red-50 border-red-200 text-red-800" : "bg-gray-50 border-gray-200 text-gray-400" },
+                    { label: "Items Purchased", value: stats.totalItems.toLocaleString(),  icon: <Building2 className="h-4 w-4" />, color: "bg-indigo-50 border-indigo-200 text-indigo-800" },
                   ].map((s, i) => (
                     <div key={i} className={`p-4 rounded-xl border ${s.color}`}>
                       <div className="flex items-center gap-1.5 mb-2 opacity-70">{s.icon}<span className="text-[10px] font-black uppercase tracking-wide">{s.label}</span></div>
@@ -535,30 +582,15 @@ export default function SuppliersPage() {
                   ))}
                 </div>
 
-                {/* ── Supplier contact info (print) ── */}
-                <div className="hidden print:grid grid-cols-3 gap-4 text-sm">
-                  {[
-                    { label: "Phone", value: selectedSupplier.phone || "—" },
-                    { label: "Email", value: selectedSupplier.email || "—" },
-                    { label: "City",  value: selectedSupplier.city  || "—" },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                      <p className="text-[10px] font-black uppercase text-gray-400 mb-1">{label}</p>
-                      <p className="font-semibold text-gray-800">{value}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ── Purchase History Table ── */}
+                {/* History Table */}
                 {purchases.length === 0 ? (
                   <div className="text-center py-16 border-2 border-dashed border-gray-200 rounded-xl">
                     <History className="h-14 w-14 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500 font-semibold">No purchase history yet</p>
-                    <p className="text-gray-400 text-sm mt-1">Purchases made with this supplier will appear here</p>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                    {/* Table header bar */}
+                    {/* Table header */}
                     <div className="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Receipt className="h-4 w-4 opacity-70" />
@@ -572,24 +604,18 @@ export default function SuppliersPage() {
                       <table className="w-full text-sm">
                         <thead className="bg-gray-50 border-b-2 border-gray-200">
                           <tr>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase w-8">#</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Date</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Invoice</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Items</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Total Bill</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Paid</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Balance</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Method</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase">Status</th>
-                            <th className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase no-print">Details</th>
+                            {["#","Date","Invoice","Items","Total Bill","Paid","Balance","Method","Status","Details"].map(h => (
+                              <th key={h} className={`px-4 py-3 text-left text-xs font-black text-gray-500 uppercase${h==="Details"?" no-print":""}`}>{h}</th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                           {paginatedPurchases.map((p, idx) => {
                             const globalIdx = (historyPage - 1) * HISTORY_PER_PAGE + idx + 1;
                             const isExpanded = expandedRows.has(p._id);
-                            const totalQty = p.products?.reduce((s, pr) => s + pr.quantity, 0) ?? 0;
-                            const methodKey = (p.paymentMethod || "").toLowerCase();
+                            const totalQty   = p.products?.reduce((s, pr) => s + pr.quantity, 0) ?? 0;
+                            const methodKey  = (p.paymentMethod || "").toLowerCase();
+                            const srcCfg     = PAY_SOURCE_MAP[methodKey];
 
                             return (
                               <React.Fragment key={p._id}>
@@ -621,19 +647,19 @@ export default function SuppliersPage() {
                                     )}
                                   </td>
 
-                                  {/* Financial columns */}
-                                  <td className="px-4 py-3 font-bold text-gray-900 whitespace-nowrap">Rs {fmt(p.totalAmount)}</td>
-                                  <td className="px-4 py-3 font-semibold text-green-600 whitespace-nowrap">Rs {fmt(p.amountPaid)}</td>
+                                  {/* Financials */}
+                                  <td className="px-4 py-3 font-bold text-gray-900 whitespace-nowrap">{Rs(p.totalAmount)}</td>
+                                  <td className="px-4 py-3 font-semibold text-green-600 whitespace-nowrap">{Rs(p.amountPaid)}</td>
                                   <td className="px-4 py-3 whitespace-nowrap">
                                     <span className={`font-bold ${(p.balanceDue ?? 0) > 0 ? "text-red-600" : "text-gray-400"}`}>
-                                      {(p.balanceDue ?? 0) > 0 ? `Rs ${fmt(p.balanceDue)}` : "—"}
+                                      {(p.balanceDue ?? 0) > 0 ? Rs(p.balanceDue) : "—"}
                                     </span>
                                   </td>
 
                                   {/* Payment method */}
                                   <td className="px-4 py-3">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${PAYMENT_PILLS[methodKey] || "bg-gray-50 text-gray-600 border-gray-200"}`}>
-                                      {PAYMENT_ICONS[methodKey]}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${srcCfg?.pill || "bg-gray-50 text-gray-600 border-gray-200"}`}>
+                                      {srcCfg?.icon}
                                       <span className="capitalize">{p.paymentMethod}</span>
                                     </span>
                                   </td>
@@ -643,7 +669,7 @@ export default function SuppliersPage() {
                                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black uppercase ${
                                       p.paymentStatus === "completed" ? "bg-green-100 text-green-700" :
                                       p.paymentStatus === "partial"   ? "bg-yellow-100 text-yellow-700" :
-                                      "bg-red-100 text-red-700"
+                                                                        "bg-red-100 text-red-700"
                                     }`}>
                                       {p.paymentStatus === "completed" ? <CheckCircle2 className="h-3 w-3" /> :
                                        p.paymentStatus === "partial"   ? <Clock className="h-3 w-3" /> :
@@ -652,14 +678,10 @@ export default function SuppliersPage() {
                                     </span>
                                   </td>
 
-                                  {/* Expand button */}
+                                  {/* Expand */}
                                   <td className="px-4 py-3 no-print">
                                     <button
-                                      onClick={() => {
-                                        const s = new Set(expandedRows);
-                                        s.has(p._id) ? s.delete(p._id) : s.add(p._id);
-                                        setExpandedRows(s);
-                                      }}
+                                      onClick={() => { const s = new Set(expandedRows); s.has(p._id) ? s.delete(p._id) : s.add(p._id); setExpandedRows(s); }}
                                       className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1.5 rounded-lg transition-colors ${isExpanded ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600 hover:bg-blue-50 hover:text-blue-600"}`}
                                     >
                                       {isExpanded ? <ChevronRight className="h-3.5 w-3.5 rotate-90" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -668,13 +690,12 @@ export default function SuppliersPage() {
                                   </td>
                                 </tr>
 
-                                {/* ── Expanded product lines ── */}
+                                {/* Expanded product detail */}
                                 {isExpanded && p.products && p.products.length > 0 && (
                                   <tr>
                                     <td colSpan={10} className="px-4 py-0 bg-blue-50/40">
                                       <div className="py-3 pl-8">
                                         <div className="rounded-xl border border-blue-200 overflow-hidden shadow-sm">
-                                          {/* Expanded header */}
                                           <div className="bg-blue-100/80 px-4 py-2 flex items-center justify-between">
                                             <span className="text-xs font-black text-blue-800 uppercase tracking-wide">
                                               Order Details — {fmtDate(p.createdAt)}
@@ -685,12 +706,10 @@ export default function SuppliersPage() {
                                               </span>
                                             )}
                                           </div>
-
-                                          {/* Product lines */}
                                           <table className="w-full text-sm bg-white">
                                             <thead className="bg-blue-50 border-b border-blue-100">
                                               <tr>
-                                                {["Product", "SKU", "Qty", "Base Rate", "Tax", "Freight", "Unit Cost", "Selling", "Profit/Unit", "Line Total"].map(h => (
+                                                {["Product","SKU","Qty","Base Rate","Tax","Freight","Unit Cost","Selling","Profit/Unit","Line Total"].map(h => (
                                                   <th key={h} className="px-3 py-2 text-left text-xs font-bold text-blue-700">{h}</th>
                                                 ))}
                                               </tr>
@@ -701,49 +720,43 @@ export default function SuppliersPage() {
                                                 const margin = item.unitCostWithTax > 0 ? (profit / item.unitCostWithTax) * 100 : 0;
                                                 return (
                                                   <tr key={i} className="hover:bg-blue-50/30">
-                                                    <td className="px-3 py-2.5 font-semibold text-gray-900">{item.product?.name}</td>
-                                                    <td className="px-3 py-2.5 text-gray-400 font-mono text-xs">{item.product?.sku}</td>
+                                                    <td className="px-3 py-2.5 font-semibold text-gray-900">{item.product?.name ?? "—"}</td>
+                                                    <td className="px-3 py-2.5 text-gray-400 font-mono text-xs">{item.product?.sku ?? "—"}</td>
                                                     <td className="px-3 py-2.5 font-black text-gray-900">{item.quantity}</td>
-                                                    <td className="px-3 py-2.5 text-gray-700">Rs {fmt(item.buyingRate)}</td>
+                                                    <td className="px-3 py-2.5 text-gray-700">{Rs(item.buyingRate)}</td>
                                                     <td className="px-3 py-2.5 text-blue-600">
                                                       {item.taxType === "percentage" || item.taxType === "percent"
                                                         ? `${item.taxValue ?? 0}%`
                                                         : `Rs ${fmt(item.taxValue ?? 0)}`}
                                                     </td>
-                                                    <td className="px-3 py-2.5 text-purple-600">Rs {fmt(item.freightPerUnit ?? 0)}</td>
-                                                    <td className="px-3 py-2.5 font-bold text-blue-700">Rs {fmt(item.unitCostWithTax)}</td>
-                                                    <td className="px-3 py-2.5 font-bold text-green-700">Rs {fmt(item.sellingPrice)}</td>
+                                                    <td className="px-3 py-2.5 text-purple-600">{Rs(item.freightPerUnit ?? 0)}</td>
+                                                    <td className="px-3 py-2.5 font-bold text-blue-700">{Rs(item.unitCostWithTax)}</td>
+                                                    <td className="px-3 py-2.5 font-bold text-green-700">{Rs(item.sellingPrice)}</td>
                                                     <td className={`px-3 py-2.5 font-bold ${profit >= 0 ? "text-green-600" : "text-red-600"}`}>
-                                                      Rs {fmt(profit)}
+                                                      {Rs(profit)}
                                                       <span className="text-xs font-normal ml-1 opacity-60">({margin.toFixed(1)}%)</span>
                                                     </td>
-                                                    <td className="px-3 py-2.5 font-black text-gray-900">Rs {fmt(item.quantity * item.unitCostWithTax)}</td>
+                                                    <td className="px-3 py-2.5 font-black text-gray-900">{Rs(item.quantity * item.unitCostWithTax)}</td>
                                                   </tr>
                                                 );
                                               })}
                                             </tbody>
                                             <tfoot className="bg-slate-800 text-white text-xs">
                                               <tr>
-                                                <td colSpan={2} className="px-3 py-2">
-                                                  {p.notes && <span className="italic opacity-70">Note: {p.notes}</span>}
-                                                </td>
-                                                <td className="px-3 py-2 font-black">
-                                                  {p.products.reduce((s, pr) => s + pr.quantity, 0)}
-                                                </td>
+                                                <td colSpan={2} className="px-3 py-2">{p.notes && <span className="italic opacity-70">Note: {p.notes}</span>}</td>
+                                                <td className="px-3 py-2 font-black">{p.products.reduce((s, pr) => s + pr.quantity, 0)}</td>
                                                 <td colSpan={5} />
                                                 <td className="px-3 py-2 text-gray-300">Total Cost:</td>
-                                                <td className="px-3 py-2 font-black text-white">Rs {fmt(p.totalAmount)}</td>
+                                                <td className="px-3 py-2 font-black text-white">{Rs(p.totalAmount)}</td>
                                               </tr>
                                               <tr className="border-t border-slate-700">
                                                 <td colSpan={5} className="px-3 py-2">
-                                                  <span className="text-green-400">Paid: <span className="font-black">Rs {fmt(p.amountPaid)}</span></span>
-                                                  {(p.balanceDue ?? 0) > 0 && (
-                                                    <span className="ml-4 text-red-400">Balance Due: <span className="font-black">Rs {fmt(p.balanceDue)}</span></span>
-                                                  )}
+                                                  <span className="text-green-400">Paid: <span className="font-black">{Rs(p.amountPaid)}</span></span>
+                                                  {(p.balanceDue ?? 0) > 0 && <span className="ml-4 text-red-400">Balance Due: <span className="font-black">{Rs(p.balanceDue)}</span></span>}
                                                 </td>
                                                 <td colSpan={5} className="px-3 py-2 text-right">
                                                   <span className="opacity-60">via {p.paymentMethod?.toUpperCase()}</span>
-                                                  <span className={`ml-3 font-black ${p.paymentStatus === "completed" ? "text-green-400" : p.paymentStatus === "partial" ? "text-yellow-400" : "text-red-400"}`}>
+                                                  <span className={`ml-3 font-black ${p.paymentStatus==="completed"?"text-green-400":p.paymentStatus==="partial"?"text-yellow-400":"text-red-400"}`}>
                                                     {p.paymentStatus?.toUpperCase()}
                                                   </span>
                                                 </td>
@@ -767,10 +780,10 @@ export default function SuppliersPage() {
                               All-time Total ({purchases.length} orders)
                             </td>
                             <td className="px-4 py-3 font-black text-sm">{stats.totalItems.toLocaleString()} units</td>
-                            <td className="px-4 py-3 font-black text-white">Rs {fmt(stats.totalBilled)}</td>
-                            <td className="px-4 py-3 font-black text-green-400">Rs {fmt(stats.totalPaid)}</td>
+                            <td className="px-4 py-3 font-black text-white">{Rs(stats.totalBilled)}</td>
+                            <td className="px-4 py-3 font-black text-green-400">{Rs(stats.totalPaid)}</td>
                             <td className={`px-4 py-3 font-black ${stats.totalDue > 0 ? "text-red-400" : "text-slate-500"}`}>
-                              {stats.totalDue > 0 ? `Rs ${fmt(stats.totalDue)}` : "—"}
+                              {stats.totalDue > 0 ? Rs(stats.totalDue) : "—"}
                             </td>
                             <td colSpan={3} />
                           </tr>
@@ -789,7 +802,7 @@ export default function SuppliersPage() {
                   </div>
                 )}
 
-                {/* ── Outstanding balance footer ── */}
+                {/* Outstanding balance footer */}
                 <div className={`rounded-xl p-5 flex items-center justify-between ${(selectedSupplier.balance ?? 0) > 0 ? "bg-red-600" : "bg-green-600"} text-white`}>
                   <div>
                     <p className="text-sm font-bold opacity-80">Current Outstanding Balance</p>

@@ -165,7 +165,7 @@ export default function ReportsPage() {
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 no-print">
           <div>
             <h1 className="text-3xl font-black text-gray-900">Analytics & Reports</h1>
-            <p className="text-gray-500 text-sm mt-1">Full P&L: revenue · COGS · expenses · delivery losses</p>
+            <p className="text-gray-500 text-sm mt-1">Full P&L: revenue · COGS · operating expenses · delivery losses</p>
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
             <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
@@ -273,10 +273,11 @@ export default function ReportsPage() {
 
                   {/* Expense breakdown */}
                   <Card className="p-6 border-0 shadow-md">
-                    <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2 text-sm"><Receipt className="h-4 w-4 text-gray-400" />Expense Breakdown</h3>
+                    <h3 className="font-bold text-gray-900 mb-1 flex items-center gap-2 text-sm"><Receipt className="h-4 w-4 text-gray-400" />Operating Expense Breakdown</h3>
+                    <p className="text-[10px] text-gray-400 mb-4 font-medium">Excludes: purchases, supplier payments, refunds &amp; delivery losses (shown separately)</p>
                     <div className="space-y-3">
                       {!data.breakdown.expenses.length
-                        ? <p className="text-center text-gray-400 py-6 text-sm italic">No expenses this period</p>
+                        ? <p className="text-center text-gray-400 py-6 text-sm italic">No operating expenses this period</p>
                         : data.breakdown.expenses.map((ex, i) => (
                           <div key={i}>
                             <div className="flex justify-between text-sm mb-1">
@@ -402,6 +403,7 @@ export default function ReportsPage() {
 
                   {/* OPERATING EXPENSES */}
                   <PLSection title="OPERATING EXPENSES" accent="amber">
+                    <p className="px-6 py-1.5 text-[10px] text-gray-400 font-medium ml-4">Purchases, supplier payments, refunds and delivery losses are excluded here</p>
                     {!data.breakdown.expenses.length
                       ? <p className="px-6 py-3 text-sm text-gray-400 italic ml-4">No expenses this period</p>
                       : data.breakdown.expenses.map((ex, i) => (

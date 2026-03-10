@@ -1,9 +1,24 @@
-// app/api/admin/suppliers/[id]/pay/route.ts
+// FILE PATH: app/api/admin/suppliers/[id]/pay/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Supplier, Wallet, Transaction } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
+
+// Maps lowercase incoming paymentSource → exact Wallet document field name
+const WALLET_KEY: Record<string, string> = {
+  cash:      "cash",
+  bank:      "bank",
+  easypaisa: "easyPaisa",
+  jazzcash:  "jazzCash",
+};
+
+const PAYMENT_LABEL: Record<string, string> = {
+  cash:      "Cash",
+  bank:      "Bank",
+  easypaisa: "EasyPaisa",
+  jazzcash:  "JazzCash",
+};
 
 export async function POST(
   req: NextRequest,
@@ -13,108 +28,81 @@ export async function POST(
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = verifyToken(token);
-    if (!payload || !["admin", "accountant"].includes(payload.role)) {
+    if (!payload || !["admin", "accountant"].includes(payload.role))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
 
     const { id } = await params;
     const { amount, paymentSource, notes } = await req.json();
 
-    // Validation
-    if (!amount || amount <= 0) {
-      return NextResponse.json(
-        { error: "Valid payment amount is required" },
-        { status: 400 },
-      );
-    }
+    // Validate amount
+    if (!amount || Number(amount) <= 0)
+      return NextResponse.json({ error: "Valid payment amount is required" }, { status: 400 });
 
-    if (
-      !paymentSource ||
-      !["cash", "bank", "easypaisa", "jazzcash", "card"].includes(paymentSource)
-    ) {
+    // Validate payment source
+    const sourceKey = paymentSource?.toLowerCase?.() ?? "";
+    const walletField = WALLET_KEY[sourceKey];
+    if (!walletField)
       return NextResponse.json(
-        { error: "Valid payment source is required" },
+        { error: `Invalid payment source: "${paymentSource}". Accepted: cash, bank, easypaisa, jazzcash` },
         { status: 400 },
       );
-    }
 
     // Get supplier
     const supplier = await Supplier.findById(id);
-    if (!supplier) {
-      return NextResponse.json(
-        { error: "Supplier not found" },
-        { status: 404 },
-      );
-    }
+    if (!supplier) return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
 
     // Get wallet
     let wallet = await Wallet.findOne();
-    if (!wallet) {
-      return NextResponse.json(
-        { error: "Wallet not found. Please initialize wallet first." },
-        { status: 404 },
-      );
-    }
+    if (!wallet)
+      return NextResponse.json({ error: "Wallet not found. Please initialise wallet first." }, { status: 404 });
 
-    // Map payment source to wallet field
-    const walletFieldMap: Record<string, keyof typeof wallet> = {
-      cash: "cash",
-      bank: "bank",
-      easypaisa: "easyPaisa",
-      jazzcash: "jazzCash",
-      card: "card",
-    };
+    // Hard balance check — wallet must have enough funds
+    const available = (wallet as any)[walletField] ?? 0;
+    const paying    = Number(amount);
+    const label     = PAYMENT_LABEL[sourceKey] ?? paymentSource;
 
-    const walletField = walletFieldMap[paymentSource];
-    const currentBalance = (wallet as any)[walletField] || 0;
-
-    // Check if sufficient funds
-    if (currentBalance < amount) {
+    if (paying > available)
       return NextResponse.json(
         {
-          error: `Insufficient funds in ${paymentSource} wallet. Available: Rs. ${currentBalance.toLocaleString()}, Required: Rs. ${amount.toLocaleString()}`,
+          error: `Insufficient ${label} wallet balance. Available: Rs ${available.toLocaleString()}, Required: Rs ${paying.toLocaleString()}`,
+          code: "INSUFFICIENT_WALLET_BALANCE",
+          available,
+          required: paying,
         },
         { status: 400 },
       );
-    }
 
-    // Start transaction
+    // Atomic transaction
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      // Deduct from wallet
-      (wallet as any)[walletField] -= amount;
+      // Deduct wallet
+      (wallet as any)[walletField] = available - paying;
       wallet.lastUpdated = new Date();
       await wallet.save({ session });
 
-      // Update supplier balance (reduce the amount we owe)
+      // Reduce supplier balance
       const previousBalance = supplier.balance || 0;
-      supplier.balance = Math.max(0, previousBalance - amount);
+      supplier.balance = Math.max(0, previousBalance - paying);
       await supplier.save({ session });
 
-      // Create transaction record
+      // Record transaction
       await Transaction.create(
-        [
-          {
-            type: "expense",
-            category: "Supplier Payment",
-            amount,
-            source: paymentSource,
-            reference: supplier._id,
-            referenceModel: "Supplier",
-            description: `Payment to supplier: ${supplier.name}`,
-            notes:
-              notes ||
-              `Paid Rs. ${amount.toLocaleString()} to ${supplier.name}. Previous balance: Rs. ${previousBalance.toLocaleString()}, New balance: Rs. ${supplier.balance.toLocaleString()}`,
-            createdBy: payload.userId,
-          },
-        ],
+        [{
+          type:           "expense",
+          category:       "Supplier Payment",
+          amount:         paying,
+          source:         walletField,           // canonical field name
+          reference:      supplier._id,
+          referenceModel: "Supplier",
+          description:    `Payment to supplier: ${supplier.name}`,
+          notes:          notes || `Paid Rs ${paying.toLocaleString()} to ${supplier.name}. Previous balance: Rs ${previousBalance.toLocaleString()}, New balance: Rs ${supplier.balance.toLocaleString()}`,
+          createdBy:      payload.userId,
+        }],
         { session },
       );
 
@@ -124,31 +112,29 @@ export async function POST(
         {
           message: "Payment successful",
           supplier: {
-            _id: supplier._id,
-            name: supplier.name,
+            _id:             supplier._id,
+            name:            supplier.name,
             previousBalance,
-            newBalance: supplier.balance,
-            amountPaid: amount,
+            newBalance:      supplier.balance,
+            amountPaid:      paying,
           },
           wallet: {
-            source: paymentSource,
-            previousBalance: currentBalance,
-            newBalance: (wallet as any)[walletField],
+            source:          label,
+            walletField,
+            previousBalance: available,
+            newBalance:      (wallet as any)[walletField],
           },
         },
         { status: 200 },
       );
-    } catch (error) {
+    } catch (err) {
       await session.abortTransaction();
-      throw error;
+      throw err;
     } finally {
       session.endSession();
     }
   } catch (error) {
-    console.error("Supplier payment error:", error);
-    return NextResponse.json(
-      { error: "Failed to process payment" },
-      { status: 500 },
-    );
+    console.error("[Supplier Pay]", error);
+    return NextResponse.json({ error: "Failed to process payment" }, { status: 500 });
   }
 }
