@@ -12,19 +12,32 @@ import {
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 
+// Maps lowercase incoming paymentMethod → exact Wallet document field name
+const WALLET_KEY: Record<string, string> = {
+  cash:      "cash",
+  bank:      "bank",
+  easypaisa: "easyPaisa",
+  jazzcash:  "jazzCash",
+};
+
+const PAYMENT_LABEL: Record<string, string> = {
+  cash:      "Cash",
+  bank:      "Bank Transfer",
+  easypaisa: "EasyPaisa",
+  jazzcash:  "JazzCash",
+  cheque:    "Cheque",
+};
+
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
+    if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    }
 
     const body = await req.json();
     const {
@@ -38,160 +51,166 @@ export async function POST(req: NextRequest) {
       balanceDue,
     } = body;
 
-    // Validate supplier
+    const amountPaidNum  = Number(amountPaid)  || 0;
+    const balanceDueNum  = Number(balanceDue)  || 0;
+    const totalAmountNum = Number(totalAmount) || 0;
+    const methodKey      = paymentMethod?.toLowerCase?.() ?? "";
+
+    // ── Supplier ──────────────────────────────────────────────────────────────
     const supplierDoc = await Supplier.findById(supplier);
-    if (!supplierDoc) {
-      return NextResponse.json(
-        { error: "Supplier not found" },
-        { status: 404 },
-      );
-    }
+    if (!supplierDoc)
+      return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
 
-    // Validate and process products
-    const purchaseProducts = [];
-    const batches = [];
+    // ── Hard wallet balance check ──────────────────────────────────────────────
+    // Rule: if admin wants to pay NOW, that money must physically exist in the
+    // selected wallet. We allow recording a balance due (supplier ledger) but
+    // we NEVER let a wallet go negative.
+    // Cheques are external instruments — no wallet bucket is debited, so skip.
+    if (amountPaidNum > 0) {
+      const walletField = WALLET_KEY[methodKey];
 
-    for (const item of products) {
-      const productDoc = await Product.findById(item.product);
-      if (!productDoc) {
+      if (!walletField && methodKey !== "cheque") {
         return NextResponse.json(
-          { error: `Product not found: ${item.product}` },
-          { status: 404 },
+          { error: `Unknown payment method: ${paymentMethod}` },
+          { status: 400 },
         );
       }
 
-      // Capture stock BEFORE adding new purchase quantity
-      const stockBeforePurchase = productDoc.stock ?? 0;
+      if (walletField) {
+        const wallet    = await Wallet.findOne({});
+        const available = wallet ? ((wallet as any)[walletField] ?? 0) : 0;
 
-      // Update product stock
+        if (amountPaidNum > available) {
+          const label = PAYMENT_LABEL[methodKey] ?? paymentMethod;
+          return NextResponse.json(
+            {
+              error: [
+                `Insufficient ${label} wallet balance.`,
+                `Available: Rs ${available.toLocaleString()}`,
+                `Required: Rs ${amountPaidNum.toLocaleString()}`,
+                `Either reduce the amount paid, or record the full order as balance due to the supplier.`,
+              ].join(" "),
+              code:         "INSUFFICIENT_WALLET_BALANCE",
+              available,
+              required:     amountPaidNum,
+              walletField,
+            },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
+    // ── Products & FIFO batches ───────────────────────────────────────────────
+    const purchaseProducts = [];
+    const batches          = [];
+
+    for (const item of products) {
+      const productDoc = await Product.findById(item.product);
+      if (!productDoc)
+        return NextResponse.json({ error: `Product not found: ${item.product}` }, { status: 404 });
+
+      const stockBeforePurchase = productDoc.stock ?? 0;
       productDoc.stock += item.quantity;
 
-      // ─── FIFO PRICING RULE ────────────────────────────────────────────────
-      // Only update retailPrice when the product was completely sold out
-      // (or is brand new). If existing stock remains, the active FIFO batch's
-      // price is still in use — do NOT overwrite it.
-      // retailPrice is kept in sync with the current FIFO batch's sellingPrice:
-      //   • here: when product had no remaining stock
-      //   • in fifo.ts: when the active batch is exhausted during a sale
-      if (stockBeforePurchase === 0) {
-        productDoc.retailPrice = item.sellingPrice;
-      }
-
-      // Always track the landed cost of the latest batch for reference
+      // Only overwrite retailPrice when product was completely sold out
+      if (stockBeforePurchase === 0) productDoc.retailPrice = item.sellingPrice;
       productDoc.lastBuyingRate = item.unitCostWithTax;
-
       await productDoc.save();
 
-      // Calculate profit per unit
       const profitPerUnit = item.sellingPrice - item.unitCostWithTax;
 
-      // Create inventory batch for FIFO tracking
       const batch = new InventoryBatch({
-        product: productDoc._id,
-        quantity: item.quantity,
+        product:           productDoc._id,
+        quantity:          item.quantity,
         remainingQuantity: item.quantity,
-        buyingRate: item.unitCostWithTax,   // Full landed cost (used for COGS/FIFO)
-        baseRate: item.buyingRate,           // Base price before tax & freight
-        taxValue: item.taxValue,
-        taxType: item.taxType === "percentage" ? "percent" : "fixed",
-        freightPerUnit: item.freightPerUnit || 0,
-        sellingPrice: item.sellingPrice,
-        profitPerUnit: profitPerUnit,
-        status: "active",
+        buyingRate:        item.unitCostWithTax, // full landed cost (FIFO / COGS)
+        baseRate:          item.buyingRate,       // pre-tax/freight base rate
+        taxValue:          item.taxValue,
+        taxType:           item.taxType === "percentage" ? "percent" : "fixed",
+        freightPerUnit:    item.freightPerUnit || 0,
+        sellingPrice:      item.sellingPrice,
+        profitPerUnit,
+        status:            "active",
       });
-
       await batch.save();
       batches.push(batch);
 
       purchaseProducts.push({
-        product: productDoc._id,
-        quantity: item.quantity,
-        buyingRate: item.buyingRate,
-        taxType: item.taxType === "percentage" ? "percent" : "fixed",
-        taxValue: item.taxValue,
-        freightPerUnit: item.freightPerUnit || 0,
+        product:         productDoc._id,
+        quantity:        item.quantity,
+        buyingRate:      item.buyingRate,
+        taxType:         item.taxType === "percentage" ? "percent" : "fixed",
+        taxValue:        item.taxValue,
+        freightPerUnit:  item.freightPerUnit || 0,
         unitCostWithTax: item.unitCostWithTax,
-        sellingPrice: item.sellingPrice,
-        batchNumber: batch._id,
+        sellingPrice:    item.sellingPrice,
+        batchNumber:     batch._id,
       });
     }
 
-    // Create purchase record
+    // ── Purchase record ───────────────────────────────────────────────────────
     const purchase = new Purchase({
-      supplier: supplierDoc._id,
+      supplier:          supplierDoc._id,
       supplierInvoiceNo,
-      products: purchaseProducts,
-      totalAmount: totalAmount,
-      amountPaid: amountPaid,
-      balanceDue: balanceDue,
+      products:          purchaseProducts,
+      totalAmount:       totalAmountNum,
+      amountPaid:        amountPaidNum,
+      balanceDue:        balanceDueNum,
       paymentMethod,
       notes,
-      status: "completed",
+      status:            "completed",
       paymentStatus:
-        balanceDue > 0 ? (amountPaid > 0 ? "partial" : "pending") : "completed",
+        balanceDueNum > 0
+          ? amountPaidNum > 0 ? "partial" : "pending"
+          : "completed",
     });
-
     await purchase.save();
 
-    // Link purchase to batches
     for (const batch of batches) {
       batch.purchaseReference = purchase._id;
       await batch.save();
     }
 
-    // Update supplier balance (add the balance due)
-    supplierDoc.balance = (supplierDoc.balance || 0) + balanceDue;
+    // ── Supplier ledger ───────────────────────────────────────────────────────
+    supplierDoc.balance = (supplierDoc.balance || 0) + balanceDueNum;
     await supplierDoc.save();
 
-    // Update wallet based on payment method (deduct amount paid)
-    if (amountPaid > 0) {
-      let wallet = await Wallet.findOne();
-      if (!wallet) {
-        wallet = new Wallet();
+    // ── Wallet deduction (already validated — safe to deduct) ─────────────────
+    if (amountPaidNum > 0) {
+      const walletField = WALLET_KEY[methodKey];
+
+      if (walletField) {
+        let wallet = await Wallet.findOne();
+        if (!wallet) wallet = new Wallet();
+        (wallet as any)[walletField] = ((wallet as any)[walletField] || 0) - amountPaidNum;
+        wallet.lastUpdated = new Date();
+        await wallet.save();
       }
 
-      switch (paymentMethod) {
-        case "cash":
-          wallet.cash = (wallet.cash || 0) - amountPaid;
-          break;
-        case "bank":
-          wallet.bank = (wallet.bank || 0) - amountPaid;
-          break;
-        case "easypaisa":
-          wallet.easyPaisa = (wallet.easyPaisa || 0) - amountPaid;
-          break;
-        case "jazzcash":
-          wallet.jazzCash = (wallet.jazzCash || 0) - amountPaid;
-          break;
-      }
-      wallet.lastUpdated = new Date();
-      await wallet.save();
-
-      // Create transaction record
-      const transaction = new Transaction({
-        type: "expense",
-        category: "Purchase",
-        amount: amountPaid,
-        source: paymentMethod,
-        reference: purchase._id,
+      await new Transaction({
+        type:           "expense",
+        category:       "Purchase",
+        amount:         amountPaidNum,
+        source:         paymentMethod,
+        reference:      purchase._id,
         referenceModel: "Purchase",
-        description: `Purchase from ${supplierDoc.name} - Invoice: ${supplierInvoiceNo || "N/A"}`,
-        notes: notes,
-        createdBy: payload.userId,
-      });
-      await transaction.save();
+        description:    `Purchase from ${supplierDoc.name} – Invoice: ${supplierInvoiceNo || "N/A"}`,
+        notes,
+        createdBy:      payload.userId,
+      }).save();
     }
 
     return NextResponse.json(
       {
         message: "Purchase created successfully",
         purchase,
-        batches: batches.map((b) => ({
-          id: b._id,
-          quantity: b.quantity,
+        batches: batches.map(b => ({
+          id:              b._id,
+          quantity:        b.quantity,
           unitCostWithTax: b.buyingRate,
-          sellingPrice: b.sellingPrice,
-          profitPerUnit: b.profitPerUnit,
+          sellingPrice:    b.sellingPrice,
+          profitPerUnit:   b.profitPerUnit,
         })),
       },
       { status: 201 },
@@ -199,9 +218,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error("Purchase creation error:", error);
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Internal server error",
-      },
+      { error: error instanceof Error ? error.message : "Internal server error" },
       { status: 500 },
     );
   }
@@ -212,14 +229,11 @@ export async function GET(req: NextRequest) {
     await connectDB();
 
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
-    if (!token) {
-      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
-    }
+    if (!token) return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 
     const payload = verifyToken(token);
-    if (!payload || payload.role !== "admin") {
+    if (!payload || payload.role !== "admin")
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
-    }
 
     const purchases = await Purchase.find()
       .populate("supplier", "name email phone")
@@ -229,9 +243,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ purchases }, { status: 200 });
   } catch (error) {
     console.error("Purchases fetch error:", error);
-    return NextResponse.json(
-      { message: "Internal server error" },
-      { status: 500 },
-    );
+    return NextResponse.json({ message: "Internal server error" }, { status: 500 });
   }
 }
