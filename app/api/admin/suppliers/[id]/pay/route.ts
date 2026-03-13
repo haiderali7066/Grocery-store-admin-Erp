@@ -1,7 +1,8 @@
-// FILE PATH: app/api/admin/suppliers/[id]/pay/route.ts
+=// FILE PATH: app/api/admin/suppliers/[id]/pay/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Supplier, Wallet, Transaction } from "@/lib/models/index";
+import { Supplier, Purchase, Wallet, Transaction } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
 
@@ -31,18 +32,16 @@ export async function POST(
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = verifyToken(token);
-    if (!payload || !["admin", "accountant"].includes(payload.role))
+    if (!payload || !["admin", "accountant", "manager"].includes(payload.role))
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { id } = await params;
     const { amount, paymentSource, notes } = await req.json();
 
-    // Validate amount
     if (!amount || Number(amount) <= 0)
       return NextResponse.json({ error: "Valid payment amount is required" }, { status: 400 });
 
-    // Validate payment source
-    const sourceKey = paymentSource?.toLowerCase?.() ?? "";
+    const sourceKey   = (paymentSource ?? "").toLowerCase();
     const walletField = WALLET_KEY[sourceKey];
     if (!walletField)
       return NextResponse.json(
@@ -50,16 +49,13 @@ export async function POST(
         { status: 400 },
       );
 
-    // Get supplier
     const supplier = await Supplier.findById(id);
     if (!supplier) return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
 
-    // Get wallet
-    let wallet = await Wallet.findOne();
+    const wallet = await Wallet.findOne();
     if (!wallet)
       return NextResponse.json({ error: "Wallet not found. Please initialise wallet first." }, { status: 404 });
 
-    // Hard balance check — wallet must have enough funds
     const available = (wallet as any)[walletField] ?? 0;
     const paying    = Number(amount);
     const label     = PAYMENT_LABEL[sourceKey] ?? paymentSource;
@@ -67,40 +63,82 @@ export async function POST(
     if (paying > available)
       return NextResponse.json(
         {
-          error: `Insufficient ${label} wallet balance. Available: Rs ${available.toLocaleString()}, Required: Rs ${paying.toLocaleString()}`,
-          code: "INSUFFICIENT_WALLET_BALANCE",
+          error:    `Insufficient ${label} wallet balance. Available: Rs ${available.toLocaleString()}, Required: Rs ${paying.toLocaleString()}`,
+          code:     "INSUFFICIENT_WALLET_BALANCE",
           available,
           required: paying,
         },
         { status: 400 },
       );
 
-    // Atomic transaction
+    // ── Fetch unpaid/partial purchases oldest-first ─────────────────────────
+    // We distribute the payment across these in order so each purchase row
+    // shows the correct amountPaid, balanceDue, and paymentStatus.
+    const unpaidPurchases = await Purchase.find({
+      supplier: id,
+      paymentStatus: { $in: ["pending", "partial"] },
+    }).sort({ createdAt: 1 }); // oldest first — FIFO settlement
+
+    // ── Atomic transaction ──────────────────────────────────────────────────
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
-      // Deduct wallet
+      // 1. Deduct wallet
       (wallet as any)[walletField] = available - paying;
       wallet.lastUpdated = new Date();
       await wallet.save({ session });
 
-      // Reduce supplier balance
-      const previousBalance = supplier.balance || 0;
-      supplier.balance = Math.max(0, previousBalance - paying);
+      // 2. Distribute payment across purchases oldest-first
+      let remaining = paying;
+      const updatedPurchases: string[] = [];
+
+      for (const purchase of unpaidPurchases) {
+        if (remaining <= 0) break;
+
+        const due = (purchase as any).balanceDue ?? 0;
+        if (due <= 0) continue;
+
+        const applying = Math.min(remaining, due);
+        const newPaid  = ((purchase as any).amountPaid ?? 0) + applying;
+        const newDue   = due - applying;
+
+        await Purchase.findByIdAndUpdate(
+          purchase._id,
+          {
+            $set: {
+              amountPaid:    newPaid,
+              balanceDue:    newDue,
+              paymentStatus: newDue <= 0 ? "completed" : "partial",
+            },
+          },
+          { session }
+        );
+
+        updatedPurchases.push(purchase._id.toString());
+        remaining -= applying;
+      }
+
+      // If remaining > 0 after all unpaid purchases, there's overpayment or
+      // purchases were already fully settled — just reduce supplier balance normally.
+      // (remaining amount is still deducted from wallet as already done above)
+
+      // 3. Reduce supplier balance
+      const previousBalance  = supplier.balance ?? 0;
+      supplier.balance       = Math.max(0, previousBalance - paying);
       await supplier.save({ session });
 
-      // Record transaction
+      // 4. Record transaction
       await Transaction.create(
         [{
           type:           "expense",
           category:       "Supplier Payment",
           amount:         paying,
-          source:         walletField,           // canonical field name
+          source:         walletField,
           reference:      supplier._id,
           referenceModel: "Supplier",
           description:    `Payment to supplier: ${supplier.name}`,
-          notes:          notes || `Paid Rs ${paying.toLocaleString()} to ${supplier.name}. Previous balance: Rs ${previousBalance.toLocaleString()}, New balance: Rs ${supplier.balance.toLocaleString()}`,
+          notes:          notes || `Paid Rs ${paying.toLocaleString()} to ${supplier.name}. Previous balance: Rs ${previousBalance.toLocaleString()}, New balance: Rs ${supplier.balance.toLocaleString()}. Applied to ${updatedPurchases.length} purchase(s).`,
           createdBy:      payload.userId,
         }],
         { session },
@@ -110,7 +148,7 @@ export async function POST(
 
       return NextResponse.json(
         {
-          message: "Payment successful",
+          message: `Payment of Rs ${paying.toLocaleString()} applied to ${updatedPurchases.length} purchase(s)`,
           supplier: {
             _id:             supplier._id,
             name:            supplier.name,
@@ -124,15 +162,18 @@ export async function POST(
             previousBalance: available,
             newBalance:      (wallet as any)[walletField],
           },
+          updatedPurchases,
         },
         { status: 200 },
       );
+
     } catch (err) {
       await session.abortTransaction();
       throw err;
     } finally {
       session.endSession();
     }
+
   } catch (error) {
     console.error("[Supplier Pay]", error);
     return NextResponse.json({ error: "Failed to process payment" }, { status: 500 });

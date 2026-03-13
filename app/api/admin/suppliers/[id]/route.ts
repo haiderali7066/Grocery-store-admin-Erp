@@ -1,8 +1,10 @@
 // FILE PATH: app/api/admin/suppliers/[id]/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Supplier, Purchase } from "@/lib/models/index";
+import { Supplier, Purchase, Transaction } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+import mongoose from "mongoose";
 
 function auth(req: NextRequest) {
   const token = getTokenFromCookie(req.headers.get("cookie") || "");
@@ -19,22 +21,22 @@ export async function GET(
   try {
     await connectDB();
     const payload = auth(req);
-    if (!payload || !["admin", "accountant", "manager"].includes(payload.role))
+    if (!payload || !["admin", "accountant", "manager", "staff"].includes(payload.role))
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
+
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return NextResponse.json({ error: "Invalid supplier ID" }, { status: 400 });
 
     const supplier = await Supplier.findById(id).lean();
     if (!supplier)
       return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
 
-    // Fetch ALL purchase fields and populate product details for the history table
+    // ── Purchase history ────────────────────────────────────────────────────
     const purchases = await Purchase.find({ supplier: id })
       .sort({ createdAt: -1 })
-      .populate({
-        path:   "products.product",
-        select: "name sku",
-      })
+      .populate({ path: "products.product", select: "name sku" })
       .select(
         "createdAt supplierInvoiceNo totalAmount amountPaid balanceDue " +
         "paymentMethod paymentStatus notes " +
@@ -44,13 +46,61 @@ export async function GET(
       )
       .lean();
 
-    return NextResponse.json(
-      { supplier: { ...supplier, purchases } },
-      { status: 200 },
+    // ── Payment transactions ────────────────────────────────────────────────
+    // Wrapped in its own try/catch so that if the Transaction schema does NOT
+    // have a `reference` or `referenceModel` field, the crash is isolated and
+    // the rest of the response still returns correctly.
+    let paymentTransactions: any[] = [];
+    try {
+      paymentTransactions = await Transaction.find({
+        category:  "Supplier Payment",
+        reference: new mongoose.Types.ObjectId(id),
+      })
+        .sort({ createdAt: -1 })
+        .select("createdAt amount source description notes")
+        .lean();
+
+      // Fallback: description-regex match in case reference field is absent
+      if (paymentTransactions.length === 0) {
+        paymentTransactions = await Transaction.find({
+          category:    "Supplier Payment",
+          description: { $regex: (supplier as any).name, $options: "i" },
+        })
+          .sort({ createdAt: -1 })
+          .select("createdAt amount source description notes")
+          .lean();
+      }
+    } catch {
+      // Schema lacks `reference` field — degrade gracefully, don't crash
+      paymentTransactions = [];
+    }
+
+    // ── Pre-compute totals ─────────────────────────────────────────────────
+    const totalBilled = purchases.reduce((s, p) => s + ((p as any).totalAmount || 0), 0);
+    const paidAtTime  = purchases.reduce((s, p) => s + ((p as any).amountPaid  || 0), 0);
+    const paidLater   = paymentTransactions.reduce((s, t) => s + ((t as any).amount || 0), 0);
+    const totalPaid   = paidAtTime + paidLater;
+    const totalDue    = Math.max(0, totalBilled - totalPaid);
+    const totalItems  = purchases.reduce(
+      (s, p) => s + ((p as any).products?.reduce((ps: number, pr: any) => ps + (pr.quantity || 0), 0) ?? 0),
+      0,
     );
+
+    return NextResponse.json({
+      supplier: {
+        ...supplier,
+        purchases,
+        paymentTransactions,
+        computedStats: { totalBilled, totalPaid, paidAtTime, paidLater, totalDue, totalItems },
+      },
+    }, { status: 200 });
+
   } catch (error) {
     console.error("[Supplier GET]", error);
-    return NextResponse.json({ error: "Failed to fetch supplier" }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to fetch supplier" },
+      { status: 500 },
+    );
   }
 }
 
@@ -63,7 +113,7 @@ export async function PUT(
   try {
     await connectDB();
     const payload = auth(req);
-    if (!payload || payload.role !== "admin")
+    if (!payload || !["admin", "manager"].includes(payload.role))
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
