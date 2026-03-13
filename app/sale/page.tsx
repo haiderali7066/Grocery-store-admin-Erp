@@ -1,4 +1,4 @@
-// app/sale/page.tsx  (or wherever your SalePage lives)
+// app/sale/page.tsx
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
@@ -105,6 +105,7 @@ function CountUnit({ value, label }: { value: number; label: string }) {
 }
 
 // ── Flash Product Card ────────────────────────────────────────────────────────
+// Entire card is a <Link> — buttons use stopPropagation to stay independent.
 
 function FlashCard({ product, index }: { product: SaleProduct; index: number }) {
   const router = useRouter();
@@ -150,7 +151,9 @@ function FlashCard({ product, index }: { product: SaleProduct; index: number }) 
   };
 
   return (
-    <div
+    // ↓ Link wraps the entire card; buttons inside use e.stopPropagation()
+    <Link
+      href={`/products/${product._id}`}
       className="group relative bg-white rounded-xl overflow-hidden border border-gray-100 hover:shadow-lg hover:border-gray-200 transition-all duration-300 flex flex-col h-full"
       style={{ animationDelay: `${index * 60}ms` }}
     >
@@ -225,13 +228,9 @@ function FlashCard({ product, index }: { product: SaleProduct; index: number }) 
             } disabled:opacity-50`}
           >
             {showSuccess ? (
-              <>
-                <Check className="w-3 h-3 sm:w-4 sm:h-4" /> Added
-              </>
+              <><Check className="w-3 h-3 sm:w-4 sm:h-4" /> Added</>
             ) : (
-              <>
-                <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" /> Add
-              </>
+              <><ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4" /> Add</>
             )}
           </button>
           <button
@@ -243,7 +242,7 @@ function FlashCard({ product, index }: { product: SaleProduct; index: number }) 
           </button>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 
