@@ -1,8 +1,8 @@
 // app/api/bundles/[id]/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongoose"; // adjust to your db connection path
-import Bundle from "@/models/Bundle";        // adjust to your Bundle model path
+import { connectDB } from '@/lib/db';
+import { Bundle } from '@/lib/models/index';       // adjust to your Bundle model path
 
 export async function GET(
   req: NextRequest,
