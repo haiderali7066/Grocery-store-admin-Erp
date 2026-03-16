@@ -556,7 +556,7 @@ export default function RefundsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
                       <div><p className="text-gray-500">Requested</p><p className="font-semibold text-red-600">Rs {fmt(refund.requestedAmount)}</p></div>
                       {refund.refundedAmount ? <div><p className="text-gray-500">Refunded</p><p className="font-semibold text-green-600">Rs {fmt(refund.refundedAmount)}</p></div> : null}
-                      {refund.deliveryCost && refund.deliveryCost > 0 ? <div><p className="text-gray-500">Delivery Loss</p><p className="font-semibold text-orange-600">Rs {fmt(refund.deliveryCost)}</p></div> : null}
+                      {refund.status !== "rejected" && refund.deliveryCost && refund.deliveryCost > 0 ? <div><p className="text-gray-500">Delivery Loss</p><p className="font-semibold text-orange-600">Rs {fmt(refund.deliveryCost)}</p></div> : null}
                       <div><p className="text-gray-500">Reason</p><p className="font-semibold capitalize">{refund.reason.replace(/_/g, " ")}</p></div>
                       <div><p className="text-gray-500">Date</p><p className="font-semibold">{new Date(refund.createdAt).toLocaleDateString()}</p></div>
                     </div>
@@ -781,7 +781,7 @@ export default function RefundsPage() {
                   <div className="p-4 bg-gray-50 rounded-lg space-y-1">
                     <p className="text-sm font-semibold mb-1">Processing Info:</p>
                     {selectedRefund.refundedAmount  ? <p className="text-sm">Refunded: Rs {fmt(selectedRefund.refundedAmount)}</p>  : null}
-                    {selectedRefund.deliveryCost && selectedRefund.deliveryCost > 0
+                    {selectedRefund.status !== "rejected" && selectedRefund.deliveryCost && selectedRefund.deliveryCost > 0
                       ? <p className="text-sm text-orange-700">Delivery loss: Rs {fmt(selectedRefund.deliveryCost)}</p>
                       : null}
                     {selectedRefund.approvedBy ? <p className="text-sm">Processed by: {selectedRefund.approvedBy.name}</p> : null}

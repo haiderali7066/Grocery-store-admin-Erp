@@ -89,6 +89,7 @@ export async function GET(req: NextRequest, context: { params: any }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PATCH  /api/admin/orders/[id]
+// ✅ UPDATED: Staff can now manage orders
 // ─────────────────────────────────────────────────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: { params: any }) {
   try {
@@ -186,8 +187,10 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
         }
       } else {
         // Non-COD payment (bank / easypaisa / jazzcash / card)
+        // ✅ FIX: Use FULL orderTotal, NOT minus shipping
+        const amountToCredit = orderTotal;
+
         const paymentMethod  = existingOrder.paymentMethod?.toLowerCase() || "bank";
-        const amountToCredit = orderTotal - shippingCost;
 
         const walletFieldMap: Record<string, string> = {
           bank:      "bank",
@@ -214,8 +217,8 @@ export async function PATCH(req: NextRequest, { params }: { params: any }) {
           source:         transactionSource,
           reference:      existingOrder._id,
           referenceModel: "Order",
-          description:    `Payment verified for Order #${existingOrder.orderNumber} (Total: Rs.${orderTotal}, Shipping: Rs.${shippingCost}, Net: Rs.${amountToCredit}, Profit: Rs.${profit.toFixed(2)})`,
-          notes:          `Approved via ${paymentMethod.toUpperCase()}.`,
+          description:    `Payment verified for Order #${existingOrder.orderNumber} (Total: Rs.${orderTotal}, Shipping: Rs.${shippingCost}, Profit: Rs.${profit.toFixed(2)})`,
+          notes:          `Approved via ${paymentMethod.toUpperCase()}. Full amount Rs.${orderTotal} credited to ${walletField} wallet.`,
           createdBy:      payload.userId,
         });
 

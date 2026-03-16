@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     const token = getTokenFromCookie(req.headers.get("cookie") || "");
     const payload = verifyToken(token);
 
+    // ✅ UPDATED: staff can now access orders management
     if (!payload || !["admin", "manager", "staff"].includes(payload.role)) {
       return NextResponse.json({ message: "Forbidden" }, { status: 403 });
     }
