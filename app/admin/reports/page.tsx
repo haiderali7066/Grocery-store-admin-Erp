@@ -1,6 +1,4 @@
-// FILE PATH: app/admin/reports/page.tsx (UPDATED VERSION)
-// ═══════════════════════════════════════════════════════════════════════════════
-// ENHANCED P&L REPORT UI WITH DETAILED CALCULATIONS
+// FILE PATH: app/admin/reports/page.tsx (UPDATED WITH DETAILED ITEMS & RETURNS)
 // ═══════════════════════════════════════════════════════════════════════════════
 
 "use client";
@@ -11,7 +9,7 @@ import {
   AlertTriangle, Loader2, TrendingUp, TrendingDown, ShoppingBag,
   Receipt, Package, RefreshCcw, Store, Globe, BarChart3, FileText,
   Printer, Calendar, ChevronLeft, ChevronRight, Wallet, Info,
-  Banknote, CreditCard, Smartphone, Truck, Activity, Zap, Target
+  Banknote, CreditCard, Smartphone, Truck, Activity, Zap, Target, RotateCcw
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -63,12 +61,12 @@ interface ReportData {
 interface OnlineOrder {
   _id: string; orderNumber?: string; subtotal: number; costOfGoods: number;
   profit: number; margin: number; createdAt: string; customerName?: string; orderStatus?: string;
-  paymentMethod?: string; items?: SaleItem[];
+  paymentMethod?: string; shippingCost?: number; items?: SaleItem[];
 }
 
 interface POSSale {
   _id: string; saleNumber?: string; cashierName?: string; subtotal: number;
-  costOfGoods: number; profit: number; margin: number;
+  costOfGoods: number; profit: number; margin: number; gstAmount?: number;
   createdAt: string; paymentMethod?: string; items?: SaleItem[];
 }
 
@@ -83,17 +81,17 @@ const sign = (n: number) => n < 0 ? `− Rs. ${Math.abs(n).toLocaleString()}` : 
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function ItemList({ items, limit = 2 }: { items?: SaleItem[]; limit?: number }) {
-  if (!items?.length) return <span className="text-gray-400 text-xs italic">—</span>;
+function ItemList({ items, limit = 3 }: { items?: SaleItem[]; limit?: number }) {
+  if (!items?.length) return <span className="text-xs italic text-gray-400">—</span>;
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-1">
       {items.slice(0, limit).map((it, i) => (
-        <div key={i} className="flex items-center gap-1 text-xs">
-          <span className="font-medium text-gray-800 truncate max-w-[160px]">{it.name}</span>
-          <span className="text-gray-400 shrink-0">×{it.quantity}</span>
+        <div key={i} className="flex items-start justify-between gap-2 text-xs">
+          <span className="font-medium text-gray-800 truncate">{it.name}</span>
+          <span className="text-gray-500 shrink-0">×{it.quantity}</span>
         </div>
       ))}
-      {items.length > limit && <span className="text-[10px] text-indigo-500 font-semibold">+{items.length - limit} more</span>}
+      {items.length > limit && <span className="text-[10px] text-indigo-500 font-semibold">+{items.length - limit} more items</span>}
     </div>
   );
 }
@@ -101,18 +99,18 @@ function ItemList({ items, limit = 2 }: { items?: SaleItem[]; limit?: number }) 
 function Pages({ cur, total, set }: { cur: number; total: number; set: (p: number) => void }) {
   if (total <= 1) return null;
   return (
-    <div className="bg-gray-50 px-5 py-4 border-t border-gray-100 flex items-center justify-between no-print">
-      <span className="text-sm text-gray-600 font-medium">
+    <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-gray-50 no-print">
+      <span className="text-sm font-medium text-gray-600">
         Page <strong className="text-gray-900">{cur}</strong> of <strong className="text-gray-900">{total}</strong>
       </span>
       <div className="flex gap-2">
         <button onClick={() => set(cur - 1)} disabled={cur === 1}
-          className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-          <ChevronLeft className="h-4 w-4" />
+          className="p-2 transition-colors border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+          <ChevronLeft className="w-4 h-4" />
         </button>
         <button onClick={() => set(cur + 1)} disabled={cur === total}
-          className="p-2 rounded-lg border border-gray-200 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-          <ChevronRight className="h-4 w-4" />
+          className="p-2 transition-colors border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">
+          <ChevronRight className="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -174,16 +172,16 @@ export default function ReportsPage() {
         }
       `}</style>
 
-      <div className="p-4 md:p-6 space-y-6 bg-gray-50 min-h-screen">
+      <div className="min-h-screen p-4 space-y-6 md:p-6 bg-gray-50">
 
         {/* ── Header ── */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 no-print">
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start no-print">
           <div>
             <h1 className="text-4xl font-black text-gray-900">📊 P&L Analytics</h1>
-            <p className="text-gray-500 text-sm mt-2">Revenue · COGS · Expenses · Profitability Analysis</p>
+            <p className="mt-2 text-sm text-gray-500">Revenue · COGS · Expenses · Profitability Analysis</p>
           </div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-            <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+          <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center">
+            <div className="flex p-1 bg-white border border-gray-200 shadow-sm rounded-xl">
               {PERIODS.map(p => (
                 <button key={p} onClick={() => { setPeriod(p); setShowCustom(p === "custom"); }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase transition-all ${period === p ? "bg-green-600 shadow-sm text-white" : "text-gray-500 hover:text-gray-700"}`}>
@@ -191,29 +189,29 @@ export default function ReportsPage() {
                 </button>
               ))}
             </div>
-            <button onClick={load} className="p-2 text-gray-400 hover:text-green-600 bg-white border border-gray-200 rounded-xl transition-colors">
+            <button onClick={load} className="p-2 text-gray-400 transition-colors bg-white border border-gray-200 hover:text-green-600 rounded-xl">
               <RefreshCcw size={16} className={loading ? "animate-spin" : ""} />
             </button>
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-xl text-sm font-semibold hover:bg-gray-800 transition-colors">
-              <Printer className="h-4 w-4" /> Print
+            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white transition-colors bg-gray-900 rounded-xl hover:bg-gray-800">
+              <Printer className="w-4 h-4" /> Print
             </button>
           </div>
         </div>
 
         {/* Custom Range */}
         {showCustom && (
-          <div className="flex flex-wrap items-end gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4 no-print">
-            <div><label className="text-xs font-bold text-gray-500 block mb-1">FROM</label>
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-            <div><label className="text-xs font-bold text-gray-500 block mb-1">TO</label>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+          <div className="flex flex-wrap items-end gap-3 p-4 border border-blue-100 bg-blue-50 rounded-xl no-print">
+            <div><label className="block mb-1 text-xs font-bold text-gray-500">FROM</label>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+            <div><label className="block mb-1 text-xs font-bold text-gray-500">TO</label>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="px-3 py-2 text-sm font-medium border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
             <button onClick={() => { if (dateFrom && dateTo) load(); }} disabled={!dateFrom || !dateTo}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold hover:bg-green-700 disabled:opacity-40 transition-colors">Apply</button>
+              className="px-4 py-2 text-sm font-bold text-white transition-colors bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-40">Apply</button>
           </div>
         )}
 
         {/* Tabs */}
-        <div className="flex flex-wrap gap-1 bg-white p-1 rounded-xl w-fit no-print border border-gray-200 shadow-sm">
+        <div className="flex flex-wrap gap-1 p-1 bg-white border border-gray-200 shadow-sm rounded-xl w-fit no-print">
           {([
             { id: "overview", label: "Overview",      Icon: BarChart3 },
             { id: "detailed", label: "Detailed P&L",  Icon: Activity  },
@@ -223,14 +221,14 @@ export default function ReportsPage() {
           ] as const).map(({ id, label, Icon }) => (
             <button key={id} onClick={() => setTab(id as Tab)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === id ? "bg-green-600 shadow-sm text-white" : "text-gray-500 hover:text-gray-700"}`}>
-              <Icon className="h-4 w-4" />{label}
+              <Icon className="w-4 h-4" />{label}
             </button>
           ))}
         </div>
 
         {loading && !data ? (
           <div className="flex items-center justify-center h-48">
-            <Loader2 className="animate-spin text-green-600 h-8 w-8" />
+            <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
           </div>
         ) : (
           <div id="print-area" ref={printRef}>
@@ -240,25 +238,25 @@ export default function ReportsPage() {
               <div className="space-y-5">
 
                 {/* KPI Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  <StatCard title="Total Revenue" value={data.stats.totalRevenue} icon={<ShoppingBag className="h-5 w-5" />} color="blue" sub={`${(data.stats.totalRevenue / (data.stats.totalRevenue || 1) * 100).toFixed(0)}% target`} />
-                  <StatCard title="Total COGS" value={data.stats.totalCOGS} icon={<Package className="h-5 w-5" />} color="orange" sub={pct(data.stats.margins.gross)} />
-                  <StatCard title="Gross Profit" value={data.stats.grossProfit} icon={<TrendingUp className="h-5 w-5" />} color="green" sub={pct(data.stats.margins.gross) + " margin"} />
-                  <StatCard title="Net Profit" value={data.stats.netProfit} icon={isProfit ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />} color={isProfit ? "emerald" : "red"} sub={pct(data.stats.margins.net) + " margin"} />
-                  <StatCard title="Inventory" value={data.stats.inventoryValue} icon={<Package className="h-5 w-5" />} color="indigo" sub={`${data.stats.inventoryUnits.toLocaleString()} units`} />
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  <StatCard title="Total Revenue" value={data.stats.totalRevenue} icon={<ShoppingBag className="w-5 h-5" />} color="blue" sub={`${(data.stats.totalRevenue / (data.stats.totalRevenue || 1) * 100).toFixed(0)}% target`} />
+                  <StatCard title="Total COGS" value={data.stats.totalCOGS} icon={<Package className="w-5 h-5" />} color="orange" sub={pct(data.stats.margins.gross)} />
+                  <StatCard title="Gross Profit" value={data.stats.grossProfit} icon={<TrendingUp className="w-5 h-5" />} color="green" sub={pct(data.stats.margins.gross) + " margin"} />
+                  <StatCard title="Net Profit" value={data.stats.netProfit} icon={isProfit ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />} color={isProfit ? "emerald" : "red"} sub={pct(data.stats.margins.net) + " margin"} />
+                  <StatCard title="Inventory" value={data.stats.inventoryValue} icon={<Package className="w-5 h-5" />} color="indigo" sub={`${data.stats.inventoryUnits.toLocaleString()} units`} />
                 </div>
 
                 {/* Main P&L Hero Card */}
                 <div className={`rounded-2xl p-8 shadow-lg border-2 ${isProfit ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                  <div className="text-center mb-6">
-                    <p className="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Net Profit / Loss</p>
+                  <div className="mb-6 text-center">
+                    <p className="mb-2 text-xs font-black tracking-widest text-gray-500 uppercase">Net Profit / Loss</p>
                     <p className={`text-6xl font-black ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{sign(data.stats.netProfit)}</p>
                     <p className={`text-sm font-semibold mt-3 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>
                       {isProfit ? "▲ IN PROFIT" : "▼ IN LOSS"} · {pct(data.stats.margins.net)} Net Margin
                     </p>
                   </div>
                   
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {[
                       { l: "Revenue", v: Rs(data.stats.totalRevenue), c: "text-emerald-700", bg: "bg-emerald-100/50" },
                       { l: "COGS", v: `− ${Rs(data.stats.totalCOGS)}`, c: "text-orange-700", bg: "bg-orange-100/50" },
@@ -266,7 +264,7 @@ export default function ReportsPage() {
                       { l: "Delivery Loss", v: data.stats.deliveryLoss > 0 ? `− ${Rs(data.stats.deliveryLoss)}` : "None", c: data.stats.deliveryLoss > 0 ? "text-orange-700" : "text-gray-400", bg: "bg-orange-100/30" },
                     ].map(r => (
                       <div key={r.l} className={`${r.bg} rounded-xl px-4 py-3 border border-white`}>
-                        <p className="text-xs text-gray-500 font-medium mb-1">{r.l}</p>
+                        <p className="mb-1 text-xs font-medium text-gray-500">{r.l}</p>
                         <p className={`font-black text-base ${r.c}`}>{r.v}</p>
                       </div>
                     ))}
@@ -274,59 +272,59 @@ export default function ReportsPage() {
                 </div>
 
                 {/* Revenue & Margins Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                   {/* Channel breakdown */}
                   <Card className="p-6 border-0 shadow-md">
-                    <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2">
-                      <Globe className="h-4 w-4 text-blue-500" />Channel Mix
+                    <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
+                      <Globe className="w-4 h-4 text-blue-500" />Channel Mix
                     </h3>
                     <div className="space-y-4">
                       <div>
-                        <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium text-gray-600">Online</span>
                           <span className="font-bold text-blue-700">{pct(onlinePct)}</span>
                         </div>
                         <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
                           <div className="h-full bg-blue-500" style={{ width: `${onlinePct}%` }} />
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{Rs(data.breakdown.revenue.online)}</p>
+                        <p className="mt-1 text-xs text-gray-500">{Rs(data.breakdown.revenue.online)}</p>
                       </div>
                       <div>
-                        <div className="flex justify-between items-center mb-2">
+                        <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium text-gray-600">POS</span>
                           <span className="font-bold text-green-700">{pct(posPct)}</span>
                         </div>
                         <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
                           <div className="h-full bg-green-500" style={{ width: `${posPct}%` }} />
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{Rs(data.breakdown.revenue.pos)}</p>
+                        <p className="mt-1 text-xs text-gray-500">{Rs(data.breakdown.revenue.pos)}</p>
                       </div>
                     </div>
                   </Card>
 
                   {/* Margins */}
                   <Card className="p-6 border-0 shadow-md">
-                    <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-amber-500" />Profit Margins
+                    <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
+                      <Zap className="w-4 h-4 text-amber-500" />Profit Margins
                     </h3>
                     <div className="space-y-3">
-                      <div className="bg-gradient-to-r from-green-50 to-green-100/50 rounded-xl p-3">
-                        <p className="text-xs text-gray-600 font-medium">Gross Margin</p>
+                      <div className="p-3 bg-gradient-to-r from-green-50 to-green-100/50 rounded-xl">
+                        <p className="text-xs font-medium text-gray-600">Gross Margin</p>
                         <p className="text-3xl font-black text-green-700">{pct(data.stats.margins.gross)}</p>
-                        <p className="text-xs text-gray-500 mt-1">Before operating costs</p>
+                        <p className="mt-1 text-xs text-gray-500">Before operating costs</p>
                       </div>
                       <div className={`rounded-xl p-3 ${isProfit ? "bg-emerald-50" : "bg-red-50"}`}>
-                        <p className="text-xs text-gray-600 font-medium">Net Margin</p>
+                        <p className="text-xs font-medium text-gray-600">Net Margin</p>
                         <p className={`text-3xl font-black ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{pct(data.stats.margins.net)}</p>
-                        <p className="text-xs text-gray-500 mt-1">Bottom line</p>
+                        <p className="mt-1 text-xs text-gray-500">Bottom line</p>
                       </div>
                     </div>
                   </Card>
 
                   {/* Key Metrics */}
                   <Card className="p-6 border-0 shadow-md">
-                    <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2">
-                      <Target className="h-4 w-4 text-purple-500" />Key Metrics
+                    <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
+                      <Target className="w-4 h-4 text-purple-500" />Key Metrics
                     </h3>
                     <div className="space-y-3 text-sm">
                       <div className="flex justify-between">
@@ -351,16 +349,16 @@ export default function ReportsPage() {
 
                 {/* Expenses Breakdown */}
                 <Card className="p-6 border-0 shadow-md">
-                  <h3 className="font-bold text-gray-900 mb-4 text-sm flex items-center gap-2">
-                    <Receipt className="h-4 w-4 text-amber-500" />Operating Expenses Breakdown
+                  <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
+                    <Receipt className="w-4 h-4 text-amber-500" />Operating Expenses Breakdown
                   </h3>
                   <div className="space-y-3">
                     {!data.breakdown.expenses.length ? (
-                      <p className="text-center text-gray-400 py-6 italic">No operating expenses</p>
+                      <p className="py-6 italic text-center text-gray-400">No operating expenses</p>
                     ) : (
                       data.breakdown.expenses.map((ex, i) => (
                         <div key={i}>
-                          <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center justify-between mb-2">
                             <div>
                               <p className="text-sm font-medium text-gray-700 capitalize">{ex.category}</p>
                               <p className="text-xs text-gray-500">{ex.count} transactions · Avg: {Rs(ex.avgPerTransaction)}</p>
@@ -376,23 +374,53 @@ export default function ReportsPage() {
                   </div>
                 </Card>
 
+                {/* Refunds Summary */}
+                {data.breakdown.refunds.totalCount > 0 && (
+                  <Card className="p-6 border-0 border-l-4 border-orange-400 shadow-md bg-orange-50">
+                    <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
+                      <RotateCcw className="w-4 h-4 text-orange-600" />Returns & Refunds Summary
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                      <div>
+                        <p className="mb-1 text-xs font-semibold text-gray-600">Total Returns</p>
+                        <p className="text-3xl font-black text-orange-700">{data.breakdown.refunds.totalCount}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-semibold text-gray-600">Online Returns</p>
+                        <p className="text-2xl font-black text-blue-600">{data.breakdown.refunds.onlineCount}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-semibold text-gray-600">POS Returns</p>
+                        <p className="text-2xl font-black text-green-600">{data.breakdown.refunds.posCount}</p>
+                      </div>
+                      <div>
+                        <p className="mb-1 text-xs font-semibold text-gray-600">Delivery Loss</p>
+                        <p className="text-2xl font-black text-red-600">{Rs(data.stats.deliveryLoss)}</p>
+                      </div>
+                    </div>
+                    <p className="pt-4 mt-4 text-xs text-gray-600 border-t border-orange-200">
+                      <strong>Total refunded:</strong> {Rs(data.breakdown.refunds.totalRefunded)} (not deducted from P&L — goods restocked)
+                    </p>
+                  </Card>
+                )}
+
                 {/* Wallet */}
-                <Card className="p-6 border-0 shadow-lg bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <Card className="p-6 text-white border-0 shadow-lg bg-gradient-to-br from-gray-900 to-gray-800">
+                  <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
                     <div>
-                      <h3 className="font-bold text-gray-300 flex items-center gap-2 text-sm mb-1"><Wallet className="h-4 w-4" />Wallet Balance</h3>
+                      <h3 className="flex items-center gap-2 mb-1 text-sm font-bold text-gray-300"><Wallet className="w-4 h-4" />Wallet Balance</h3>
                       <p className="text-4xl font-black text-white">Rs. {(data?.wallet.totalBalance ?? 0).toLocaleString()}</p>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                       {[
                         { label: "Cash", value: data?.wallet.cash, Icon: Banknote, color: "text-emerald-400" },
                         { label: "Bank", value: data?.wallet.bank, Icon: CreditCard, color: "text-blue-400" },
                         { label: "EasyPaisa", value: data?.wallet.easyPaisa, Icon: Smartphone, color: "text-purple-400" },
                         { label: "JazzCash", value: data?.wallet.jazzCash, Icon: Smartphone, color: "text-orange-400" },
                       ].map(({ label, value, Icon, color }) => (
-                        <div key={label} className="bg-white/10 rounded-lg px-3 py-2">
-                          <p className={`flex items-center gap-1 text-xs font-semibold mb-1 ${color}`}><Icon className="h-3 w-3" />{label}</p>
-                          <p className="text-white font-bold text-xs">Rs. {(value ?? 0).toLocaleString()}</p>
+                        <div key={label} className="px-3 py-2 rounded-lg bg-white/10">
+                          <p className={`flex items-center gap-1 text-xs font-semibold mb-1 ${color}`}><Icon className="w-3 h-3" />{label}</p>
+                          <p className="text-xs font-bold text-white">Rs. {(value ?? 0).toLocaleString()}</p>
                         </div>
                       ))}
                     </div>
@@ -405,87 +433,87 @@ export default function ReportsPage() {
             {tab === "detailed" && data && (
               <div className="space-y-5">
                 <Card className="p-8 border-0 shadow-md">
-                  <h2 className="text-2xl font-black text-gray-900 mb-6">Detailed Profit & Loss Analysis</h2>
+                  <h2 className="mb-6 text-2xl font-black text-gray-900">Detailed Profit & Loss Analysis</h2>
                   
                   <div className="space-y-8">
                     {/* Step 1: Revenue */}
-                    <div className="border-l-4 border-blue-500 pl-6">
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="text-sm bg-blue-100 text-blue-700 rounded-full h-6 w-6 flex items-center justify-center font-black">1</span>
+                    <div className="pl-6 border-l-4 border-blue-500">
+                      <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
+                        <span className="flex items-center justify-center w-6 h-6 text-sm font-black text-blue-700 bg-blue-100 rounded-full">1</span>
                         Revenue Calculation
                       </h3>
-                      <div className="grid md:grid-cols-2 gap-6">
-                        <div className="bg-blue-50 rounded-xl p-4">
-                          <p className="text-xs text-gray-600 font-semibold uppercase mb-2">Online Revenue</p>
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <div className="p-4 bg-blue-50 rounded-xl">
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Online Revenue</p>
                           <p className="text-3xl font-black text-blue-700">{Rs(data.breakdown.revenue.online)}</p>
-                          <p className="text-xs text-gray-500 mt-1">{data.breakdown.orderMetrics.onlineOrders} orders</p>
+                          <p className="mt-1 text-xs text-gray-500">{data.breakdown.orderMetrics.onlineOrders} orders</p>
                         </div>
-                        <div className="bg-green-50 rounded-xl p-4">
-                          <p className="text-xs text-gray-600 font-semibold uppercase mb-2">POS Revenue</p>
+                        <div className="p-4 bg-green-50 rounded-xl">
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">POS Revenue</p>
                           <p className="text-3xl font-black text-green-700">{Rs(data.breakdown.revenue.pos)}</p>
-                          <p className="text-xs text-gray-500 mt-1">{data.breakdown.orderMetrics.posTransactions} transactions</p>
+                          <p className="mt-1 text-xs text-gray-500">{data.breakdown.orderMetrics.posTransactions} transactions</p>
                         </div>
                       </div>
-                      <div className="mt-4 bg-white border-2 border-blue-200 rounded-xl p-4">
-                        <p className="text-sm text-gray-700 mb-2"><strong>Total Revenue Formula:</strong></p>
-                        <p className="text-xs font-mono bg-blue-50 rounded p-2 mb-2">{Rs(data.breakdown.revenue.online)} + {Rs(data.breakdown.revenue.pos)} = {Rs(data.breakdown.revenue.total)}</p>
+                      <div className="p-4 mt-4 bg-white border-2 border-blue-200 rounded-xl">
+                        <p className="mb-2 text-sm text-gray-700"><strong>Total Revenue Formula:</strong></p>
+                        <p className="p-2 mb-2 font-mono text-xs rounded bg-blue-50">{Rs(data.breakdown.revenue.online)} + {Rs(data.breakdown.revenue.pos)} = {Rs(data.breakdown.revenue.total)}</p>
                         <p className="text-xs text-gray-600"><strong>✓</strong> Includes all completed and non-cancelled orders</p>
                         <p className="text-xs text-gray-600"><strong>✓</strong> Excludes pending transactions</p>
                       </div>
                     </div>
 
                     {/* Step 2: COGS */}
-                    <div className="border-l-4 border-orange-500 pl-6">
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="text-sm bg-orange-100 text-orange-700 rounded-full h-6 w-6 flex items-center justify-center font-black">2</span>
+                    <div className="pl-6 border-l-4 border-orange-500">
+                      <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
+                        <span className="flex items-center justify-center w-6 h-6 text-sm font-black text-orange-700 bg-orange-100 rounded-full">2</span>
                         Cost of Goods Sold
                       </h3>
-                      <div className="grid md:grid-cols-2 gap-6 mb-4">
-                        <div className="bg-orange-50 rounded-xl p-4">
-                          <p className="text-xs text-gray-600 font-semibold uppercase mb-2">Online COGS</p>
+                      <div className="grid gap-6 mb-4 md:grid-cols-2">
+                        <div className="p-4 bg-orange-50 rounded-xl">
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Online COGS</p>
                           <p className="text-3xl font-black text-orange-700">{Rs(data.breakdown.costOfGoods.online)}</p>
-                          <p className="text-xs text-gray-500 mt-1">Cost @ buying rate</p>
+                          <p className="mt-1 text-xs text-gray-500">Cost @ buying rate</p>
                         </div>
-                        <div className="bg-orange-50 rounded-xl p-4">
-                          <p className="text-xs text-gray-600 font-semibold uppercase mb-2">POS COGS</p>
+                        <div className="p-4 bg-orange-50 rounded-xl">
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">POS COGS</p>
                           <p className="text-3xl font-black text-orange-700">{Rs(data.breakdown.costOfGoods.pos)}</p>
-                          <p className="text-xs text-gray-500 mt-1">Calculated at sale</p>
+                          <p className="mt-1 text-xs text-gray-500">Calculated at sale</p>
                         </div>
                       </div>
-                      <div className="bg-white border-2 border-orange-200 rounded-xl p-4">
-                        <p className="text-sm text-gray-700 mb-2"><strong>⚠️ COGS Calculation (RECALCULATED):</strong></p>
-                        <p className="text-xs font-mono bg-orange-50 rounded p-2 mb-2">FOR EACH item: cost = (lastBuyingRate × quantity)</p>
+                      <div className="p-4 bg-white border-2 border-orange-200 rounded-xl">
+                        <p className="mb-2 text-sm text-gray-700"><strong>⚠️ COGS Calculation (RECALCULATED):</strong></p>
+                        <p className="p-2 mb-2 font-mono text-xs rounded bg-orange-50">FOR EACH item: cost = (lastBuyingRate × quantity)</p>
                         <p className="text-xs text-gray-600"><strong>✓</strong> Never trusts stored profit values</p>
                         <p className="text-xs text-gray-600"><strong>✓</strong> Uses actual buying rates from inventory</p>
                       </div>
                     </div>
 
                     {/* Step 3: Gross Profit */}
-                    <div className="border-l-4 border-green-500 pl-6">
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="text-sm bg-green-100 text-green-700 rounded-full h-6 w-6 flex items-center justify-center font-black">3</span>
+                    <div className="pl-6 border-l-4 border-green-500">
+                      <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
+                        <span className="flex items-center justify-center w-6 h-6 text-sm font-black text-green-700 bg-green-100 rounded-full">3</span>
                         Gross Profit
                       </h3>
-                      <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6">
-                        <div className="text-center mb-4">
-                          <p className="text-sm text-gray-600 font-semibold mb-1">Revenue minus COGS</p>
+                      <div className="p-6 border-2 border-green-200 bg-green-50 rounded-xl">
+                        <div className="mb-4 text-center">
+                          <p className="mb-1 text-sm font-semibold text-gray-600">Revenue minus COGS</p>
                           <p className="text-4xl font-black text-green-700">{Rs(data.profitability.grossProfit)}</p>
-                          <p className="text-xl font-bold text-green-600 mt-2">{pct(data.profitability.grossMargin)} Gross Margin</p>
+                          <p className="mt-2 text-xl font-bold text-green-600">{pct(data.profitability.grossMargin)} Gross Margin</p>
                         </div>
-                        <p className="text-xs font-mono bg-white rounded p-2 text-center text-gray-700">
+                        <p className="p-2 font-mono text-xs text-center text-gray-700 bg-white rounded">
                           {Rs(data.breakdown.revenue.total)} − {Rs(data.breakdown.costOfGoods.total)} = {Rs(data.profitability.grossProfit)}
                         </p>
                       </div>
                     </div>
 
                     {/* Step 4: Operating Expenses */}
-                    <div className="border-l-4 border-amber-500 pl-6">
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="text-sm bg-amber-100 text-amber-700 rounded-full h-6 w-6 flex items-center justify-center font-black">4</span>
+                    <div className="pl-6 border-l-4 border-amber-500">
+                      <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
+                        <span className="flex items-center justify-center w-6 h-6 text-sm font-black rounded-full bg-amber-100 text-amber-700">4</span>
                         Operating Expenses
                       </h3>
-                      <div className="bg-white border-2 border-amber-200 rounded-xl p-4 mb-4">
-                        <p className="text-sm font-semibold text-gray-900 mb-3">Total Operating Expenses: <span className="text-amber-700">{Rs(data.profitability.operatingExpenses)}</span></p>
+                      <div className="p-4 mb-4 bg-white border-2 border-amber-200 rounded-xl">
+                        <p className="mb-3 text-sm font-semibold text-gray-900">Total Operating Expenses: <span className="text-amber-700">{Rs(data.profitability.operatingExpenses)}</span></p>
                         <div className="space-y-2">
                           {data.breakdown.expenses.map((ex, i) => (
                             <div key={i} className="flex justify-between text-xs text-gray-700">
@@ -494,31 +522,31 @@ export default function ReportsPage() {
                             </div>
                           ))}
                         </div>
-                        <p className="text-xs text-gray-600 mt-3 pt-3 border-t border-amber-200"><strong>EXCLUDED:</strong> Purchases, Supplier Payments, Refunds (restocked), Delivery Loss (handled separately)</p>
+                        <p className="pt-3 mt-3 text-xs text-gray-600 border-t border-amber-200"><strong>EXCLUDED:</strong> Purchases, Supplier Payments, Refunds (restocked), Delivery Loss (handled separately)</p>
                       </div>
                     </div>
 
                     {/* Step 5: Delivery Loss */}
-                    <div className="border-l-4 border-red-500 pl-6">
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <span className="text-sm bg-red-100 text-red-700 rounded-full h-6 w-6 flex items-center justify-center font-black">5</span>
+                    <div className="pl-6 border-l-4 border-red-500">
+                      <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
+                        <span className="flex items-center justify-center w-6 h-6 text-sm font-black text-red-700 bg-red-100 rounded-full">5</span>
                         Delivery Loss (Returns)
                       </h3>
-                      <div className="grid md:grid-cols-2 gap-4 mb-4">
-                        <div className="bg-red-50 rounded-xl p-4">
-                          <p className="text-xs text-gray-600 font-semibold uppercase mb-2">Unrecoverable Shipping</p>
+                      <div className="grid gap-4 mb-4 md:grid-cols-2">
+                        <div className="p-4 bg-red-50 rounded-xl">
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Unrecoverable Shipping</p>
                           <p className="text-3xl font-black text-red-600">{Rs(data.profitability.deliveryLoss)}</p>
-                          <p className="text-xs text-gray-500 mt-1">Loss on {data.breakdown.refunds.totalCount} returns</p>
+                          <p className="mt-1 text-xs text-gray-500">Loss on {data.breakdown.refunds.totalCount} returns</p>
                         </div>
-                        <div className="bg-blue-50 rounded-xl p-4">
-                          <p className="text-xs text-gray-600 font-semibold uppercase mb-2">Refunded Amount</p>
+                        <div className="p-4 bg-blue-50 rounded-xl">
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Refunded Amount</p>
                           <p className="text-3xl font-black text-blue-700">{Rs(data.breakdown.refunds.totalRefunded)}</p>
-                          <p className="text-xs text-gray-500 mt-1">NOT deducted (goods restocked)</p>
+                          <p className="mt-1 text-xs text-gray-500">NOT deducted (goods restocked)</p>
                         </div>
                       </div>
-                      <div className="bg-white border-2 border-red-200 rounded-xl p-4">
-                        <p className="text-sm font-semibold text-gray-900 mb-2">⚠️ Key Principle:</p>
-                        <p className="text-xs text-gray-700 leading-relaxed">
+                      <div className="p-4 bg-white border-2 border-red-200 rounded-xl">
+                        <p className="mb-2 text-sm font-semibold text-gray-900">⚠️ Key Principle:</p>
+                        <p className="text-xs leading-relaxed text-gray-700">
                           When a customer returns goods, you get them back in inventory, so there's no net revenue loss on that item. 
                           However, the delivery cost (shipping to customer, shipping back) is lost forever. Only this unrecoverable 
                           delivery cost ({Rs(data.profitability.deliveryLoss)}) is expensed in P&L.
@@ -528,19 +556,19 @@ export default function ReportsPage() {
 
                     {/* Final: Net Profit */}
                     <div className={`border-l-4 ${isProfit ? "border-emerald-500" : "border-red-500"} pl-6`}>
-                      <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
                         <span className={`text-sm rounded-full h-6 w-6 flex items-center justify-center font-black ${isProfit ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>✓</span>
                         Net Profit (The Bottom Line)
                       </h3>
                       <div className={`${isProfit ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"} border-2 rounded-xl p-6`}>
                         <div className="text-center">
-                          <p className="text-sm text-gray-600 font-semibold mb-2">Gross Profit − Expenses − Delivery Loss</p>
+                          <p className="mb-2 text-sm font-semibold text-gray-600">Gross Profit − Expenses − Delivery Loss</p>
                           <p className={`text-5xl font-black ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{sign(data.profitability.netProfit)}</p>
                           <p className={`text-lg font-bold mt-3 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>{pct(data.profitability.netMargin)} Net Margin</p>
-                          <p className="text-xs text-gray-600 mt-2">For every Rs. 100 of sales, you keep Rs. {(data.profitability.netMargin).toFixed(2)}</p>
+                          <p className="mt-2 text-xs text-gray-600">For every Rs. 100 of sales, you keep Rs. {(data.profitability.netMargin).toFixed(2)}</p>
                         </div>
-                        <div className="mt-6 pt-6 border-t border-gray-300">
-                          <p className="text-xs font-mono bg-white rounded p-3 text-center text-gray-800">
+                        <div className="pt-6 mt-6 border-t border-gray-300">
+                          <p className="p-3 font-mono text-xs text-center text-gray-800 bg-white rounded">
                             {Rs(data.profitability.grossProfit)} − {Rs(data.profitability.operatingExpenses)} − {Rs(data.profitability.deliveryLoss)} = {Rs(data.profitability.netProfit)}
                           </p>
                         </div>
@@ -553,16 +581,16 @@ export default function ReportsPage() {
 
             {/* ══════════ P&L STATEMENT TAB ══════════ */}
             {tab === "pl" && data && (
-              <Card className="border-0 shadow-md overflow-hidden">
-                <div className="bg-gray-900 text-white px-6 py-5">
-                  <h2 className="font-black text-2xl">Profit & Loss Statement</h2>
-                  <p className="text-gray-400 text-sm mt-1">Period: {data.period}</p>
+              <Card className="overflow-hidden border-0 shadow-md">
+                <div className="px-6 py-5 text-white bg-gray-900">
+                  <h2 className="text-2xl font-black">Profit & Loss Statement</h2>
+                  <p className="mt-1 text-sm text-gray-400">Period: {data.period}</p>
                 </div>
 
-                <div className="divide-y divide-gray-100 p-6">
+                <div className="p-6 divide-y divide-gray-100">
                   {/* Revenue Section */}
                   <div className="pb-6 mb-6">
-                    <h3 className="text-lg font-black text-blue-700 mb-4">REVENUE</h3>
+                    <h3 className="mb-4 text-lg font-black text-blue-700">REVENUE</h3>
                     <div className="space-y-3">
                       <PLRow label="Online Store Sales" value={data.breakdown.revenue.online} />
                       <PLRow label="POS / Walk-in Sales" value={data.breakdown.revenue.pos} />
@@ -572,7 +600,7 @@ export default function ReportsPage() {
 
                   {/* COGS Section */}
                   <div className="pb-6 mb-6">
-                    <h3 className="text-lg font-black text-orange-700 mb-4">COST OF GOODS SOLD</h3>
+                    <h3 className="mb-4 text-lg font-black text-orange-700">COST OF GOODS SOLD</h3>
                     <div className="space-y-3">
                       <PLRow label="Online COGS" value={data.breakdown.costOfGoods.online} indent={true} negative={true} />
                       <PLRow label="POS COGS" value={data.breakdown.costOfGoods.pos} indent={true} negative={true} />
@@ -584,7 +612,7 @@ export default function ReportsPage() {
 
                   {/* Operating Expenses */}
                   <div className="pb-6 mb-6">
-                    <h3 className="text-lg font-black text-amber-700 mb-4">OPERATING EXPENSES</h3>
+                    <h3 className="mb-4 text-lg font-black text-amber-700">OPERATING EXPENSES</h3>
                     <div className="space-y-3">
                       {data.breakdown.expenses.map((ex, i) => (
                         <PLRow key={i} label={ex.category} value={ex.amount} indent={true} negative={true} />
@@ -598,7 +626,7 @@ export default function ReportsPage() {
 
                   {/* Net Profit */}
                   <div className={`pt-6 ${isProfit ? "bg-emerald-50" : "bg-red-50"} -mx-6 px-6 py-6`}>
-                    <div className="flex justify-between items-center">
+                    <div className="flex items-center justify-between">
                       <h3 className="text-2xl font-black text-gray-900">NET PROFIT / LOSS</h3>
                       <span className={`text-4xl font-black ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{sign(data.profitability.netProfit)}</span>
                     </div>
@@ -612,45 +640,58 @@ export default function ReportsPage() {
             {tab === "online" && data && (
               <div className="space-y-5">
                 <div className="flex items-center justify-between no-print">
-                  <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-                    <Globe className="h-6 w-6 text-blue-500" />Online Sales Detailed
+                  <h2 className="flex items-center gap-2 text-2xl font-black text-gray-900">
+                    <Globe className="w-6 h-6 text-blue-500" />Online Sales Detailed
                   </h2>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <SummaryCard label="Revenue" value={data.breakdown.revenue.online} color="blue" icon={<Globe className="h-4 w-4" />} />
-                  <SummaryCard label="COGS" value={data.breakdown.costOfGoods.online} color="orange" icon={<Package className="h-4 w-4" />} />
-                  <SummaryCard label="Profit" value={data.breakdown.grossProfitByChannel.online} color="green" icon={<TrendingUp className="h-4 w-4" />} />
-                  <SummaryCard label="Orders" value={data.breakdown.orderMetrics.onlineOrders} color="indigo" icon={<ShoppingBag className="h-4 w-4" />} isCount={true} />
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                  <SummaryCard label="Revenue" value={data.breakdown.revenue.online} color="blue" icon={<Globe className="w-4 h-4" />} />
+                  <SummaryCard label="COGS" value={data.breakdown.costOfGoods.online} color="orange" icon={<Package className="w-4 h-4" />} />
+                  <SummaryCard label="Profit" value={data.breakdown.grossProfitByChannel.online} color="green" icon={<TrendingUp className="w-4 h-4" />} />
+                  <SummaryCard label="Orders" value={data.breakdown.orderMetrics.onlineOrders} color="indigo" icon={<ShoppingBag className="w-4 h-4" />} isCount={true} />
                 </div>
-                <Card className="border-0 shadow-md overflow-hidden">
-                  <div className="bg-blue-700 text-white px-5 py-3">
+                <Card className="overflow-hidden border-0 shadow-md">
+                  <div className="px-5 py-3 text-white bg-blue-700">
                     <h3 className="font-bold">Order Details</h3>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-100">
+                      <thead className="border-b border-gray-100 bg-gray-50">
                         <tr>
-                          {["Order#","Customer","Revenue","COGS","Profit","Margin%"].map(h => (
-                            <th key={h} className="px-4 py-3 font-bold text-gray-600 text-xs uppercase text-right">{h}</th>
+                          {["Order#","Date","Customer","Items","Revenue","COGS","Profit","Margin%"].map(h => (
+                            <th key={h} className="px-4 py-3 text-xs font-bold text-left text-gray-600 uppercase">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {!pagedOnline.length ? (
-                          <tr><td colSpan={6} className="text-center py-6 text-gray-400">No orders</td></tr>
+                          <tr><td colSpan={8} className="py-6 text-center text-gray-400">No orders</td></tr>
                         ) : (
                           pagedOnline.map(o => (
                             <tr key={o._id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 font-mono text-xs font-bold text-blue-700">{o.orderNumber || o._id.slice(-6).toUpperCase()}</td>
-                              <td className="px-4 py-3 text-gray-700 text-xs">{o.customerName || "—"}</td>
-                              <td className="px-4 py-3 text-right font-bold text-gray-900">{Rs(o.subtotal)}</td>
-                              <td className="px-4 py-3 text-right text-red-600 font-medium">{Rs(o.costOfGoods)}</td>
+                              <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{new Date(o.createdAt).toLocaleDateString('en-PK', {day: '2-digit', month: 'short'})}</td>
+                              <td className="px-4 py-3 text-xs font-medium text-gray-700">{o.customerName || "—"}</td>
+                              <td className="px-4 py-3"><ItemList items={o.items} limit={2} /></td>
+                              <td className="px-4 py-3 font-bold text-right text-gray-900">{Rs(o.subtotal)}</td>
+                              <td className="px-4 py-3 font-medium text-right text-red-600">{Rs(o.costOfGoods)}</td>
                               <td className={`px-4 py-3 text-right font-bold ${o.profit >= 0 ? "text-green-700" : "text-red-600"}`}>{Rs(o.profit)}</td>
                               <td className={`px-4 py-3 text-right font-bold ${o.margin >= 0 ? "text-green-600" : "text-red-500"}`}>{o.margin.toFixed(1)}%</td>
                             </tr>
                           ))
                         )}
                       </tbody>
+                      {pagedOnline.length > 0 && (
+                        <tfoot className="border-t-2 border-blue-100 bg-blue-50">
+                          <tr>
+                            <td colSpan={4} className="px-4 py-3 font-black text-gray-900">TOTAL (Page {onlinePg})</td>
+                            <td className="px-4 py-3 font-black text-right text-blue-700">{Rs(pagedOnline.reduce((a,o) => a+o.subtotal, 0))}</td>
+                            <td className="px-4 py-3 font-black text-right text-red-600">{Rs(pagedOnline.reduce((a,o) => a+o.costOfGoods, 0))}</td>
+                            <td className="px-4 py-3 font-black text-right text-green-700">{Rs(pagedOnline.reduce((a,o) => a+o.profit, 0))}</td>
+                            <td className="px-4 py-3 font-black text-right text-gray-700">{(pagedOnline.reduce((a,o) => a+o.profit, 0) / pagedOnline.reduce((a,o) => a+o.subtotal, 1) * 100).toFixed(1)}%</td>
+                          </tr>
+                        </tfoot>
+                      )}
                     </table>
                   </div>
                   <Pages cur={onlinePg} total={Math.ceil(onlineOrders.length / PER_PAGE)} set={setOnlinePg} />
@@ -662,45 +703,59 @@ export default function ReportsPage() {
             {tab === "pos" && data && (
               <div className="space-y-5">
                 <div className="flex items-center justify-between no-print">
-                  <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2">
-                    <Store className="h-6 w-6 text-green-500" />POS Sales Detailed
+                  <h2 className="flex items-center gap-2 text-2xl font-black text-gray-900">
+                    <Store className="w-6 h-6 text-green-500" />POS Sales Detailed
                   </h2>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <SummaryCard label="Revenue" value={data.breakdown.revenue.pos} color="green" icon={<Store className="h-4 w-4" />} />
-                  <SummaryCard label="COGS" value={data.breakdown.costOfGoods.pos} color="orange" icon={<Package className="h-4 w-4" />} />
-                  <SummaryCard label="Profit" value={data.breakdown.grossProfitByChannel.pos} color="emerald" icon={<TrendingUp className="h-4 w-4" />} />
-                  <SummaryCard label="Transactions" value={data.breakdown.orderMetrics.posTransactions} color="teal" icon={<Receipt className="h-4 w-4" />} isCount={true} />
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                  <SummaryCard label="Revenue" value={data.breakdown.revenue.pos} color="green" icon={<Store className="w-4 h-4" />} />
+                  <SummaryCard label="COGS" value={data.breakdown.costOfGoods.pos} color="orange" icon={<Package className="w-4 h-4" />} />
+                  <SummaryCard label="Profit" value={data.breakdown.grossProfitByChannel.pos} color="emerald" icon={<TrendingUp className="w-4 h-4" />} />
+                  <SummaryCard label="Transactions" value={data.breakdown.orderMetrics.posTransactions} color="teal" icon={<Receipt className="w-4 h-4" />} isCount={true} />
                 </div>
-                <Card className="border-0 shadow-md overflow-hidden">
-                  <div className="bg-green-700 text-white px-5 py-3">
+                <Card className="overflow-hidden border-0 shadow-md">
+                  <div className="px-5 py-3 text-white bg-green-700">
                     <h3 className="font-bold">Transaction Details</h3>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50 border-b border-gray-100">
+                      <thead className="border-b border-gray-100 bg-gray-50">
                         <tr>
-                          {["Sale#","Date","Revenue","COGS","Profit","Margin%"].map(h => (
-                            <th key={h} className="px-4 py-3 font-bold text-gray-600 text-xs uppercase text-right">{h}</th>
+                          {["Sale#","Date & Time","Items","Revenue","GST","COGS","Profit","Margin%"].map(h => (
+                            <th key={h} className="px-4 py-3 text-xs font-bold text-left text-gray-600 uppercase">{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {!pagedPOS.length ? (
-                          <tr><td colSpan={6} className="text-center py-6 text-gray-400">No sales</td></tr>
+                          <tr><td colSpan={8} className="py-6 text-center text-gray-400">No sales</td></tr>
                         ) : (
                           pagedPOS.map(s => (
                             <tr key={s._id} className="hover:bg-gray-50">
                               <td className="px-4 py-3 font-mono text-xs font-bold text-green-700">{s.saleNumber || s._id.slice(-6).toUpperCase()}</td>
-                              <td className="px-4 py-3 text-gray-600 text-xs">{new Date(s.createdAt).toLocaleDateString('en-PK')}</td>
-                              <td className="px-4 py-3 text-right font-bold text-gray-900">{Rs(s.subtotal)}</td>
-                              <td className="px-4 py-3 text-right text-red-600 font-medium">{Rs(s.costOfGoods)}</td>
+                              <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{new Date(s.createdAt).toLocaleString('en-PK', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'})}</td>
+                              <td className="px-4 py-3"><ItemList items={s.items} limit={2} /></td>
+                              <td className="px-4 py-3 font-bold text-right text-gray-900">{Rs(s.subtotal)}</td>
+                              <td className="px-4 py-3 text-right text-gray-600">{Rs(s.gstAmount ?? 0)}</td>
+                              <td className="px-4 py-3 font-medium text-right text-red-600">{Rs(s.costOfGoods)}</td>
                               <td className={`px-4 py-3 text-right font-bold ${s.profit >= 0 ? "text-green-700" : "text-red-600"}`}>{Rs(s.profit)}</td>
                               <td className={`px-4 py-3 text-right font-bold ${s.margin >= 0 ? "text-green-600" : "text-red-500"}`}>{s.margin.toFixed(1)}%</td>
                             </tr>
                           ))
                         )}
                       </tbody>
+                      {pagedPOS.length > 0 && (
+                        <tfoot className="border-t-2 border-green-100 bg-green-50">
+                          <tr>
+                            <td colSpan={3} className="px-4 py-3 font-black text-gray-900">TOTAL (Page {posPg})</td>
+                            <td className="px-4 py-3 font-black text-right text-green-700">{Rs(pagedPOS.reduce((a,s) => a+s.subtotal, 0))}</td>
+                            <td className="px-4 py-3 font-black text-right text-gray-700">{Rs(pagedPOS.reduce((a,s) => a+(s.gstAmount ?? 0), 0))}</td>
+                            <td className="px-4 py-3 font-black text-right text-red-600">{Rs(pagedPOS.reduce((a,s) => a+s.costOfGoods, 0))}</td>
+                            <td className="px-4 py-3 font-black text-right text-green-700">{Rs(pagedPOS.reduce((a,s) => a+s.profit, 0))}</td>
+                            <td className="px-4 py-3 font-black text-right text-gray-700">{(pagedPOS.reduce((a,s) => a+s.profit, 0) / pagedPOS.reduce((a,s) => a+s.subtotal, 1) * 100).toFixed(1)}%</td>
+                          </tr>
+                        </tfoot>
+                      )}
                     </table>
                   </div>
                   <Pages cur={posPg} total={Math.ceil(posSales.length / PER_PAGE)} set={setPosPg} />
@@ -711,8 +766,8 @@ export default function ReportsPage() {
         )}
 
         {error && (
-          <div className="flex items-center gap-3 bg-red-50 border border-red-100 rounded-xl px-5 py-4 text-red-700 no-print">
-            <AlertTriangle className="h-5 w-5 shrink-0" />
+          <div className="flex items-center gap-3 px-5 py-4 text-red-700 border border-red-100 bg-red-50 rounded-xl no-print">
+            <AlertTriangle className="w-5 h-5 shrink-0" />
             <p className="text-sm font-medium">{error}</p>
           </div>
         )}
@@ -737,13 +792,11 @@ function StatCard({ title, value, icon, color, sub }: {
     red: "text-red-700", amber: "text-amber-700", indigo: "text-indigo-700" 
   };
   return (
-    <Card className="p-5 border-0 shadow-md hover:shadow-lg transition-shadow bg-white">
+    <Card className="p-5 transition-shadow bg-white border-0 shadow-md hover:shadow-lg">
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${colors[color]}`}>{icon}</div>
-      <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">{title}</p>
-      <p className={`text-2xl font-black ${vals[color]}`}>
-  Rs. {(value ?? 0).toLocaleString()}
-</p>
-      <p className="text-xs text-gray-500 mt-1 font-medium">{sub}</p>
+      <p className="mb-1 text-xs font-bold tracking-widest text-gray-500 uppercase">{title}</p>
+      <p className={`text-2xl font-black ${vals[color]}`}>Rs. {(value ?? 0).toLocaleString()}</p>
+      <p className="mt-1 text-xs font-medium text-gray-500">{sub}</p>
     </Card>
   );
 }
