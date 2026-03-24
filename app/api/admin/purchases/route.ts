@@ -28,6 +28,18 @@ const PAYMENT_LABEL: Record<string, string> = {
   cheque:    "Cheque",
 };
 
+// FIX: Transaction.source enum is ["cash","bank","easyPaisa","jazzCash","card"]
+// The incoming paymentMethod is always lowercase ("easypaisa", "jazzcash").
+// This map converts to the exact casing the schema requires so Mongoose
+// validation doesn't silently drop the transaction.
+const TRANSACTION_SOURCE: Record<string, string> = {
+  cash:      "cash",
+  bank:      "bank",
+  easypaisa: "easyPaisa",
+  jazzcash:  "jazzCash",
+  cheque:    "cash",   // cheques come from cash float; adjust if needed
+};
+
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
@@ -61,11 +73,7 @@ export async function POST(req: NextRequest) {
     if (!supplierDoc)
       return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
 
-    // ── Hard wallet balance check ──────────────────────────────────────────────
-    // Rule: if admin wants to pay NOW, that money must physically exist in the
-    // selected wallet. We allow recording a balance due (supplier ledger) but
-    // we NEVER let a wallet go negative.
-    // Cheques are external instruments — no wallet bucket is debited, so skip.
+    // ── Hard wallet balance check ─────────────────────────────────────────────
     if (amountPaidNum > 0) {
       const walletField = WALLET_KEY[methodKey];
 
@@ -90,9 +98,9 @@ export async function POST(req: NextRequest) {
                 `Required: Rs ${amountPaidNum.toLocaleString()}`,
                 `Either reduce the amount paid, or record the full order as balance due to the supplier.`,
               ].join(" "),
-              code:         "INSUFFICIENT_WALLET_BALANCE",
+              code:       "INSUFFICIENT_WALLET_BALANCE",
               available,
-              required:     amountPaidNum,
+              required:   amountPaidNum,
               walletField,
             },
             { status: 400 },
@@ -113,9 +121,8 @@ export async function POST(req: NextRequest) {
       const stockBeforePurchase = productDoc.stock ?? 0;
       productDoc.stock += item.quantity;
 
-      // Only overwrite retailPrice when product was completely sold out
       if (stockBeforePurchase === 0) productDoc.retailPrice = item.sellingPrice;
-      productDoc.lastBuyingRate = item.unitCostWithTax;
+      productDoc.lastBuyingRate = item.unitCostWithTax; // full landed cost
       await productDoc.save();
 
       const profitPerUnit = item.sellingPrice - item.unitCostWithTax;
@@ -176,7 +183,7 @@ export async function POST(req: NextRequest) {
     supplierDoc.balance = (supplierDoc.balance || 0) + balanceDueNum;
     await supplierDoc.save();
 
-    // ── Wallet deduction (already validated — safe to deduct) ─────────────────
+    // ── Wallet deduction ─────────────────────────────────────────────────────
     if (amountPaidNum > 0) {
       const walletField = WALLET_KEY[methodKey];
 
@@ -188,11 +195,17 @@ export async function POST(req: NextRequest) {
         await wallet.save();
       }
 
+      // FIX: use TRANSACTION_SOURCE map so the value matches the schema enum
+      // exactly (e.g. "easyPaisa" not "easypaisa", "jazzCash" not "jazzcash").
+      // Previously this would cause Mongoose validation to fail silently,
+      // meaning purchase expense transactions were never saved to the DB.
+      const transactionSource = TRANSACTION_SOURCE[methodKey] ?? "cash";
+
       await new Transaction({
         type:           "expense",
         category:       "Purchase",
         amount:         amountPaidNum,
-        source:         paymentMethod,
+        source:         transactionSource,          // ← fixed
         reference:      purchase._id,
         referenceModel: "Purchase",
         description:    `Purchase from ${supplierDoc.name} – Invoice: ${supplierInvoiceNo || "N/A"}`,
