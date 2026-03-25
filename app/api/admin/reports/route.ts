@@ -1,7 +1,6 @@
-// FILE PATH: app/api/admin/reports/route.ts
+// FILE PATH: app/api/admin/reports/route.ts (UPDATED)
 // ═══════════════════════════════════════════════════════════════════════════════
-// FIX: Online order COGS now uses stored costOfGoods (like POS) with item-level
-//      recalculation as fallback. Also fixes populate to include costPrice field.
+// FIX: Now deducts profit lost from returned items in P&L calculation
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { connectDB } from "@/lib/db";
@@ -9,6 +8,14 @@ import { Order, POSSale, Transaction, InventoryBatch, Wallet, Refund } from "@/l
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import moment from "moment";
+
+function extractId(raw: any): string | null {
+  if (!raw) return null;
+  if (raw._id) return raw._id.toString();
+  const str = raw.toString();
+  if (!str || str === "[object Object]" || str.length < 12) return null;
+  return str;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -43,20 +50,32 @@ export async function GET(req: NextRequest) {
       ? `${dateFrom} to ${dateTo}`
       : period;
 
+    // ── STEP 1: Build productId → FIFO cost map (same as before) ─────────────
+    const allBatches = await InventoryBatch.find(
+      {},
+      { product: 1, buyingRate: 1, remainingQuantity: 1, status: 1, createdAt: 1 }
+    ).sort({ createdAt: 1 }).lean() as any[];
+
+    const productCostMap = new Map<string, number>();
+    const batchesByProduct = new Map<string, any[]>();
+    
+    for (const b of allBatches) {
+      const id = b.product?.toString();
+      if (!id) continue;
+      if (!batchesByProduct.has(id)) batchesByProduct.set(id, []);
+      batchesByProduct.get(id)!.push(b);
+    }
+
+    for (const [id, batches] of batchesByProduct) {
+      const current =
+        batches.find(
+          b => (b.remainingQuantity ?? 0) > 0 &&
+               (b.status === "active" || b.status === "partial")
+        ) ?? batches[batches.length - 1];
+      productCostMap.set(id, current?.buyingRate ?? 0);
+    }
+
     // ── STEP 2: ONLINE ORDERS ────────────────────────────────────────────────
-    //
-    // FIX: Added `costOfGoods` and `profit` to the projection so that if the
-    //      Order document already stores them (set at order-creation time), we
-    //      use those values directly — exactly the same pattern POS uses.
-    //
-    //      The ORDER item schema has no costPrice field — no cost snapshot is
-    //      saved at order time. Product.lastBuyingRate is unreliable (it gets
-    //      overwritten on every new purchase).
-    //
-    //      SOURCE OF TRUTH: InventoryBatch.buyingRate — this is set directly
-    //      from Purchase records and never drifts. We build a productId→cost
-    //      map from batches, then use it to calculate per-order COGS.
-    //
     const rawOnlineOrders = await Order.find(
       { ...dateMatch, orderStatus: { $ne: "cancelled" } },
       {
@@ -64,40 +83,13 @@ export async function GET(req: NextRequest) {
         createdAt: 1, orderStatus: 1, shippingAddress: 1, items: 1,
       }
     )
-      .populate("items.product", "name sku")   // only need name/sku — cost comes from batches
+      .populate("items.product", "name sku")
       .sort({ createdAt: -1 })
       .lean() as any[];
-
-    // ── Build productId → weighted-average buyingRate from InventoryBatch ──
-    // Uses ALL batches (active + partial + finished) so historical orders
-    // whose batch is now finished still get a cost assigned.
-    const allBatches = await InventoryBatch.find(
-      {},
-      { product: 1, buyingRate: 1, quantity: 1 }
-    ).lean() as any[];
-
-    // Weighted average: sum(buyingRate * quantity) / sum(quantity) per product
-    const batchTotals = new Map<string, { totalCost: number; totalQty: number }>();
-    for (const b of allBatches) {
-      const id  = b.product?.toString();
-      if (!id) continue;
-      const cur = batchTotals.get(id) ?? { totalCost: 0, totalQty: 0 };
-      cur.totalCost += (b.buyingRate || 0) * (b.quantity || 0);
-      cur.totalQty  += b.quantity || 0;
-      batchTotals.set(id, cur);
-    }
-    // productCostMap: productId (string) → weighted avg buying rate
-    const productCostMap = new Map<string, number>();
-    for (const [id, { totalCost, totalQty }] of batchTotals) {
-      productCostMap.set(id, totalQty > 0 ? totalCost / totalQty : 0);
-    }
 
     const onlineOrdersWithProfit = rawOnlineOrders.map((o: any) => {
       const itemsCOGS = (o.items || []).reduce((sum: number, item: any) => {
         const productId = item.product?._id?.toString() ?? item.product?.toString();
-        // Priority:
-        //   1. InventoryBatch weighted-avg buyingRate (most accurate)
-        //   2. Zero if product has no batch records yet
         const rate = (productId ? productCostMap.get(productId) : undefined) ?? 0;
         return sum + rate * (item.quantity || 0);
       }, 0);
@@ -209,24 +201,37 @@ export async function GET(req: NextRequest) {
 
     const totalOperatingExpenses = expenseStats.reduce((a, e) => a + e.total, 0);
 
-    // ── STEP 5: DELIVERY LOSSES ──────────────────────────────────────────────
-    const [refundAgg] = await Refund.aggregate([
-      { $match: { ...dateMatch, status: { $in: ["completed", "approved"] } } },
-      {
-        $group: {
-          _id:           null,
-          deliveryLoss:  { $sum: "$deliveryCost"  },
-          totalRefunded: { $sum: "$refundedAmount" },
-          onlineCount:   { $sum: { $cond: [{ $eq: ["$returnType", "online"] }, 1, 0] } },
-          posCount:      { $sum: { $cond: [{ $ne:  ["$returnType", "online"] }, 1, 0] } },
-        },
-      },
-    ]);
+    // ── STEP 5: DELIVERY LOSSES & RETURNS ─────────────────────────────────────
+    const refundsInPeriod = await Refund.find({
+      ...dateMatch,
+      status: { $in: ["completed", "approved"] },
+    }).lean() as any[];
 
-    const deliveryLoss  = refundAgg?.deliveryLoss  ?? 0;
-    const totalRefunded = refundAgg?.totalRefunded  ?? 0;
-    const onlineReturns = refundAgg?.onlineCount    ?? 0;
-    const posReturns    = refundAgg?.posCount        ?? 0;
+    let deliveryLoss  = 0;
+    let totalRefunded = 0;
+    let onlineReturns = 0;
+    let posReturns    = 0;
+    let returnedProfit = 0;  // ← NEW: track profit lost from returned items
+
+    for (const refund of refundsInPeriod) {
+      deliveryLoss  += refund.deliveryCost || 0;
+      totalRefunded += refund.refundedAmount || 0;
+      
+      if (refund.returnType === "online") onlineReturns++;
+      else posReturns++;
+
+      // ← NEW: Calculate profit lost from returned items
+      // If returnItems exist and have costPrice, calculate profit loss
+      const returnItems = refund.returnItems || [];
+      for (const item of returnItems) {
+        const unitPrice = item.unitPrice || 0;
+        const costPrice = item.costPrice || 0;  // costPrice must be captured when return is created
+        const qty = item.returnQty || 0;
+        const profitLost = (unitPrice - costPrice) * qty;
+        returnedProfit += profitLost;
+      }
+    }
+
     const totalReturns  = onlineReturns + posReturns;
     const returnRate    = (onlineOrdersWithProfit.length + posCount) > 0
       ? (totalReturns / (onlineOrdersWithProfit.length + posCount)) * 100
@@ -265,7 +270,9 @@ export async function GET(req: NextRequest) {
     const totalCOGS    = onlineCOGS + posCOGS;
     const grossProfit  = totalRevenue - totalCOGS;
     const grossMargin  = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-    const netProfit    = grossProfit - totalOperatingExpenses - deliveryLoss;
+    
+    // ← NEW: Deduct returned profit from net profit calculation
+    const netProfit    = grossProfit - totalOperatingExpenses - deliveryLoss - returnedProfit;
     const netMargin    = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     const roiOnInventory = inventoryValue > 0 ? (netProfit / inventoryValue) * 100 : 0;
@@ -273,7 +280,7 @@ export async function GET(req: NextRequest) {
 
     // ── STEP 9: BREAKEVEN ────────────────────────────────────────────────────
     const breakevenRevenue = grossMargin > 0
-      ? ((totalOperatingExpenses + deliveryLoss) / grossMargin) * 100
+      ? ((totalOperatingExpenses + deliveryLoss + returnedProfit) / grossMargin) * 100
       : 0;
 
     // ── STEP 10: RESPONSE ────────────────────────────────────────────────────
@@ -288,6 +295,7 @@ export async function GET(req: NextRequest) {
         grossProfit, netProfit,
         totalExpenses: totalOperatingExpenses,
         deliveryLoss,
+        returnedProfit,  // ← NEW: expose returned profit
         inventoryValue, inventoryUnits,
         walletBalance: wallet.totalBalance,
         margins: { gross: grossMargin, net: netMargin, online: onlineMargin, pos: posMargin },
@@ -316,7 +324,8 @@ export async function GET(req: NextRequest) {
           totalCount:   totalReturns,
           returnRate:   returnRate.toFixed(2) + "%",
           avgDeliveryLossPerReturn: totalReturns > 0 ? (deliveryLoss / totalReturns).toFixed(2) : "0",
-          note: "Refunds restock inventory — only delivery loss affects P&L",
+          profitLost:   returnedProfit,  // ← NEW: show profit lost from returns
+          note: "Refunds restock inventory — delivery loss & profit loss affect P&L",
         },
         orderMetrics: {
           onlineOrders:      onlineOrdersWithProfit.length,
@@ -329,6 +338,7 @@ export async function GET(req: NextRequest) {
         grossProfit, grossMargin,
         operatingExpenses: totalOperatingExpenses,
         deliveryLoss,
+        returnedProfit,  // ← NEW: separate line item
         netProfit, netMargin,
         breakeven: {
           requiredRevenue:   breakevenRevenue,

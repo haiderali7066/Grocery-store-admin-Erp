@@ -1,4 +1,8 @@
-// FILE PATH: app/admin/refunds/page.tsx
+// FILE PATH: app/admin/refunds/page.tsx (UPDATED)
+// ═══════════════════════════════════════════════════════════════════════════════
+// Updated to show costPrice, profitPerUnit, and total profit lost from returns
+// ═══════════════════════════════════════════════════════════════════════════════
+
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -11,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import {
   CheckCircle, XCircle, Clock, Eye, Plus, Package, ShoppingBag,
-  TrendingDown, RotateCcw, Search, AlertCircle, Ban, Truck,
+  TrendingDown, RotateCcw, Search, AlertCircle, Ban, Truck, TrendingUp,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
@@ -23,6 +27,8 @@ interface ReturnItemRecord {
   name: string;
   returnQty: number;
   unitPrice: number;
+  costPrice?: number;                    // ← NEW
+  profitPerUnit?: number;                // ← NEW
   lineTotal: number;
   restock: boolean;
   productId?: string;
@@ -68,11 +74,11 @@ function StatusBadge({ status }: { status: string }) {
 
 function TypeBadge({ type }: { type: string }) {
   return type === "online" ? (
-    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-800">
+    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-purple-800 bg-purple-100 rounded-full">
       <ShoppingBag size={12} /> Online
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-800">
+    <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold text-orange-800 bg-orange-100 rounded-full">
       <Package size={12} /> POS Manual
     </span>
   );
@@ -93,7 +99,7 @@ export default function RefundsPage() {
   const [showDetail, setShowDetail] = useState(false);
   const [approvalNotes, setApprovalNotes] = useState("");
   const [approvalAmount, setApprovalAmount] = useState("");
-  const [deliveryLoss, setDeliveryLoss] = useState("0");   // ← NEW
+  const [deliveryLoss, setDeliveryLoss] = useState("0");
   const [actionLoading, setActionLoading] = useState(false);
 
   // Easy Return dialog
@@ -244,6 +250,17 @@ export default function RefundsPage() {
     setReturnNotes("");
   };
 
+  // ── Calculate profit lost ──────────────────────────────────────────────────
+  // ← NEW: Helper to calculate total profit lost from returned items
+
+  const calculateProfitLost = (items?: ReturnItemRecord[]): number => {
+    if (!items?.length) return 0;
+    return items.reduce((sum, item) => {
+      const profit = (item.profitPerUnit ?? 0) * (item.returnQty || 0);
+      return sum + profit;
+    }, 0);
+  };
+
   // ── Approve ────────────────────────────────────────────────────────────────
 
   const handleApprove = async () => {
@@ -255,7 +272,7 @@ export default function RefundsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           approvalAmount: parseFloat(approvalAmount),
-          deliveryLoss:   parseFloat(deliveryLoss) || 0,   // ← send delivery loss
+          deliveryLoss:   parseFloat(deliveryLoss) || 0,
           notes:          approvalNotes,
         }),
       });
@@ -295,24 +312,18 @@ export default function RefundsPage() {
     setShowDetail(true);
     setApprovalNotes("");
 
-    // Auto-pick delivery cost:
-    //   1. Use the actual shippingCost from the populated order (most accurate)
-    //   2. Fall back to whatever was stored on the refund record (e.g. if already processed)
-    //   3. Default 0 for POS / when no shipping was charged
     const autoDeliveryLoss =
-      refund.order?.shippingCost       // real shipping from order
-      ?? refund.deliveryCost           // previously stored value
+      refund.order?.shippingCost
+      ?? refund.deliveryCost
       ?? 0;
 
-    // approvalAmount = items total only (delivery loss is a separate expense,
-    // not deducted from what the customer gets back)
     setDeliveryLoss(String(autoDeliveryLoss));
     setApprovalAmount(String(refund.requestedAmount));
   };
 
   if (loading) return (
     <div className="p-6 text-center">
-      <div className="animate-spin h-12 w-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto mb-4" />
+      <div className="w-12 h-12 mx-auto mb-4 border-4 border-blue-500 rounded-full animate-spin border-t-transparent" />
       <p className="text-gray-600">Loading refund requests...</p>
     </div>
   );
@@ -320,11 +331,11 @@ export default function RefundsPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen p-6 bg-gray-50">
+      <div className="mx-auto max-w-7xl">
 
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Returns & Refunds</h1>
             <p className="text-gray-600">Manage online refunds and POS returns</p>
@@ -333,19 +344,19 @@ export default function RefundsPage() {
           <Dialog open={showEasyReturn} onOpenChange={open => { if (!open) resetEasyReturn(); else setShowEasyReturn(true); }}>
             <DialogTrigger asChild>
               <Button className="bg-orange-600 hover:bg-orange-700">
-                <Plus className="h-4 w-4 mr-2" /> Easy POS Return
+                <Plus className="w-4 h-4 mr-2" /> Easy POS Return
               </Button>
             </DialogTrigger>
             <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <RotateCcw className="h-5 w-5 text-orange-600" /> Easy Return — Search & Select Items
+                  <RotateCcw className="w-5 h-5 text-orange-600" /> Easy Return — Search & Select Items
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="space-y-6 mt-4">
-                <Card className="p-4 bg-blue-50 border-blue-200">
-                  <label className="block text-sm font-bold mb-2">Step 1: Find Order</label>
+              <div className="mt-4 space-y-6">
+                <Card className="p-4 border-blue-200 bg-blue-50">
+                  <label className="block mb-2 text-sm font-bold">Step 1: Find Order</label>
                   <div className="flex gap-2">
                     <Input
                       value={searchOrderNumber}
@@ -355,14 +366,14 @@ export default function RefundsPage() {
                       onKeyDown={e => e.key === "Enter" && handleSearchOrder()}
                     />
                     <Button onClick={handleSearchOrder} disabled={isSearching || !searchOrderNumber.trim()} className="bg-blue-600 hover:bg-blue-700">
-                      <Search className="h-4 w-4 mr-2" />{isSearching ? "Searching…" : "Search"}
+                      <Search className="w-4 h-4 mr-2" />{isSearching ? "Searching…" : "Search"}
                     </Button>
                   </div>
                 </Card>
 
                 {searchedOrder && (
                   <>
-                    <Card className="p-4 bg-green-50 border-green-200">
+                    <Card className="p-4 border-green-200 bg-green-50">
                       <div className="flex items-center justify-between mb-3">
                         <div>
                           <h3 className="text-lg font-bold text-green-900">{searchedOrder.orderNumber}</h3>
@@ -384,7 +395,7 @@ export default function RefundsPage() {
                         </div>
                       )}
 
-                      <label className="block text-sm font-bold mb-2 text-green-900">Step 2: Select Items to Return</label>
+                      <label className="block mb-2 text-sm font-bold text-green-900">Step 2: Select Items to Return</label>
 
                       <div className="space-y-2">
                         {searchedOrder.items.map((item: any, index: number) => {
@@ -402,19 +413,19 @@ export default function RefundsPage() {
                                   : "border-gray-200 hover:border-orange-300 cursor-pointer"
                               }`}
                             >
-                              <div className="shrink-0 w-5 h-5 flex items-center justify-center">
+                              <div className="flex items-center justify-center w-5 h-5 shrink-0">
                                 {returned
-                                  ? <Ban className="h-5 w-5 text-gray-400" />
-                                  : <input type="checkbox" checked={checked} readOnly className="w-5 h-5 accent-orange-500 pointer-events-none" />
+                                  ? <Ban className="w-5 h-5 text-gray-400" />
+                                  : <input type="checkbox" checked={checked} readOnly className="w-5 h-5 pointer-events-none accent-orange-500" />
                                 }
                               </div>
-                              <div className="flex-1 grid grid-cols-12 gap-2 items-center">
+                              <div className="grid items-center flex-1 grid-cols-12 gap-2">
                                 <div className="col-span-5">
                                   <p className={`font-semibold ${returned ? "line-through text-gray-400" : ""}`}>{item.name}</p>
                                   {returned && <p className="text-xs font-bold text-red-500 mt-0.5">Already returned</p>}
                                 </div>
-                                <div className="col-span-2 text-center text-sm text-gray-600">Qty: {item.quantity}</div>
-                                <div className="col-span-2 text-center text-sm text-gray-600">@ Rs. {item.price?.toLocaleString()}</div>
+                                <div className="col-span-2 text-sm text-center text-gray-600">Qty: {item.quantity}</div>
+                                <div className="col-span-2 text-sm text-center text-gray-600">@ Rs. {item.price?.toLocaleString()}</div>
                                 <div className="col-span-3 text-right">
                                   <p className={`font-bold ${returned ? "text-gray-400" : "text-green-700"}`}>Rs. {item.subtotal?.toLocaleString()}</p>
                                 </div>
@@ -425,29 +436,29 @@ export default function RefundsPage() {
                       </div>
 
                       {returnableCount === 0 && (
-                        <div className="mt-4 flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 font-semibold text-sm">
-                          <XCircle className="h-5 w-5 shrink-0" /> All items have already been returned.
+                        <div className="flex items-center gap-2 px-4 py-3 mt-4 text-sm font-semibold text-red-700 border border-red-200 bg-red-50 rounded-xl">
+                          <XCircle className="w-5 h-5 shrink-0" /> All items have already been returned.
                         </div>
                       )}
 
                       {selectedItems.size > 0 && (
-                        <div className="mt-4 pt-4 border-t border-green-300">
-                          <div className="flex justify-between items-center">
+                        <div className="pt-4 mt-4 border-t border-green-300">
+                          <div className="flex items-center justify-between">
                             <span className="font-bold text-green-900">{selectedItems.size} item(s) selected:</span>
                             <span className="text-2xl font-black text-orange-700">Rs. {selectedTotal.toLocaleString()}</span>
                           </div>
-                          <p className="text-xs text-green-700 mt-1">✓ Stock restocked · Wallet deducted</p>
+                          <p className="mt-1 text-xs text-green-700">✓ Stock restocked · Wallet deducted</p>
                         </div>
                       )}
                     </Card>
 
                     {returnableCount > 0 && (
                       <Card className="p-4 bg-gray-50">
-                        <label className="block text-sm font-bold mb-3">Step 3: Return Details</label>
+                        <label className="block mb-3 text-sm font-bold">Step 3: Return Details</label>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-xs font-medium mb-1">Reason *</label>
-                            <select value={returnReason} onChange={e => setReturnReason(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm bg-white">
+                            <label className="block mb-1 text-xs font-medium">Reason *</label>
+                            <select value={returnReason} onChange={e => setReturnReason(e.target.value)} className="w-full px-3 py-2 text-sm bg-white border rounded-lg">
                               <option value="defective">Defective Product</option>
                               <option value="wrong_item">Wrong Item</option>
                               <option value="expired">Expired</option>
@@ -456,12 +467,12 @@ export default function RefundsPage() {
                             </select>
                           </div>
                           <div>
-                            <label className="block text-xs font-medium mb-1">Refund Method</label>
+                            <label className="block mb-1 text-xs font-medium">Refund Method</label>
                             <Input value={searchedOrder.paymentMethod?.toUpperCase() || "CASH"} disabled className="bg-gray-200" />
                           </div>
                         </div>
                         <div className="mt-3">
-                          <label className="block text-xs font-medium mb-1">Notes (Optional)</label>
+                          <label className="block mb-1 text-xs font-medium">Notes (Optional)</label>
                           <Textarea value={returnNotes} onChange={e => setReturnNotes(e.target.value)} rows={2} placeholder="Additional notes..." />
                         </div>
                       </Card>
@@ -471,7 +482,7 @@ export default function RefundsPage() {
                       <Button
                         onClick={handleEasyReturn}
                         disabled={actionLoading || selectedItems.size === 0}
-                        className="w-full bg-orange-600 hover:bg-orange-700 py-6 text-lg font-bold disabled:opacity-50"
+                        className="w-full py-6 text-lg font-bold bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
                       >
                         {actionLoading ? "Processing…" : `✓ Process Return & Restock (${selectedItems.size} items · Rs. ${selectedTotal.toLocaleString()})`}
                       </Button>
@@ -480,8 +491,8 @@ export default function RefundsPage() {
                 )}
 
                 {!searchedOrder && !isSearching && (
-                  <div className="text-center py-8 text-gray-400">
-                    <Search className="h-12 w-12 mx-auto mb-3 opacity-40" />
+                  <div className="py-8 text-center text-gray-400">
+                    <Search className="w-12 h-12 mx-auto mb-3 opacity-40" />
                     <p className="text-sm">Enter a sale or order number above to get started</p>
                   </div>
                 )}
@@ -491,7 +502,7 @@ export default function RefundsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 gap-4 mb-6 md:grid-cols-4">
           {[
             { label: "Total Pending",  val: refunds.filter(r => r.status === "pending").length,                                                                               color: "text-yellow-600", Icon: Clock        },
             { label: "Online Refunds", val: refunds.filter(r => r.returnType === "online").length,                                                                            color: "text-purple-600", Icon: ShoppingBag  },
@@ -509,9 +520,9 @@ export default function RefundsPage() {
 
         {/* Filters */}
         <Card className="p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Status</label>
+              <label className="block mb-1 text-sm font-medium">Status</label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -524,7 +535,7 @@ export default function RefundsPage() {
               </Select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Type</label>
+              <label className="block mb-1 text-sm font-medium">Type</label>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -535,7 +546,7 @@ export default function RefundsPage() {
               </Select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Search</label>
+              <label className="block mb-1 text-sm font-medium">Search</label>
               <Input placeholder="Order number or reason..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
           </div>
@@ -544,39 +555,42 @@ export default function RefundsPage() {
         {/* Refund List */}
         {filteredRefunds.length > 0 ? (
           <div className="space-y-4">
-            {filteredRefunds.map(refund => (
-              <Card key={refund._id} className="p-4 hover:shadow-lg transition">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-lg">{refund.order?.orderNumber || refund.orderNumber || "N/A"}</h3>
-                      <StatusBadge status={refund.status} />
-                      <TypeBadge type={refund.returnType} />
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-                      <div><p className="text-gray-500">Requested</p><p className="font-semibold text-red-600">Rs {fmt(refund.requestedAmount)}</p></div>
-                      {refund.refundedAmount ? <div><p className="text-gray-500">Refunded</p><p className="font-semibold text-green-600">Rs {fmt(refund.refundedAmount)}</p></div> : null}
-                      {refund.status !== "rejected" && refund.deliveryCost && refund.deliveryCost > 0 ? <div><p className="text-gray-500">Delivery Loss</p><p className="font-semibold text-orange-600">Rs {fmt(refund.deliveryCost)}</p></div> : null}
-                      <div><p className="text-gray-500">Reason</p><p className="font-semibold capitalize">{refund.reason.replace(/_/g, " ")}</p></div>
-                      <div><p className="text-gray-500">Date</p><p className="font-semibold">{new Date(refund.createdAt).toLocaleDateString()}</p></div>
-                    </div>
-                    {refund.returnItems && refund.returnItems.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {refund.returnItems.map((it, idx) => (
-                          <span key={idx} className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 text-xs px-2.5 py-1 rounded-full font-medium">
-                            ↩ {it.name} × {it.returnQty}
-                            {it.restock && <span className="text-green-600 font-bold ml-1">✓restocked</span>}
-                          </span>
-                        ))}
+            {filteredRefunds.map(refund => {
+              const profitLost = calculateProfitLost(refund.returnItems);  // ← NEW
+              return (
+                <Card key={refund._id} className="p-4 transition hover:shadow-lg">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-3 mb-2">
+                        <h3 className="text-lg font-semibold">{refund.order?.orderNumber || refund.orderNumber || "N/A"}</h3>
+                        <StatusBadge status={refund.status} />
+                        <TypeBadge type={refund.returnType} />
                       </div>
-                    )}
+                      <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-5">
+                        <div><p className="text-gray-500">Requested</p><p className="font-semibold text-red-600">Rs {fmt(refund.requestedAmount)}</p></div>
+                        {refund.refundedAmount ? <div><p className="text-gray-500">Refunded</p><p className="font-semibold text-green-600">Rs {fmt(refund.refundedAmount)}</p></div> : null}
+                        {refund.status !== "rejected" && refund.deliveryCost && refund.deliveryCost > 0 ? <div><p className="text-gray-500">Delivery Loss</p><p className="font-semibold text-orange-600">Rs {fmt(refund.deliveryCost)}</p></div> : null}
+                        {profitLost > 0 && <div><p className="flex items-center gap-1 text-gray-500"><TrendingUp className="w-3 h-3" /> Profit Loss</p><p className="font-semibold text-orange-700">Rs {fmt(profitLost)}</p></div>}
+                        <div><p className="text-gray-500">Reason</p><p className="font-semibold capitalize">{refund.reason.replace(/_/g, " ")}</p></div>
+                      </div>
+                      {refund.returnItems && refund.returnItems.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {refund.returnItems.map((it, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200 text-xs px-2.5 py-1 rounded-full font-medium">
+                              ↩ {it.name} × {it.returnQty}
+                              {it.restock && <span className="ml-1 font-bold text-green-600">✓restocked</span>}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Button onClick={() => openDetail(refund)} variant="outline" size="sm">
+                      <Eye size={16} className="mr-2" /> View
+                    </Button>
                   </div>
-                  <Button onClick={() => openDetail(refund)} variant="outline" size="sm">
-                    <Eye size={16} className="mr-2" /> View
-                  </Button>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         ) : (
           <Card className="p-8 text-center"><p className="text-gray-500">No refund requests found</p></Card>
@@ -588,18 +602,18 @@ export default function RefundsPage() {
             <DialogHeader><DialogTitle>Refund Request Details</DialogTitle></DialogHeader>
             {selectedRefund && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-gray-50">
                   <div><p className="text-sm text-gray-600">Order Number</p><p className="font-semibold">{selectedRefund.order?.orderNumber || selectedRefund.orderNumber}</p></div>
                   <div><p className="text-sm text-gray-600">Type</p><TypeBadge type={selectedRefund.returnType} /></div>
                   <div><p className="text-sm text-gray-600">Items Subtotal</p><p className="font-semibold text-red-600">Rs {fmt(selectedRefund.requestedAmount)}</p></div>
                   <div><p className="text-sm text-gray-600">Order Total</p><p className="font-semibold text-gray-900">Rs {fmt(selectedRefund.order?.total ?? selectedRefund.requestedAmount)}</p></div>
                   {selectedRefund.returnType === "online" && (
-                    <div className="col-span-2 flex items-center gap-6 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
+                    <div className="flex items-center col-span-2 gap-6 px-3 py-2 border border-orange-100 rounded-lg bg-orange-50">
                       <div>
                         <p className="text-xs text-gray-500">Shipping charged to customer</p>
                         <p className="font-bold text-orange-700">Rs {fmt(selectedRefund.order?.shippingCost ?? 0)}</p>
                       </div>
-                      <p className="text-xs text-gray-400 flex-1">
+                      <p className="flex-1 text-xs text-gray-400">
                         ← auto-filled as Delivery Loss below. Edit if the actual courier cost differs.
                       </p>
                     </div>
@@ -609,40 +623,45 @@ export default function RefundsPage() {
                   <div><p className="text-sm text-gray-600">Date</p><p className="font-semibold">{new Date(selectedRefund.createdAt).toLocaleDateString()}</p></div>
                 </div>
 
-                {/* Items table — show returnItems if stored, else fall back to order.items */}
+                {/* Items table — UPDATED to show costPrice & profitPerUnit */}
                 {(() => {
-                  // Use returnItems from the refund doc (has restock info),
-                  // fall back to order.items for freshly created requests
-                  const rows: { name: string; qty: number; price: number; total: number; restock: boolean }[] =
+                  const rows: { name: string; qty: number; price: number; costPrice: number; profitPerUnit: number; total: number; restock: boolean }[] =
                     (selectedRefund.returnItems?.length ?? 0) > 0
                       ? (selectedRefund.returnItems!.map(it => ({
                           name: it.name, qty: it.returnQty, price: it.unitPrice,
+                          costPrice: it.costPrice ?? 0,
+                          profitPerUnit: it.profitPerUnit ?? (it.unitPrice - (it.costPrice ?? 0)),
                           total: it.lineTotal, restock: it.restock,
                         })))
                       : ((selectedRefund.order?.items ?? []).map((it: any) => ({
                           name: it.name || "Item", qty: it.quantity || 0,
-                          price: it.price || 0, total: it.subtotal || (it.price * it.quantity) || 0,
+                          price: it.price || 0, costPrice: 0, profitPerUnit: 0,
+                          total: it.subtotal || (it.price * it.quantity) || 0,
                           restock: true,
                         })));
 
                   if (!rows.length) return null;
                   const hasRestockCol = selectedRefund.returnItems?.length > 0;
+                  const hasCostCol = rows.some(r => r.costPrice > 0 || r.profitPerUnit > 0);
                   const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+                  const profitLost = rows.reduce((s, r) => s + (r.profitPerUnit * r.qty), 0);  // ← NEW
 
                   return (
                     <div>
-                      <p className="text-sm font-bold text-gray-700 mb-2">
+                      <p className="mb-2 text-sm font-bold text-gray-700">
                         {hasRestockCol ? "Returned Items:" : "Order Items (to be returned):"}
                       </p>
-                      <div className="border rounded-xl overflow-hidden">
+                      <div className="overflow-hidden border rounded-xl">
                         <table className="w-full text-sm">
-                          <thead className="bg-gray-50 border-b">
+                          <thead className="border-b bg-gray-50">
                             <tr>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Item</th>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Qty</th>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Unit Price</th>
-                              <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Line Total</th>
-                              {hasRestockCol && <th className="px-3 py-2 text-left text-xs font-bold text-gray-500 uppercase">Restocked</th>}
+                              <th className="px-3 py-2 text-xs font-bold text-left text-gray-500 uppercase">Item</th>
+                              <th className="px-3 py-2 text-xs font-bold text-left text-gray-500 uppercase">Qty</th>
+                              <th className="px-3 py-2 text-xs font-bold text-left text-gray-500 uppercase">Sell</th>
+                              {hasCostCol && <th className="px-3 py-2 text-xs font-bold text-left text-gray-500 uppercase">Cost</th>}
+                              {hasCostCol && <th className="px-3 py-2 text-xs font-bold text-left text-gray-500 uppercase">Profit/Unit</th>}
+                              <th className="px-3 py-2 text-xs font-bold text-left text-gray-500 uppercase">Line Total</th>
+                              {hasRestockCol && <th className="px-3 py-2 text-xs font-bold text-left text-gray-500 uppercase">Restocked</th>}
                             </tr>
                           </thead>
                           <tbody className="divide-y">
@@ -651,40 +670,60 @@ export default function RefundsPage() {
                                 <td className="px-3 py-2 font-medium">{r.name}</td>
                                 <td className="px-3 py-2">{r.qty}</td>
                                 <td className="px-3 py-2">Rs {fmt(r.price)}</td>
+                                {hasCostCol && <td className="px-3 py-2 text-gray-600">Rs {fmt(r.costPrice)}</td>}
+                                {hasCostCol && (
+                                  <td className="px-3 py-2">
+                                    {r.profitPerUnit > 0 ? (
+                                      <span className="font-semibold text-green-700">Rs {fmt(r.profitPerUnit)}</span>
+                                    ) : (
+                                      <span className="text-gray-400">–</span>
+                                    )}
+                                  </td>
+                                )}
                                 <td className="px-3 py-2 font-bold text-green-700">Rs {fmt(r.total)}</td>
                                 {hasRestockCol && (
                                   <td className="px-3 py-2">
                                     {r.restock
-                                      ? <span className="text-green-600 text-xs font-semibold">✓ Yes</span>
-                                      : <span className="text-gray-400 text-xs">No</span>}
+                                      ? <span className="text-xs font-semibold text-green-600">✓ Yes</span>
+                                      : <span className="text-xs text-gray-400">No</span>}
                                   </td>
                                 )}
                               </tr>
                             ))}
                           </tbody>
-                          <tfoot className="bg-orange-50 border-t">
+                          <tfoot className="border-t bg-orange-50">
                             <tr>
-                              <td colSpan={hasRestockCol ? 3 : 3} className="px-3 py-2 text-right text-sm font-bold text-gray-700">
+                              <td colSpan={hasCostCol ? 2 : 2} className="px-3 py-2 text-sm font-bold text-right text-gray-700">
                                 Items subtotal:
                               </td>
-                              <td colSpan={hasRestockCol ? 2 : 1} className="px-3 py-2 text-base font-black text-orange-700">
+                              <td colSpan={hasCostCol ? 4 : 3} className="px-3 py-2 text-base font-black text-orange-700">
                                 Rs {fmt(grandTotal)}
                               </td>
                             </tr>
+                            {hasCostCol && profitLost > 0 && (
+                              <tr className="bg-red-50">
+                                <td colSpan={2} className="flex items-center justify-end gap-1 px-3 py-2 text-sm font-bold text-right text-red-700">
+                                  <TrendingUp className="h-3.5 w-3.5" /> Profit lost:
+                                </td>
+                                <td colSpan={4} className="px-3 py-2 text-base font-black text-red-700">
+                                  Rs {fmt(profitLost)}
+                                </td>
+                              </tr>
+                            )}
                             {selectedRefund.returnType === "online" && (selectedRefund.order?.shippingCost ?? 0) > 0 && (
                               <tr className="bg-orange-100">
-                                <td colSpan={hasRestockCol ? 3 : 3} className="px-3 py-2 text-right text-sm font-bold text-orange-700 flex items-center justify-end gap-1">
+                                <td colSpan={hasCostCol ? 2 : 2} className="flex items-center justify-end gap-1 px-3 py-2 text-sm font-bold text-right text-orange-700">
                                   <Truck className="h-3.5 w-3.5" /> Shipping cost:
                                 </td>
-                                <td colSpan={hasRestockCol ? 2 : 1} className="px-3 py-2 text-base font-black text-orange-700">
+                                <td colSpan={hasCostCol ? 4 : 3} className="px-3 py-2 text-base font-black text-orange-700">
                                   Rs {fmt(selectedRefund.order?.shippingCost ?? 0)}
                                 </td>
                               </tr>
                             )}
                             {selectedRefund.returnType === "online" && (
                               <tr className="bg-blue-50">
-                                <td colSpan={hasRestockCol ? 3 : 3} className="px-3 py-2 text-right text-sm font-black text-blue-800">Order total paid:</td>
-                                <td colSpan={hasRestockCol ? 2 : 1} className="px-3 py-2 text-base font-black text-blue-800">
+                                <td colSpan={hasCostCol ? 2 : 2} className="px-3 py-2 text-sm font-black text-right text-blue-800">Order total paid:</td>
+                                <td colSpan={hasCostCol ? 4 : 3} className="px-3 py-2 text-base font-black text-blue-800">
                                   Rs {fmt(selectedRefund.order?.total ?? grandTotal)}
                                 </td>
                               </tr>
@@ -701,7 +740,7 @@ export default function RefundsPage() {
                     {/* ── Approval inputs ── */}
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium mb-1">
+                        <label className="block mb-1 text-sm font-medium">
                           Net Refund Amount (Rs) <span className="text-red-500">*</span>
                         </label>
                         <Input
@@ -710,12 +749,11 @@ export default function RefundsPage() {
                           onChange={e => setApprovalAmount(e.target.value)}
                           placeholder="Amount to refund to customer"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Amount actually credited back to customer</p>
+                        <p className="mt-1 text-xs text-gray-500">Amount actually credited back to customer</p>
                       </div>
 
-                      {/* Delivery loss — shown for all but especially useful for online */}
                       <div>
-                        <label className="block text-sm font-medium mb-1 flex items-center gap-1">
+                        <label className="flex items-center block gap-1 mb-1 text-sm font-medium">
                           <Truck className="h-3.5 w-3.5 text-orange-500" />
                           Delivery Loss (Rs)
                         </label>
@@ -726,7 +764,7 @@ export default function RefundsPage() {
                           placeholder="0"
                           className={parseFloat(deliveryLoss) > 0 ? "border-orange-400" : ""}
                         />
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="mt-1 text-xs text-gray-500">
                           {selectedRefund.returnType === "online"
                             ? "Delivery cost borne by business (recorded as expense)"
                             : "Optional: record any courier/handling cost"}
@@ -734,12 +772,12 @@ export default function RefundsPage() {
                       </div>
                     </div>
 
-                    {/* Live summary */}
+                    {/* Live summary — UPDATED with profit loss */}
                     {(parseFloat(approvalAmount) > 0 || parseFloat(deliveryLoss) > 0) && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm space-y-1">
-                        <p className="font-bold text-blue-900 mb-2">Refund Summary</p>
+                      <div className="p-3 space-y-1 text-sm border border-blue-200 bg-blue-50 rounded-xl">
+                        <p className="mb-2 font-bold text-blue-900">Refund & Impact Summary</p>
                         {selectedRefund.returnType === "online" && (
-                          <div className="flex justify-between text-gray-500 text-xs">
+                          <div className="flex justify-between text-xs text-gray-500">
                             <span>Order total (incl. shipping)</span>
                             <span>Rs {fmt(selectedRefund.order?.total ?? selectedRefund.requestedAmount)}</span>
                           </div>
@@ -748,13 +786,19 @@ export default function RefundsPage() {
                           <span>Items subtotal (refundable)</span>
                           <span>Rs {fmt(selectedRefund.requestedAmount)}</span>
                         </div>
+                        {calculateProfitLost(selectedRefund.returnItems) > 0 && (
+                          <div className="flex justify-between text-red-700">
+                            <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Profit lost → deducted from P&L</span>
+                            <span>Rs {fmt(calculateProfitLost(selectedRefund.returnItems))}</span>
+                          </div>
+                        )}
                         {parseFloat(deliveryLoss) > 0 && (
                           <div className="flex justify-between text-orange-700">
-                            <span className="flex items-center gap-1"><Truck className="h-3 w-3" /> Delivery loss → recorded as expense</span>
+                            <span className="flex items-center gap-1"><Truck className="w-3 h-3" /> Delivery loss → recorded as expense</span>
                             <span>Rs {fmt(parseFloat(deliveryLoss))}</span>
                           </div>
                         )}
-                        <div className="flex justify-between font-black text-green-800 border-t border-blue-300 pt-2 mt-1">
+                        <div className="flex justify-between pt-2 mt-1 font-black text-green-800 border-t border-blue-300">
                           <span>Customer refund (wallet deduction)</span>
                           <span>Rs {fmt(parseFloat(approvalAmount) || 0)}</span>
                         </div>
@@ -762,28 +806,33 @@ export default function RefundsPage() {
                     )}
 
                     <div>
-                      <label className="block text-sm font-medium mb-1">Notes</label>
+                      <label className="block mb-1 text-sm font-medium">Notes</label>
                       <Textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)} rows={3} />
                     </div>
 
                     <div className="flex gap-3">
                       <Button onClick={handleApprove} className="flex-1 bg-green-600 hover:bg-green-700" disabled={actionLoading}>
-                        <CheckCircle className="h-4 w-4 mr-2" />{actionLoading ? "Processing…" : "Approve & Restock"}
+                        <CheckCircle className="w-4 h-4 mr-2" />{actionLoading ? "Processing…" : "Approve & Restock"}
                       </Button>
-                      <Button onClick={handleReject} variant="outline" className="flex-1 border-red-600 text-red-600 hover:bg-red-50" disabled={actionLoading}>
-                        <XCircle className="h-4 w-4 mr-2" /> Reject
+                      <Button onClick={handleReject} variant="outline" className="flex-1 text-red-600 border-red-600 hover:bg-red-50" disabled={actionLoading}>
+                        <XCircle className="w-4 h-4 mr-2" /> Reject
                       </Button>
                     </div>
                   </>
                 )}
 
                 {selectedRefund.status !== "pending" && (
-                  <div className="p-4 bg-gray-50 rounded-lg space-y-1">
-                    <p className="text-sm font-semibold mb-1">Processing Info:</p>
+                  <div className="p-4 space-y-1 rounded-lg bg-gray-50">
+                    <p className="mb-1 text-sm font-semibold">Processing Info:</p>
                     {selectedRefund.refundedAmount  ? <p className="text-sm">Refunded: Rs {fmt(selectedRefund.refundedAmount)}</p>  : null}
                     {selectedRefund.status !== "rejected" && selectedRefund.deliveryCost && selectedRefund.deliveryCost > 0
                       ? <p className="text-sm text-orange-700">Delivery loss: Rs {fmt(selectedRefund.deliveryCost)}</p>
                       : null}
+                    {calculateProfitLost(selectedRefund.returnItems) > 0 && (
+                      <p className="flex items-center gap-1 text-sm text-red-700">
+                        <TrendingUp className="h-3.5 w-3.5" /> Profit lost: Rs {fmt(calculateProfitLost(selectedRefund.returnItems))}
+                      </p>
+                    )}
                     {selectedRefund.approvedBy ? <p className="text-sm">Processed by: {selectedRefund.approvedBy.name}</p> : null}
                     {selectedRefund.notes       ? <p className="text-sm">Notes: {selectedRefund.notes}</p>                  : null}
                   </div>

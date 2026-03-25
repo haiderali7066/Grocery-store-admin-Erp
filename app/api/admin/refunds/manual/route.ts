@@ -1,4 +1,7 @@
-// FILE PATH: app/api/admin/refunds/manual/route.ts
+// FILE PATH: app/api/admin/refunds/manual/route.ts (UPDATED)
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX: Now captures costPrice when creating manual refunds
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
@@ -8,7 +11,6 @@ import {
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
 
-// ── Safely extract a Mongo ID string ─────────────────────────────────────────
 function extractId(raw: any): string | null {
   if (!raw) return null;
   if (raw._id) return raw._id.toString();
@@ -17,12 +19,6 @@ function extractId(raw: any): string | null {
   return str;
 }
 
-// ── Restore qty into the original FIFO batch ──────────────────────────────────
-//
-// FIFO sells oldest-first. On return we restore into:
-//   1. Most-recently-finished batch (remainingQty = 0, just drained)
-//   2. Oldest active batch (sale was a partial deduction)
-//
 async function restoreToOriginalBatch(
   productId: string,
   qty: number,
@@ -85,12 +81,10 @@ export async function POST(req: NextRequest) {
     let sourceDoc: any = null;
     let docType: "order" | "pos" = "pos";
 
-    // Try online order first
     sourceDoc = await Order.findOne({ orderNumber }).lean();
     if (sourceDoc) {
       docType = "order";
     } else {
-      // Try POS sale
       sourceDoc = await POSSale.findOne({ saleNumber: orderNumber }).lean();
       if (!sourceDoc)
         return NextResponse.json({ error: `Order/Sale "${orderNumber}" not found` }, { status: 404 });
@@ -107,7 +101,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Also check existing Refund records for this order
     const existingRefunds = await Refund.find({
       $or: [
         { order: sourceDoc._id },
@@ -123,7 +116,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Filter submitted items to only those not already returned
     const validItems = items.filter((item: any) => {
       const key = extractId(item.productId) || item.name;
       return key && !alreadyReturnedKeys.has(key);
@@ -136,10 +128,42 @@ export async function POST(req: NextRequest) {
     const pm          = (paymentMethod || sourceDoc.paymentMethod || "cash").toLowerCase();
     const walletField = PAYMENT_TO_WALLET[pm] || "cash";
 
-    // ── Calculate refund amount ───────────────────────────────────────────
+    // ── Match items with source doc to get costPrice ──────────────────────
+    const enrichedItems = validItems.map((item: any) => {
+      const productId = extractId(item.productId);
+      let costPrice = item.costPrice || 0;  // Use provided costPrice if available
+      let unitPrice = item.unitPrice || item.price || 0;
+
+      // Try to find the item in source doc to get actual cost
+      if (!costPrice) {
+        const sourceItem = docItems.find((si: any) => {
+          const sourceId = extractId(si.product || si.productId);
+          return (sourceId && sourceId === productId) ||
+                 (si.name?.toLowerCase() === item.name?.toLowerCase());
+        });
+
+        if (sourceItem) {
+          // For POS sales, costPrice is stored per item
+          costPrice = sourceItem.costPrice || sourceItem.cost || 0;
+          unitPrice = sourceItem.price || unitPrice;
+        }
+      }
+
+      return {
+        productId,
+        name: item.name,
+        returnQty: item.returnQty || item.quantity || 0,
+        unitPrice,
+        costPrice,                              // ← CAPTURED
+        profitPerUnit: unitPrice - costPrice,  // ← CALCULATED
+        lineTotal: unitPrice * (item.returnQty || item.quantity || 0),
+        restock: item.restock !== false,
+      };
+    });
+
     let refundAmount = 0;
-    for (const item of validItems) {
-      refundAmount += (item.unitPrice || item.price || 0) * (item.returnQty || item.quantity || 0);
+    for (const item of enrichedItems) {
+      refundAmount += item.unitPrice * item.returnQty;
     }
 
     // ── Atomic transaction ────────────────────────────────────────────────
@@ -150,9 +174,9 @@ export async function POST(req: NextRequest) {
     try {
       let restockedCount = 0;
 
-      for (const item of validItems) {
-        const productId = extractId(item.productId);
-        const returnQty = item.returnQty || item.quantity || 0;
+      for (const item of enrichedItems) {
+        const productId = item.productId;
+        const returnQty = item.returnQty;
 
         // Mark returned on source document
         if (docType === "order") {
@@ -177,7 +201,7 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Restock — restore into original FIFO batch
+        // Restock
         if (item.restock !== false && productId && mongoose.Types.ObjectId.isValid(productId)) {
           const product = await Product.findById(productId).session(session);
           if (product) {
@@ -186,7 +210,6 @@ export async function POST(req: NextRequest) {
 
             const ok = await restoreToOriginalBatch(productId, returnQty, session);
             if (!ok) {
-              // Fallback: no batches at all — create minimal placeholder
               console.warn(`[Manual Return] no batch found for "${item.name}" — creating fallback`);
               await InventoryBatch.create([{
                 product: product._id, quantity: returnQty, remainingQuantity: returnQty,
@@ -218,16 +241,7 @@ export async function POST(req: NextRequest) {
         createdBy:      payload.userId,
       }], { session });
 
-      // Refund record
-      const returnItems = validItems.map((item: any) => ({
-        productId: extractId(item.productId) || null,
-        name:      item.name,
-        returnQty: item.returnQty || item.quantity || 0,
-        unitPrice: item.unitPrice || item.price || 0,
-        lineTotal: (item.unitPrice || item.price || 0) * (item.returnQty || item.quantity || 0),
-        restock:   item.restock !== false,
-      }));
-
+      // ← NEW: Refund record with costPrice
       const refundDoc = await Refund.create([{
         order:           docType === "order" ? sourceDoc._id : undefined,
         orderNumber:     docType === "pos"   ? orderNumber   : undefined,
@@ -237,7 +251,7 @@ export async function POST(req: NextRequest) {
         deliveryCost:    0,
         reason,
         notes:           notes || reason,
-        returnItems,
+        returnItems:     enrichedItems,  // ← Now includes costPrice & profitPerUnit
         status:          "completed",
         approvedBy:      payload.userId,
         approvedAt:      returnedAt,

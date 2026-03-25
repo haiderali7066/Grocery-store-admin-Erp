@@ -1,14 +1,16 @@
-// FILE PATH: app/api/admin/refunds/[id]/approve/route.ts
+// FILE PATH: app/api/admin/refunds/[id]/approve/route.ts (UPDATED)
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX: Now uses costPrice from refund returnItems for profit calculations
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import {
-  Refund, Order, POSSale, Product, InventoryBatch, Wallet, Transaction,
+  Refund, Order, POSSale, Product, InventoryBatch, Wallet, Transaction, InventoryBatch as Batch,
 } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
 import mongoose from "mongoose";
 
-// ── Safely extract a Mongo ID string from any shape Mongoose returns ──────────
 function extractId(raw: any): string | null {
   if (!raw) return null;
   if (raw._id) return raw._id.toString();
@@ -17,14 +19,6 @@ function extractId(raw: any): string | null {
   return str;
 }
 
-// ── Restore qty into the batch FIFO sold from — NOT a new batch ───────────────
-//
-// FIFO sells oldest-first. On return we put units back into:
-//   1. The most-recently-finished batch (remainingQty=0 — FIFO just drained it)
-//   2. Failing that, the oldest active batch (sale was a partial deduction)
-//
-// isReturn batches are excluded so we only touch real purchase batches.
-//
 async function restoreToOriginalBatch(
   productId: string,
   qty: number,
@@ -32,7 +26,6 @@ async function restoreToOriginalBatch(
 ): Promise<boolean> {
   const pid = new mongoose.Types.ObjectId(productId);
 
-  // 1. Most recently drained batch
   let batch = await InventoryBatch.findOne({
     product:           pid,
     isReturn:          { $ne: true },
@@ -42,7 +35,6 @@ async function restoreToOriginalBatch(
     .session(session);
 
   if (!batch) {
-    // 2. Oldest partially-remaining batch
     batch = await InventoryBatch.findOne({
       product:           pid,
       isReturn:          { $ne: true },
@@ -60,7 +52,7 @@ async function restoreToOriginalBatch(
 
   console.log(
     `[restoreToOriginalBatch] ✓ ${qty}u → batch ${batch._id}` +
-    ` baseRate=${( batch as any).baseRate} remainingQty=${batch.remainingQuantity}`
+    ` baseRate=${(batch as any).baseRate} remainingQty=${batch.remainingQuantity}`
   );
   return true;
 }
@@ -110,7 +102,7 @@ export async function POST(
 
     // Build restock list — prefer returnItems, fall back to order.items
     const storedReturnItems: any[] = (refund as any).returnItems || [];
-    type RI = { productId: string | null; name: string; returnQty: number; restock: boolean };
+    type RI = { productId: string | null; name: string; returnQty: number; costPrice: number; unitPrice: number; restock: boolean };
     let itemsToRestock: RI[] = [];
 
     if (storedReturnItems.length > 0) {
@@ -118,6 +110,8 @@ export async function POST(
         productId: extractId(ri.productId),
         name:      ri.name || "Unknown",
         returnQty: ri.returnQty || ri.quantity || 0,
+        costPrice: ri.costPrice || 0,           // ← USE stored cost
+        unitPrice: ri.unitPrice || ri.price || 0,
         restock:   ri.restock !== false,
       }));
     } else if ((refund as any).order) {
@@ -127,79 +121,80 @@ export async function POST(
         productId: extractId(oi.product || oi.productId),
         name:      oi.name || "Unknown",
         returnQty: oi.quantity || 0,
+        costPrice: oi.costPrice || 0,
+        unitPrice: oi.price || 0,
         restock:   true,
       }));
     }
 
-    console.log("[Refund Approve] items:", itemsToRestock.map(i => `${i.name}(${i.productId})×${i.returnQty}`));
+    console.log("[Refund Approve] items:", itemsToRestock.map(i => 
+      `${i.name}(${i.productId})×${i.returnQty} cost=${i.costPrice}`
+    ));
 
     const session    = await mongoose.startSession();
     const approvedAt = new Date();
     session.startTransaction();
 
     try {
-      // 1. Mark returned on source doc
-      if ((refund as any).order) {
-        const orderId    = ((refund as any).order as any)._id;
-        const order      = await Order.findById(orderId).session(session);
-        const orderItems: any[] = (order as any)?.items || [];
-        for (const ri of itemsToRestock) {
-          const idx = ri.productId
-            ? orderItems.findIndex((oi: any) => extractId(oi.product || oi.productId) === ri.productId)
-            : orderItems.findIndex((oi: any) => oi.name?.toLowerCase() === ri.name?.toLowerCase());
-          if (idx !== -1)
-            await Order.updateOne(
-              { _id: orderId },
-              { $set: { [`items.${idx}.returned`]: true, [`items.${idx}.returnedAt`]: approvedAt, [`items.${idx}.returnedQty`]: ri.returnQty }},
-              { session }
-            );
-        }
-      } else if ((refund as any).orderNumber) {
-        const posSale    = await POSSale.findOne({ saleNumber: (refund as any).orderNumber }).session(session);
-        const saleItems: any[] = (posSale as any)?.items || [];
-        for (const ri of itemsToRestock) {
-          const idx = ri.productId
-            ? saleItems.findIndex((si: any) => extractId(si.product || si.productId) === ri.productId)
-            : saleItems.findIndex((si: any) => si.name?.toLowerCase() === ri.name?.toLowerCase());
-          if (idx !== -1)
+      let restockedCount = 0;
+
+      for (const item of itemsToRestock) {
+        const productId = item.productId;
+        const returnQty = item.returnQty;
+
+        // Mark returned on source doc
+        if ((refund as any).order) {
+          const orderId    = ((refund as any).order as any)._id;
+          const order      = await Order.findById(orderId).session(session);
+          const orderItems: any[] = (order as any)?.items || [];
+          for (const idx of [0]) {
+            const actualIdx = productId
+              ? orderItems.findIndex((oi: any) => extractId(oi.product || oi.productId) === productId)
+              : orderItems.findIndex((oi: any) => oi.name?.toLowerCase() === item.name?.toLowerCase());
+            if (actualIdx !== -1)
+              await Order.updateOne(
+                { _id: orderId },
+                { $set: { [`items.${actualIdx}.returned`]: true, [`items.${actualIdx}.returnedAt`]: approvedAt, [`items.${actualIdx}.returnedQty`]: returnQty }},
+                { session }
+              );
+          }
+        } else if ((refund as any).orderNumber) {
+          const posSale    = await POSSale.findOne({ saleNumber: (refund as any).orderNumber }).session(session);
+          const saleItems: any[] = (posSale as any)?.items || [];
+          const actualIdx = productId
+            ? saleItems.findIndex((si: any) => extractId(si.product || si.productId) === productId)
+            : saleItems.findIndex((si: any) => si.name?.toLowerCase() === item.name?.toLowerCase());
+          if (actualIdx !== -1)
             await POSSale.updateOne(
               { saleNumber: (refund as any).orderNumber },
-              { $set: { [`items.${idx}.returned`]: true, [`items.${idx}.returnedAt`]: approvedAt, [`items.${idx}.returnedQty`]: ri.returnQty }},
+              { $set: { [`items.${actualIdx}.returned`]: true, [`items.${actualIdx}.returnedAt`]: approvedAt, [`items.${actualIdx}.returnedQty`]: returnQty }},
               { session }
             );
         }
+
+        // Restock
+        if (item.restock && productId && mongoose.Types.ObjectId.isValid(productId)) {
+          const product = await Product.findById(productId).session(session);
+          if (product) {
+            product.stock = (product.stock || 0) + returnQty;
+            await product.save({ session });
+
+            const ok = await restoreToOriginalBatch(productId, returnQty, session);
+            if (!ok) {
+              console.warn(`[Refund Approve] no batch found for "${item.name}" — creating fallback`);
+              await InventoryBatch.create([{
+                product: product._id, quantity: returnQty, remainingQuantity: returnQty,
+                buyingRate: 0, baseRate: 0, taxValue: 0, taxType: "percent", freightPerUnit: 0,
+                sellingPrice: product.retailPrice || 0, profitPerUnit: product.retailPrice || 0,
+                status: "active", isReturn: true,
+              }], { session });
+            }
+            restockedCount++;
+          }
+        }
       }
 
-      // 2. Restock — restore into original FIFO batch
-      let restockedCount = 0;
-      for (const item of itemsToRestock) {
-        if (!item.restock) continue;
-        if (!item.productId || !mongoose.Types.ObjectId.isValid(item.productId)) {
-          console.warn(`[Refund Approve] skipping "${item.name}" — bad productId: ${item.productId}`);
-          continue;
-        }
-
-        const product = await Product.findById(item.productId).session(session);
-        if (!product) { console.warn(`[Refund Approve] product not found: ${item.productId}`); continue; }
-
-        product.stock = (product.stock || 0) + item.returnQty;
-        await product.save({ session });
-
-        const ok = await restoreToOriginalBatch(item.productId, item.returnQty, session);
-        if (!ok) {
-          // Absolute last resort: no batches exist at all
-          console.warn(`[Refund Approve] no batch found for "${item.name}" — creating fallback`);
-          await InventoryBatch.create([{
-            product: product._id, quantity: item.returnQty, remainingQuantity: item.returnQty,
-            buyingRate: 0, baseRate: 0, taxValue: 0, taxType: "percent", freightPerUnit: 0,
-            sellingPrice: product.retailPrice || 0, profitPerUnit: product.retailPrice || 0,
-            status: "active", isReturn: true,
-          }], { session });
-        }
-        restockedCount++;
-      }
-
-      // 3. Deduct wallet
+      // Deduct wallet
       let wallet = await Wallet.findOne().session(session);
       if (!wallet) wallet = new (Wallet as any)({ cash: 0, bank: 0, easyPaisa: 0, jazzCash: 0 });
       (wallet as any)[walletField] = ((wallet as any)[walletField] || 0) - finalRefundAmount;
@@ -208,7 +203,7 @@ export async function POST(
 
       const orderRef = ((refund as any).order as any)?.orderNumber || (refund as any).orderNumber || "N/A";
 
-      // 4. Delivery loss expense
+      // Delivery loss expense
       if (parsedDeliveryLoss > 0) {
         await Transaction.create([{
           type: "expense", category: "Delivery Loss", amount: parsedDeliveryLoss,
@@ -218,7 +213,7 @@ export async function POST(
         }], { session });
       }
 
-      // 5. Refund expense
+      // Refund expense
       await Transaction.create([{
         type: "expense", category: "Refund", amount: finalRefundAmount,
         source: walletField, reference: refund._id, referenceModel: "Refund",
@@ -226,21 +221,28 @@ export async function POST(
         notes: notes || `Approved ${(refund as any).returnType} return`, createdBy: payload.userId,
       }], { session });
 
-      // 6. Save refund
+      // Save refund with costPrice data preserved
       (refund as any).status         = "completed";
       (refund as any).approvedBy     = payload.userId;
       (refund as any).approvedAt     = approvedAt;
       (refund as any).refundedAmount = finalRefundAmount;
       (refund as any).deliveryCost   = parsedDeliveryLoss;
       (refund as any).notes          = notes || "Approved by admin";
+      // ← returnItems already have costPrice — no need to modify
       await refund.save({ session });
 
       await session.commitTransaction();
 
+      // Calculate total profit lost
+      const profitLost = itemsToRestock.reduce((sum, item) => 
+        sum + ((item.unitPrice - item.costPrice) * item.returnQty), 0
+      );
+
       return NextResponse.json({
         success:       true,
-        message:       `Refund approved! Rs. ${finalRefundAmount.toLocaleString()} refunded. ${restockedCount}/${itemsToRestock.length} item(s) restocked into original batches.${parsedDeliveryLoss > 0 ? ` Rs. ${parsedDeliveryLoss} delivery loss recorded.` : ""}`,
+        message:       `Refund approved! Rs. ${finalRefundAmount.toLocaleString()} refunded. Profit lost: Rs. ${profitLost.toLocaleString()}. ${restockedCount}/${itemsToRestock.length} item(s) restocked into original batches.${parsedDeliveryLoss > 0 ? ` Rs. ${parsedDeliveryLoss} delivery loss recorded.` : ""}`,
         refundAmount:  finalRefundAmount,
+        profitLost,    // ← NEW: show profit lost
         deliveryLoss:  parsedDeliveryLoss,
         restockedCount,
         walletBalance: (wallet as any)[walletField],

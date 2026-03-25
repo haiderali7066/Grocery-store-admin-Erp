@@ -28,6 +28,7 @@ interface ReportData {
     totalCOGS: number; onlineCOGS: number; posCOGS: number;
     grossProfit: number; netProfit: number;
     totalExpenses: number; deliveryLoss: number;
+    returnedProfit: number;
     inventoryValue: number; inventoryUnits: number;
     walletBalance: number;
     margins: { gross: number; net: number; online: number; pos: number };
@@ -374,13 +375,13 @@ export default function ReportsPage() {
                   </div>
                 </Card>
 
-                {/* Refunds Summary */}
+                {/* Refunds Summary — UPDATED with 5 columns including Profit Lost */}
                 {data.breakdown.refunds.totalCount > 0 && (
                   <Card className="p-6 border-0 border-l-4 border-orange-400 shadow-md bg-orange-50">
                     <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
                       <RotateCcw className="w-4 h-4 text-orange-600" />Returns & Refunds Summary
                     </h3>
-                    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
                       <div>
                         <p className="mb-1 text-xs font-semibold text-gray-600">Total Returns</p>
                         <p className="text-3xl font-black text-orange-700">{data.breakdown.refunds.totalCount}</p>
@@ -397,9 +398,14 @@ export default function ReportsPage() {
                         <p className="mb-1 text-xs font-semibold text-gray-600">Delivery Loss</p>
                         <p className="text-2xl font-black text-red-600">{Rs(data.stats.deliveryLoss)}</p>
                       </div>
+                      <div>
+                        <p className="mb-1 text-xs font-semibold text-gray-600">Profit Lost</p>
+                        <p className="text-2xl font-black text-orange-700">{Rs(data.stats.returnedProfit)}</p>
+                      </div>
                     </div>
                     <p className="pt-4 mt-4 text-xs text-gray-600 border-t border-orange-200">
-                      <strong>Total refunded:</strong> {Rs(data.breakdown.refunds.totalRefunded)} (not deducted from P&L — goods restocked)
+                      <strong>Impact on P&L:</strong> Refunded amount ({Rs(data.breakdown.refunds.totalRefunded)}) restocks inventory.{" "}
+                      Deducted from profit: Delivery loss ({Rs(data.stats.deliveryLoss)}) + Returned profit ({Rs(data.stats.returnedProfit)}) = Total impact {Rs((data.stats.deliveryLoss + data.stats.returnedProfit))}
                     </p>
                   </Card>
                 )}
@@ -522,21 +528,26 @@ export default function ReportsPage() {
                             </div>
                           ))}
                         </div>
-                        <p className="pt-3 mt-3 text-xs text-gray-600 border-t border-amber-200"><strong>EXCLUDED:</strong> Purchases, Supplier Payments, Refunds (restocked), Delivery Loss (handled separately)</p>
+                        <p className="pt-3 mt-3 text-xs text-gray-600 border-t border-amber-200"><strong>EXCLUDED:</strong> Purchases, Supplier Payments, Refunds (restocked), Delivery Loss & Returned Profit (handled in Step 5)</p>
                       </div>
                     </div>
 
-                    {/* Step 5: Delivery Loss */}
+                    {/* Step 5: Returns Impact (Delivery Loss & Profit Loss) — UPDATED */}
                     <div className="pl-6 border-l-4 border-red-500">
                       <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
                         <span className="flex items-center justify-center w-6 h-6 text-sm font-black text-red-700 bg-red-100 rounded-full">5</span>
-                        Delivery Loss (Returns)
+                        Returns Impact (Delivery Loss & Profit Loss)
                       </h3>
-                      <div className="grid gap-4 mb-4 md:grid-cols-2">
+                      <div className="grid gap-4 mb-4 md:grid-cols-3">
                         <div className="p-4 bg-red-50 rounded-xl">
-                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Unrecoverable Shipping</p>
-                          <p className="text-3xl font-black text-red-600">{Rs(data.profitability.deliveryLoss)}</p>
-                          <p className="mt-1 text-xs text-gray-500">Loss on {data.breakdown.refunds.totalCount} returns</p>
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Delivery Loss</p>
+                          <p className="text-3xl font-black text-red-600">{Rs(data.stats.deliveryLoss)}</p>
+                          <p className="mt-1 text-xs text-gray-500">Unrecoverable shipping on {data.breakdown.refunds.totalCount} returns</p>
+                        </div>
+                        <div className="p-4 bg-orange-50 rounded-xl">
+                          <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Profit Lost (Returns)</p>
+                          <p className="text-3xl font-black text-orange-700">{Rs(data.stats.returnedProfit)}</p>
+                          <p className="mt-1 text-xs text-gray-500">Profit from sold items now returned</p>
                         </div>
                         <div className="p-4 bg-blue-50 rounded-xl">
                           <p className="mb-2 text-xs font-semibold text-gray-600 uppercase">Refunded Amount</p>
@@ -545,16 +556,30 @@ export default function ReportsPage() {
                         </div>
                       </div>
                       <div className="p-4 bg-white border-2 border-red-200 rounded-xl">
-                        <p className="mb-2 text-sm font-semibold text-gray-900">⚠️ Key Principle:</p>
-                        <p className="text-xs leading-relaxed text-gray-700">
-                          When a customer returns goods, you get them back in inventory, so there's no net revenue loss on that item. 
-                          However, the delivery cost (shipping to customer, shipping back) is lost forever. Only this unrecoverable 
-                          delivery cost ({Rs(data.profitability.deliveryLoss)}) is expensed in P&L.
-                        </p>
+                        <p className="mb-3 text-sm font-semibold text-gray-900">⚠️ How Returns Affect Profitability:</p>
+                        <div className="space-y-2 text-xs leading-relaxed text-gray-700">
+                          <div className="flex gap-2">
+                            <span className="font-black text-red-600">1.</span>
+                            <span><strong>Refunded Amount ({Rs(data.breakdown.refunds.totalRefunded)})</strong>: Customer gets their money back. Goods return to inventory, so no COGS loss.</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="font-black text-red-600">2.</span>
+                            <span><strong>Profit Lost ({Rs(data.stats.returnedProfit)})</strong>: When you initially sold these items, you included a profit margin. You must now deduct that profit from your P&L.</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="font-black text-red-600">3.</span>
+                            <span><strong>Delivery Loss ({Rs(data.stats.deliveryLoss)})</strong>: Shipping cost to customer & return shipping are unrecoverable and charged to business.</span>
+                          </div>
+                          <div className="mt-3 pt-3 border-t border-red-100 font-mono text-[11px]">
+                            Example: Item sold for Rs. 1000 (cost Rs. 600) = Profit Rs. 400<br/>
+                            → Customer returns it → You refund Rs. 1000 (goods back in stock)<br/>
+                            → You lose the Rs. 400 profit + Rs. 100 delivery cost = Rs. 500 impact
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Final: Net Profit */}
+                    {/* Step 6: Net Profit — UPDATED formula */}
                     <div className={`border-l-4 ${isProfit ? "border-emerald-500" : "border-red-500"} pl-6`}>
                       <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
                         <span className={`text-sm rounded-full h-6 w-6 flex items-center justify-center font-black ${isProfit ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>✓</span>
@@ -562,14 +587,14 @@ export default function ReportsPage() {
                       </h3>
                       <div className={`${isProfit ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"} border-2 rounded-xl p-6`}>
                         <div className="text-center">
-                          <p className="mb-2 text-sm font-semibold text-gray-600">Gross Profit − Expenses − Delivery Loss</p>
+                          <p className="mb-2 text-sm font-semibold text-gray-600">Gross Profit − Expenses − Delivery Loss − Returned Profit</p>
                           <p className={`text-5xl font-black ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{sign(data.profitability.netProfit)}</p>
                           <p className={`text-lg font-bold mt-3 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>{pct(data.profitability.netMargin)} Net Margin</p>
                           <p className="mt-2 text-xs text-gray-600">For every Rs. 100 of sales, you keep Rs. {(data.profitability.netMargin).toFixed(2)}</p>
                         </div>
                         <div className="pt-6 mt-6 border-t border-gray-300">
                           <p className="p-3 font-mono text-xs text-center text-gray-800 bg-white rounded">
-                            {Rs(data.profitability.grossProfit)} − {Rs(data.profitability.operatingExpenses)} − {Rs(data.profitability.deliveryLoss)} = {Rs(data.profitability.netProfit)}
+                            {Rs(data.profitability.grossProfit)} − {Rs(data.profitability.operatingExpenses)} − {Rs(data.profitability.deliveryLoss)} − {Rs(data.stats.returnedProfit)} = {Rs(data.profitability.netProfit)}
                           </p>
                         </div>
                       </div>
@@ -610,7 +635,7 @@ export default function ReportsPage() {
                     </div>
                   </div>
 
-                  {/* Operating Expenses */}
+                  {/* Operating Expenses — UPDATED with returnedProfit */}
                   <div className="pb-6 mb-6">
                     <h3 className="mb-4 text-lg font-black text-amber-700">OPERATING EXPENSES</h3>
                     <div className="space-y-3">
@@ -620,7 +645,10 @@ export default function ReportsPage() {
                       {data.stats.deliveryLoss > 0 && (
                         <PLRow label="Delivery Loss (returns)" value={data.stats.deliveryLoss} indent={true} negative={true} />
                       )}
-                      <PLRow label="Total Expenses" value={data.stats.totalExpenses + data.stats.deliveryLoss} bold={true} negative={true} />
+                      {data.stats.returnedProfit > 0 && (
+                        <PLRow label="Returned Item Profit Loss" value={data.stats.returnedProfit} indent={true} negative={true} />
+                      )}
+                      <PLRow label="Total Expenses & Losses" value={data.stats.totalExpenses + data.stats.deliveryLoss + (data.stats.returnedProfit ?? 0)} bold={true} negative={true} />
                     </div>
                   </div>
 

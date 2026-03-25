@@ -1,16 +1,19 @@
-// app/api/admin/refunds/route.ts
+// FILE PATH: app/api/admin/refunds/route.ts (UPDATED)
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX: Now captures costPrice when creating online refund requests
+// ═══════════════════════════════════════════════════════════════════════════════
+
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Refund, Order, Product, Wallet, InventoryBatch } from "@/lib/models/index";
+import { Refund, Order, InventoryBatch, Product } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
+import mongoose from "mongoose";
 
 function auth(req: NextRequest) {
   const token = getTokenFromCookie(req.headers.get("cookie") || "");
   if (!token) return null;
   return verifyToken(token);
 }
-
-// ── GET — fetch all refunds ───────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,9 +35,34 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── POST — customer/admin creates an online refund request ───────────────────
-// deliveryCost is now optional in the request body (defaults to 0).
-// The admin sets the actual delivery loss when they approve the request.
+// ── Helper: Build productId → FIFO cost map ──────────────────────────────────
+async function buildProductCostMap(): Promise<Map<string, number>> {
+  const allBatches = await InventoryBatch.find(
+    {},
+    { product: 1, buyingRate: 1, remainingQuantity: 1, status: 1, createdAt: 1 }
+  ).sort({ createdAt: 1 }).lean() as any[];
+
+  const productCostMap = new Map<string, number>();
+  const batchesByProduct = new Map<string, any[]>();
+
+  for (const b of allBatches) {
+    const id = b.product?.toString();
+    if (!id) continue;
+    if (!batchesByProduct.has(id)) batchesByProduct.set(id, []);
+    batchesByProduct.get(id)!.push(b);
+  }
+
+  for (const [id, batches] of batchesByProduct) {
+    const current =
+      batches.find(
+        b => (b.remainingQuantity ?? 0) > 0 &&
+             (b.status === "active" || b.status === "partial")
+      ) ?? batches[batches.length - 1];
+    productCostMap.set(id, current?.buyingRate ?? 0);
+  }
+
+  return productCostMap;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -84,24 +112,38 @@ export async function POST(req: NextRequest) {
         error: `${orderItems.length - unreturnedItems.length} item(s) already returned. Only ${unreturnedItems.length} item(s) remain returnable.`
       }, { status: 400 });
 
+    // ── Build cost map to capture costPrice ──────────────────────────────────
+    const productCostMap = await buildProductCostMap();
+
     const refundableAmount = unreturnedItems.reduce(
       (sum: number, item: any) => sum + (item.subtotal || item.price * item.quantity || 0), 0
     );
 
-    const returnItems = unreturnedItems.map((item: any) => ({
-      productId: item.product || item.productId || null,
-      name:      item.name,
-      returnQty: item.quantity,
-      unitPrice: item.price || 0,
-      lineTotal: item.subtotal || item.price * item.quantity || 0,
-      restock:   true,
-    }));
+    // ← NEW: Include costPrice in returnItems
+    const returnItems = unreturnedItems.map((item: any) => {
+      const productId = item.product?.toString() || item.productId?.toString();
+      const costPrice = productId ? (productCostMap.get(productId) ?? 0) : 0;
+      const unitPrice = item.price || 0;
+      const qty = item.quantity || 0;
+      const profitPerUnit = unitPrice - costPrice;
+
+      return {
+        productId: item.product || item.productId || null,
+        name:      item.name,
+        returnQty: qty,
+        unitPrice: unitPrice,
+        costPrice: costPrice,                    // ← NEW
+        profitPerUnit: profitPerUnit,            // ← NEW
+        lineTotal: item.subtotal || unitPrice * qty || 0,
+        restock:   true,
+      };
+    });
 
     const refund = new Refund({
       order:            orderId,
       returnType:       "online",
       requestedAmount:  refundableAmount,
-      deliveryCost:     parseFloat(deliveryCost) || 0,  // ← 0 by default, set by caller
+      deliveryCost:     parseFloat(deliveryCost) || 0,
       reason,
       returnItems,
       status: "pending",
