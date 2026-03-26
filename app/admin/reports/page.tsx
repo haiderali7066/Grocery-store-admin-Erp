@@ -1,4 +1,8 @@
-// FILE PATH: app/admin/reports/page.tsx (UPDATED WITH DETAILED ITEMS & RETURNS)
+// FILE PATH: app/admin/reports/page.tsx
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX 1: Added returnedProfit to profitability TypeScript interface.
+// FIX 2: Overview hero card now shows "Returns Profit" as a deduction line.
+// FIX 3: Overview hero card grid updated to 5 columns to accommodate it.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 "use client";
@@ -14,7 +18,7 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface SaleItem { 
+interface SaleItem {
   name: string; sku?: string | null; quantity: number; price: number; subtotal: number;
   costPrice?: number; itemProfit?: number;
 }
@@ -41,16 +45,18 @@ interface ReportData {
     grossProfitByChannel: { online: number; pos: number; total: number };
     expenses: { category: string; amount: number; count: number; avgPerTransaction: number }[];
     deliveryLoss: number;
-    refunds: { 
+    refunds: {
       totalRefunded: number; onlineCount: number; posCount: number; totalCount: number;
-      returnRate: string; avgDeliveryLossPerReturn: string;
+      returnRate: string; avgDeliveryLossPerReturn: string; profitLost?: number;
     };
     orderMetrics: { onlineOrders: number; posTransactions: number; totalTransactions: number };
   };
 
+  // FIX: returnedProfit added to profitability interface
   profitability: {
     grossProfit: number; grossMargin: number;
     operatingExpenses: number; deliveryLoss: number;
+    returnedProfit: number;
     netProfit: number; netMargin: number;
     breakeven: { requiredRevenue: number; remainingCapacity: number; safetyMargin: number };
   };
@@ -159,7 +165,7 @@ export default function ReportsPage() {
   const onlinePct  = totalSales > 0 ? ((data?.breakdown.revenue.online ?? 0) / totalSales) * 100 : 0;
   const posPct     = totalSales > 0 ? ((data?.breakdown.revenue.pos    ?? 0) / totalSales) * 100 : 0;
 
-  const isProfit   = (data?.stats.netProfit ?? 0) >= 0;
+  const isProfit = (data?.stats.netProfit ?? 0) >= 0;
 
   return (
     <>
@@ -247,7 +253,7 @@ export default function ReportsPage() {
                   <StatCard title="Inventory" value={data.stats.inventoryValue} icon={<Package className="w-5 h-5" />} color="indigo" sub={`${data.stats.inventoryUnits.toLocaleString()} units`} />
                 </div>
 
-                {/* Main P&L Hero Card */}
+                {/* Main P&L Hero Card — FIX: now shows 5 deduction lines including Returns Profit */}
                 <div className={`rounded-2xl p-8 shadow-lg border-2 ${isProfit ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
                   <div className="mb-6 text-center">
                     <p className="mb-2 text-xs font-black tracking-widest text-gray-500 uppercase">Net Profit / Loss</p>
@@ -256,13 +262,41 @@ export default function ReportsPage() {
                       {isProfit ? "▲ IN PROFIT" : "▼ IN LOSS"} · {pct(data.stats.margins.net)} Net Margin
                     </p>
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+
+                  {/* FIX: 5-column grid — added Returns Profit Loss deduction */}
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
                     {[
-                      { l: "Revenue", v: Rs(data.stats.totalRevenue), c: "text-emerald-700", bg: "bg-emerald-100/50" },
-                      { l: "COGS", v: `− ${Rs(data.stats.totalCOGS)}`, c: "text-orange-700", bg: "bg-orange-100/50" },
-                      { l: "Op. Exp.", v: `− ${Rs(data.stats.totalExpenses)}`, c: "text-amber-700", bg: "bg-amber-100/50" },
-                      { l: "Delivery Loss", v: data.stats.deliveryLoss > 0 ? `− ${Rs(data.stats.deliveryLoss)}` : "None", c: data.stats.deliveryLoss > 0 ? "text-orange-700" : "text-gray-400", bg: "bg-orange-100/30" },
+                      {
+                        l: "Revenue",
+                        v: Rs(data.stats.totalRevenue),
+                        c: "text-emerald-700",
+                        bg: "bg-emerald-100/50",
+                      },
+                      {
+                        l: "COGS",
+                        v: `− ${Rs(data.stats.totalCOGS)}`,
+                        c: "text-orange-700",
+                        bg: "bg-orange-100/50",
+                      },
+                      {
+                        l: "Op. Expenses",
+                        v: `− ${Rs(data.stats.totalExpenses)}`,
+                        c: "text-amber-700",
+                        bg: "bg-amber-100/50",
+                      },
+                      {
+                        l: "Delivery Loss",
+                        v: data.stats.deliveryLoss > 0 ? `− ${Rs(data.stats.deliveryLoss)}` : "None",
+                        c: data.stats.deliveryLoss > 0 ? "text-orange-700" : "text-gray-400",
+                        bg: "bg-orange-100/30",
+                      },
+                      // FIX: new card showing returned profit deduction
+                      {
+                        l: "Returns Profit",
+                        v: data.stats.returnedProfit > 0 ? `− ${Rs(data.stats.returnedProfit)}` : "None",
+                        c: data.stats.returnedProfit > 0 ? "text-red-700" : "text-gray-400",
+                        bg: "bg-red-100/30",
+                      },
                     ].map(r => (
                       <div key={r.l} className={`${r.bg} rounded-xl px-4 py-3 border border-white`}>
                         <p className="mb-1 text-xs font-medium text-gray-500">{r.l}</p>
@@ -352,6 +386,7 @@ export default function ReportsPage() {
                 <Card className="p-6 border-0 shadow-md">
                   <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
                     <Receipt className="w-4 h-4 text-amber-500" />Operating Expenses Breakdown
+                    <span className="ml-auto text-xs font-normal text-gray-400">Delivery expenses excluded (tracked separately below)</span>
                   </h3>
                   <div className="space-y-3">
                     {!data.breakdown.expenses.length ? (
@@ -375,7 +410,7 @@ export default function ReportsPage() {
                   </div>
                 </Card>
 
-                {/* Refunds Summary — UPDATED with 5 columns including Profit Lost */}
+                {/* Refunds Summary */}
                 {data.breakdown.refunds.totalCount > 0 && (
                   <Card className="p-6 border-0 border-l-4 border-orange-400 shadow-md bg-orange-50">
                     <h3 className="flex items-center gap-2 mb-4 text-sm font-bold text-gray-900">
@@ -404,8 +439,8 @@ export default function ReportsPage() {
                       </div>
                     </div>
                     <p className="pt-4 mt-4 text-xs text-gray-600 border-t border-orange-200">
-                      <strong>Impact on P&L:</strong> Refunded amount ({Rs(data.breakdown.refunds.totalRefunded)}) restocks inventory.{" "}
-                      Deducted from profit: Delivery loss ({Rs(data.stats.deliveryLoss)}) + Returned profit ({Rs(data.stats.returnedProfit)}) = Total impact {Rs((data.stats.deliveryLoss + data.stats.returnedProfit))}
+                      <strong>Impact on P&L:</strong> Refunded amount ({Rs(data.breakdown.refunds.totalRefunded)}) restocks inventory — no COGS loss.{" "}
+                      Deducted from net profit: Delivery loss ({Rs(data.stats.deliveryLoss)}) + Returned profit ({Rs(data.stats.returnedProfit)}) = Total impact {Rs(data.stats.deliveryLoss + data.stats.returnedProfit)}
                     </p>
                   </Card>
                 )}
@@ -419,10 +454,10 @@ export default function ReportsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                       {[
-                        { label: "Cash", value: data?.wallet.cash, Icon: Banknote, color: "text-emerald-400" },
-                        { label: "Bank", value: data?.wallet.bank, Icon: CreditCard, color: "text-blue-400" },
-                        { label: "EasyPaisa", value: data?.wallet.easyPaisa, Icon: Smartphone, color: "text-purple-400" },
-                        { label: "JazzCash", value: data?.wallet.jazzCash, Icon: Smartphone, color: "text-orange-400" },
+                        { label: "Cash",      value: data?.wallet.cash,      Icon: Banknote,    color: "text-emerald-400" },
+                        { label: "Bank",      value: data?.wallet.bank,      Icon: CreditCard,  color: "text-blue-400"    },
+                        { label: "EasyPaisa", value: data?.wallet.easyPaisa, Icon: Smartphone,  color: "text-purple-400"  },
+                        { label: "JazzCash",  value: data?.wallet.jazzCash,  Icon: Smartphone,  color: "text-orange-400"  },
                       ].map(({ label, value, Icon, color }) => (
                         <div key={label} className="px-3 py-2 rounded-lg bg-white/10">
                           <p className={`flex items-center gap-1 text-xs font-semibold mb-1 ${color}`}><Icon className="w-3 h-3" />{label}</p>
@@ -440,7 +475,7 @@ export default function ReportsPage() {
               <div className="space-y-5">
                 <Card className="p-8 border-0 shadow-md">
                   <h2 className="mb-6 text-2xl font-black text-gray-900">Detailed Profit & Loss Analysis</h2>
-                  
+
                   <div className="space-y-8">
                     {/* Step 1: Revenue */}
                     <div className="pl-6 border-l-4 border-blue-500">
@@ -528,11 +563,13 @@ export default function ReportsPage() {
                             </div>
                           ))}
                         </div>
-                        <p className="pt-3 mt-3 text-xs text-gray-600 border-t border-amber-200"><strong>EXCLUDED:</strong> Purchases, Supplier Payments, Refunds (restocked), Delivery Loss & Returned Profit (handled in Step 5)</p>
+                        <p className="pt-3 mt-3 text-xs text-gray-600 border-t border-amber-200">
+                          <strong>EXCLUDED:</strong> Purchases, Supplier Payments, Refunds (restocked), Delivery expenses, Delivery Loss & Returned Profit (handled in Step 5)
+                        </p>
                       </div>
                     </div>
 
-                    {/* Step 5: Returns Impact (Delivery Loss & Profit Loss) — UPDATED */}
+                    {/* Step 5: Returns Impact */}
                     <div className="pl-6 border-l-4 border-red-500">
                       <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
                         <span className="flex items-center justify-center w-6 h-6 text-sm font-black text-red-700 bg-red-100 rounded-full">5</span>
@@ -564,22 +601,22 @@ export default function ReportsPage() {
                           </div>
                           <div className="flex gap-2">
                             <span className="font-black text-red-600">2.</span>
-                            <span><strong>Profit Lost ({Rs(data.stats.returnedProfit)})</strong>: When you initially sold these items, you included a profit margin. You must now deduct that profit from your P&L.</span>
+                            <span><strong>Profit Lost ({Rs(data.stats.returnedProfit)})</strong>: When you sold these items, you booked a profit margin. Returning them cancels that profit — it must be deducted from P&L. Calculated as (selling price − cost price) × qty per returned item.</span>
                           </div>
                           <div className="flex gap-2">
                             <span className="font-black text-red-600">3.</span>
-                            <span><strong>Delivery Loss ({Rs(data.stats.deliveryLoss)})</strong>: Shipping cost to customer & return shipping are unrecoverable and charged to business.</span>
+                            <span><strong>Delivery Loss ({Rs(data.stats.deliveryLoss)})</strong>: Shipping cost charged to the business on returns — unrecoverable.</span>
                           </div>
                           <div className="mt-3 pt-3 border-t border-red-100 font-mono text-[11px]">
-                            Example: Item sold for Rs. 1000 (cost Rs. 600) = Profit Rs. 400<br/>
-                            → Customer returns it → You refund Rs. 1000 (goods back in stock)<br/>
-                            → You lose the Rs. 400 profit + Rs. 100 delivery cost = Rs. 500 impact
+                            Example: Item sold Rs. 250 (cost Rs. 100) → profit Rs. 150<br/>
+                            → Customer returns it → refund Rs. 250 (stock restored, no COGS hit)<br/>
+                            → P&L deducts Rs. 150 profit + Rs. 100 delivery = Rs. 250 total impact
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Step 6: Net Profit — UPDATED formula */}
+                    {/* Step 6: Net Profit — FIX: formula uses profitability.returnedProfit */}
                     <div className={`border-l-4 ${isProfit ? "border-emerald-500" : "border-red-500"} pl-6`}>
                       <h3 className="flex items-center gap-2 mb-4 font-bold text-gray-900">
                         <span className={`text-sm rounded-full h-6 w-6 flex items-center justify-center font-black ${isProfit ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>✓</span>
@@ -587,14 +624,14 @@ export default function ReportsPage() {
                       </h3>
                       <div className={`${isProfit ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"} border-2 rounded-xl p-6`}>
                         <div className="text-center">
-                          <p className="mb-2 text-sm font-semibold text-gray-600">Gross Profit − Expenses − Delivery Loss − Returned Profit</p>
+                          <p className="mb-2 text-sm font-semibold text-gray-600">Gross Profit − Op. Expenses − Delivery Loss − Returned Profit</p>
                           <p className={`text-5xl font-black ${isProfit ? "text-emerald-700" : "text-red-600"}`}>{sign(data.profitability.netProfit)}</p>
                           <p className={`text-lg font-bold mt-3 ${isProfit ? "text-emerald-600" : "text-red-500"}`}>{pct(data.profitability.netMargin)} Net Margin</p>
                           <p className="mt-2 text-xs text-gray-600">For every Rs. 100 of sales, you keep Rs. {(data.profitability.netMargin).toFixed(2)}</p>
                         </div>
                         <div className="pt-6 mt-6 border-t border-gray-300">
                           <p className="p-3 font-mono text-xs text-center text-gray-800 bg-white rounded">
-                            {Rs(data.profitability.grossProfit)} − {Rs(data.profitability.operatingExpenses)} − {Rs(data.profitability.deliveryLoss)} − {Rs(data.stats.returnedProfit)} = {Rs(data.profitability.netProfit)}
+                            {Rs(data.profitability.grossProfit)} − {Rs(data.profitability.operatingExpenses)} − {Rs(data.profitability.deliveryLoss)} − {Rs(data.profitability.returnedProfit)} = {Rs(data.profitability.netProfit)}
                           </p>
                         </div>
                       </div>
@@ -627,17 +664,17 @@ export default function ReportsPage() {
                   <div className="pb-6 mb-6">
                     <h3 className="mb-4 text-lg font-black text-orange-700">COST OF GOODS SOLD</h3>
                     <div className="space-y-3">
-                      <PLRow label="Online COGS" value={data.breakdown.costOfGoods.online} indent={true} negative={true} />
-                      <PLRow label="POS COGS" value={data.breakdown.costOfGoods.pos} indent={true} negative={true} />
-                      <PLRow label="Total COGS" value={data.stats.totalCOGS} bold={true} negative={true} />
-                      <PLRow label="Gross Profit" value={data.profitability.grossProfit} bold={true} highlight="green" />
+                      <PLRow label="Online COGS"  value={data.breakdown.costOfGoods.online} indent={true} negative={true} />
+                      <PLRow label="POS COGS"     value={data.breakdown.costOfGoods.pos}    indent={true} negative={true} />
+                      <PLRow label="Total COGS"   value={data.stats.totalCOGS}              bold={true}   negative={true} />
+                      <PLRow label="Gross Profit" value={data.profitability.grossProfit}    bold={true}   highlight="green" />
                       <PLRow label="Gross Margin" pct={data.stats.margins.gross} indent={true} />
                     </div>
                   </div>
 
-                  {/* Operating Expenses — UPDATED with returnedProfit */}
+                  {/* Operating Expenses — FIX: includes returnedProfit line */}
                   <div className="pb-6 mb-6">
-                    <h3 className="mb-4 text-lg font-black text-amber-700">OPERATING EXPENSES</h3>
+                    <h3 className="mb-4 text-lg font-black text-amber-700">OPERATING EXPENSES & LOSSES</h3>
                     <div className="space-y-3">
                       {data.breakdown.expenses.map((ex, i) => (
                         <PLRow key={i} label={ex.category} value={ex.amount} indent={true} negative={true} />
@@ -648,7 +685,12 @@ export default function ReportsPage() {
                       {data.stats.returnedProfit > 0 && (
                         <PLRow label="Returned Item Profit Loss" value={data.stats.returnedProfit} indent={true} negative={true} />
                       )}
-                      <PLRow label="Total Expenses & Losses" value={data.stats.totalExpenses + data.stats.deliveryLoss + (data.stats.returnedProfit ?? 0)} bold={true} negative={true} />
+                      <PLRow
+                        label="Total Expenses & Losses"
+                        value={data.stats.totalExpenses + data.stats.deliveryLoss + (data.stats.returnedProfit ?? 0)}
+                        bold={true}
+                        negative={true}
+                      />
                     </div>
                   </div>
 
@@ -673,10 +715,10 @@ export default function ReportsPage() {
                   </h2>
                 </div>
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                  <SummaryCard label="Revenue" value={data.breakdown.revenue.online} color="blue" icon={<Globe className="w-4 h-4" />} />
-                  <SummaryCard label="COGS" value={data.breakdown.costOfGoods.online} color="orange" icon={<Package className="w-4 h-4" />} />
-                  <SummaryCard label="Profit" value={data.breakdown.grossProfitByChannel.online} color="green" icon={<TrendingUp className="w-4 h-4" />} />
-                  <SummaryCard label="Orders" value={data.breakdown.orderMetrics.onlineOrders} color="indigo" icon={<ShoppingBag className="w-4 h-4" />} isCount={true} />
+                  <SummaryCard label="Revenue"  value={data.breakdown.revenue.online}               color="blue"   icon={<Globe className="w-4 h-4" />} />
+                  <SummaryCard label="COGS"     value={data.breakdown.costOfGoods.online}            color="orange" icon={<Package className="w-4 h-4" />} />
+                  <SummaryCard label="Profit"   value={data.breakdown.grossProfitByChannel.online}   color="green"  icon={<TrendingUp className="w-4 h-4" />} />
+                  <SummaryCard label="Orders"   value={data.breakdown.orderMetrics.onlineOrders}     color="indigo" icon={<ShoppingBag className="w-4 h-4" />} isCount={true} />
                 </div>
                 <Card className="overflow-hidden border-0 shadow-md">
                   <div className="px-5 py-3 text-white bg-blue-700">
@@ -736,9 +778,9 @@ export default function ReportsPage() {
                   </h2>
                 </div>
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                  <SummaryCard label="Revenue" value={data.breakdown.revenue.pos} color="green" icon={<Store className="w-4 h-4" />} />
-                  <SummaryCard label="COGS" value={data.breakdown.costOfGoods.pos} color="orange" icon={<Package className="w-4 h-4" />} />
-                  <SummaryCard label="Profit" value={data.breakdown.grossProfitByChannel.pos} color="emerald" icon={<TrendingUp className="w-4 h-4" />} />
+                  <SummaryCard label="Revenue"      value={data.breakdown.revenue.pos}              color="green"  icon={<Store className="w-4 h-4" />} />
+                  <SummaryCard label="COGS"         value={data.breakdown.costOfGoods.pos}          color="orange" icon={<Package className="w-4 h-4" />} />
+                  <SummaryCard label="Profit"       value={data.breakdown.grossProfitByChannel.pos} color="emerald" icon={<TrendingUp className="w-4 h-4" />} />
                   <SummaryCard label="Transactions" value={data.breakdown.orderMetrics.posTransactions} color="teal" icon={<Receipt className="w-4 h-4" />} isCount={true} />
                 </div>
                 <Card className="overflow-hidden border-0 shadow-md">
@@ -810,14 +852,15 @@ function StatCard({ title, value, icon, color, sub }: {
   title: string; value: number; icon: React.ReactNode;
   color: "blue"|"green"|"emerald"|"red"|"amber"|"indigo"; sub: string;
 }) {
-  const colors = { 
-    blue: "bg-blue-100 text-blue-600", green: "bg-green-100 text-green-600", 
-    emerald: "bg-emerald-100 text-emerald-600", red: "bg-red-100 text-red-600", 
-    amber: "bg-amber-100 text-amber-600", indigo: "bg-indigo-100 text-indigo-600" 
+  const colors = {
+    blue:    "bg-blue-100 text-blue-600",    green:   "bg-green-100 text-green-600",
+    emerald: "bg-emerald-100 text-emerald-600", red:  "bg-red-100 text-red-600",
+    amber:   "bg-amber-100 text-amber-600",  indigo:  "bg-indigo-100 text-indigo-600",
   };
-  const vals = { 
-    blue: "text-blue-700", green: "text-green-700", emerald: "text-emerald-700", 
-    red: "text-red-700", amber: "text-amber-700", indigo: "text-indigo-700" 
+  const vals = {
+    blue:    "text-blue-700",    green:   "text-green-700",
+    emerald: "text-emerald-700", red:     "text-red-700",
+    amber:   "text-amber-700",   indigo:  "text-indigo-700",
   };
   return (
     <Card className="p-5 transition-shadow bg-white border-0 shadow-md hover:shadow-lg">
@@ -832,10 +875,10 @@ function StatCard({ title, value, icon, color, sub }: {
 function SummaryCard({ label, value, color, icon, isCount }: {
   label: string; value: number; color: string; icon: React.ReactNode; isCount?: boolean;
 }) {
-  const colors: Record<string,string> = { 
-    blue: "bg-blue-50 text-blue-700", green: "bg-green-50 text-green-700", 
-    emerald: "bg-emerald-50 text-emerald-700", indigo: "bg-indigo-50 text-indigo-700", 
-    teal: "bg-teal-50 text-teal-700", orange: "bg-orange-50 text-orange-700" 
+  const colors: Record<string,string> = {
+    blue:    "bg-blue-50 text-blue-700",      green:   "bg-green-50 text-green-700",
+    emerald: "bg-emerald-50 text-emerald-700", indigo: "bg-indigo-50 text-indigo-700",
+    teal:    "bg-teal-50 text-teal-700",       orange: "bg-orange-50 text-orange-700",
   };
   return (
     <Card className={`p-5 border-2 shadow-sm ${colors[color] || "bg-gray-50 text-gray-700"}`}>
@@ -849,13 +892,18 @@ function PLRow({ label, value, pct: pctVal, indent, bold, negative, highlight }:
   label: string; value?: number | null; pct?: number;
   indent?: boolean; bold?: boolean; negative?: boolean; highlight?: "green"|"red";
 }) {
-  const color = highlight ? (highlight === "green" ? "text-green-700" : "text-red-600") 
+  const color = highlight
+    ? (highlight === "green" ? "text-green-700" : "text-red-600")
     : negative ? "text-red-600" : "text-gray-900";
   return (
     <div className={`flex justify-between ${bold ? "bg-gray-100" : ""} px-4 py-2`}>
       <span className={`text-sm ${bold ? "font-black" : "font-medium"} ${indent ? "ml-4" : ""}`}>{label}</span>
       <span className={`text-sm font-black ${color}`}>
-        {pctVal != null ? `${pctVal.toFixed(1)}%` : value != null ? `${negative && value > 0 ? "−" : ""}Rs. ${Math.abs(value).toLocaleString()}` : ""}
+        {pctVal != null
+          ? `${pctVal.toFixed(1)}%`
+          : value != null
+          ? `${negative && value > 0 ? "−" : ""}Rs. ${Math.abs(value).toLocaleString()}`
+          : ""}
       </span>
     </div>
   );

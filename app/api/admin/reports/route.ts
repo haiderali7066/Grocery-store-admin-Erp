@@ -1,6 +1,8 @@
-// FILE PATH: app/api/admin/reports/route.ts (UPDATED)
+// FILE PATH: app/api/admin/reports/route.ts
 // ═══════════════════════════════════════════════════════════════════════════════
-// FIX: Now deducts profit lost from returned items in P&L calculation
+// FIX 1: "delivery" (lowercase) added to EXCLUDED_EXPENSE_CATEGORIES so
+//         delivery expenses are never counted as operating expenses in P&L.
+// FIX 2: returnedProfit deducted from netProfit (already present, preserved).
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { connectDB } from "@/lib/db";
@@ -50,15 +52,15 @@ export async function GET(req: NextRequest) {
       ? `${dateFrom} to ${dateTo}`
       : period;
 
-    // ── STEP 1: Build productId → FIFO cost map (same as before) ─────────────
+    // ── STEP 1: Build productId → FIFO cost map ────────────────────────────
     const allBatches = await InventoryBatch.find(
       {},
       { product: 1, buyingRate: 1, remainingQuantity: 1, status: 1, createdAt: 1 }
     ).sort({ createdAt: 1 }).lean() as any[];
 
-    const productCostMap = new Map<string, number>();
-    const batchesByProduct = new Map<string, any[]>();
-    
+    const productCostMap    = new Map<string, number>();
+    const batchesByProduct  = new Map<string, any[]>();
+
     for (const b of allBatches) {
       const id = b.product?.toString();
       if (!id) continue;
@@ -185,7 +187,17 @@ export async function GET(req: NextRequest) {
       : [];
 
     // ── STEP 4: OPERATING EXPENSES ───────────────────────────────────────────
-    const EXCLUDED_EXPENSE_CATEGORIES = ["Refund", "Delivery Loss", "Purchase", "Supplier Payment"];
+    // FIX: Added "delivery" and "Delivery" so delivery expenses entered via the
+    //      expenses form are excluded from operating P&L (they're a separate
+    //      cost category, not a recurring operating expense).
+    const EXCLUDED_EXPENSE_CATEGORIES = [
+      "Refund",
+      "Delivery Loss",
+      "Purchase",
+      "Supplier Payment",
+      "delivery",   // ← FIX: lowercase as stored by the expenses form
+      "Delivery",   // ← FIX: capitalised variant for safety
+    ];
 
     const expenseStats = await Transaction.aggregate([
       {
@@ -201,39 +213,37 @@ export async function GET(req: NextRequest) {
 
     const totalOperatingExpenses = expenseStats.reduce((a, e) => a + e.total, 0);
 
-    // ── STEP 5: DELIVERY LOSSES & RETURNS ─────────────────────────────────────
+    // ── STEP 5: RETURNS — delivery loss & profit lost ─────────────────────
     const refundsInPeriod = await Refund.find({
       ...dateMatch,
       status: { $in: ["completed", "approved"] },
     }).lean() as any[];
 
-    let deliveryLoss  = 0;
-    let totalRefunded = 0;
-    let onlineReturns = 0;
-    let posReturns    = 0;
-    let returnedProfit = 0;  // ← NEW: track profit lost from returned items
+    let deliveryLoss   = 0;
+    let totalRefunded  = 0;
+    let onlineReturns  = 0;
+    let posReturns     = 0;
+    let returnedProfit = 0;
 
     for (const refund of refundsInPeriod) {
-      deliveryLoss  += refund.deliveryCost || 0;
-      totalRefunded += refund.refundedAmount || 0;
-      
+      deliveryLoss  += refund.deliveryCost    || 0;
+      totalRefunded += refund.refundedAmount  || 0;
+
       if (refund.returnType === "online") onlineReturns++;
       else posReturns++;
 
-      // ← NEW: Calculate profit lost from returned items
-      // If returnItems exist and have costPrice, calculate profit loss
-      const returnItems = refund.returnItems || [];
-      for (const item of returnItems) {
-        const unitPrice = item.unitPrice || 0;
-        const costPrice = item.costPrice || 0;  // costPrice must be captured when return is created
-        const qty = item.returnQty || 0;
-        const profitLost = (unitPrice - costPrice) * qty;
-        returnedProfit += profitLost;
+      // Sum profit lost from returned items
+      // costPrice is now correctly captured by both route.ts and manual/route.ts
+      for (const item of (refund.returnItems || [])) {
+        const unitPrice = item.unitPrice    || 0;
+        const costPrice = item.costPrice    || 0;
+        const qty       = item.returnQty    || 0;
+        returnedProfit += (unitPrice - costPrice) * qty;
       }
     }
 
-    const totalReturns  = onlineReturns + posReturns;
-    const returnRate    = (onlineOrdersWithProfit.length + posCount) > 0
+    const totalReturns = onlineReturns + posReturns;
+    const returnRate   = (onlineOrdersWithProfit.length + posCount) > 0
       ? (totalReturns / (onlineOrdersWithProfit.length + posCount)) * 100
       : 0;
 
@@ -270,10 +280,10 @@ export async function GET(req: NextRequest) {
     const totalCOGS    = onlineCOGS + posCOGS;
     const grossProfit  = totalRevenue - totalCOGS;
     const grossMargin  = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
-    
-    // ← NEW: Deduct returned profit from net profit calculation
-    const netProfit    = grossProfit - totalOperatingExpenses - deliveryLoss - returnedProfit;
-    const netMargin    = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+    // Net profit deducts: operating expenses + delivery losses + profit lost on returns
+    const netProfit = grossProfit - totalOperatingExpenses - deliveryLoss - returnedProfit;
+    const netMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
     const roiOnInventory = inventoryValue > 0 ? (netProfit / inventoryValue) * 100 : 0;
     const cashConversion = totalRevenue > 0 ? wallet.totalBalance / totalRevenue : 0;
@@ -295,7 +305,7 @@ export async function GET(req: NextRequest) {
         grossProfit, netProfit,
         totalExpenses: totalOperatingExpenses,
         deliveryLoss,
-        returnedProfit,  // ← NEW: expose returned profit
+        returnedProfit,
         inventoryValue, inventoryUnits,
         walletBalance: wallet.totalBalance,
         margins: { gross: grossMargin, net: netMargin, online: onlineMargin, pos: posMargin },
@@ -324,7 +334,7 @@ export async function GET(req: NextRequest) {
           totalCount:   totalReturns,
           returnRate:   returnRate.toFixed(2) + "%",
           avgDeliveryLossPerReturn: totalReturns > 0 ? (deliveryLoss / totalReturns).toFixed(2) : "0",
-          profitLost:   returnedProfit,  // ← NEW: show profit lost from returns
+          profitLost:   returnedProfit,
           note: "Refunds restock inventory — delivery loss & profit loss affect P&L",
         },
         orderMetrics: {
@@ -338,7 +348,7 @@ export async function GET(req: NextRequest) {
         grossProfit, grossMargin,
         operatingExpenses: totalOperatingExpenses,
         deliveryLoss,
-        returnedProfit,  // ← NEW: separate line item
+        returnedProfit,
         netProfit, netMargin,
         breakeven: {
           requiredRevenue:   breakevenRevenue,

@@ -43,7 +43,7 @@ const WALLET_FIELD_LABEL: Record<string, string> = {
 };
 
 const CATEGORIES = [
-  "rent", "utilities", "salary", "maintenance",
+  "rent", "utilities", "salary" ,"delivery", "maintenance",
   "marketing", "transport", "packaging", "miscellaneous", "other",
 ];
 
@@ -163,32 +163,32 @@ export default function ExpensesPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="p-6 space-y-6">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Expenses</h1>
-          <p className="text-gray-500 text-sm mt-1">Track all business expenditures</p>
+          <p className="mt-1 text-sm text-gray-500">Track all business expenditures</p>
         </div>
         <Dialog open={showDialog} onOpenChange={open => { setShowDialog(open); if (!open) setSubmitError(""); }}>
           <DialogTrigger asChild>
-            <Button className="bg-green-700 hover:bg-green-800 rounded-xl gap-2">
-              <Plus className="h-4 w-4" /> Add Expense
+            <Button className="gap-2 bg-green-700 hover:bg-green-800 rounded-xl">
+              <Plus className="w-4 h-4" /> Add Expense
             </Button>
           </DialogTrigger>
           <DialogContent className="rounded-2xl">
             <DialogHeader>
               <DialogTitle>Add New Expense</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+            <form onSubmit={handleSubmit} className="mt-2 space-y-4">
 
               {/* Category */}
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Category</label>
+                <label className="block mb-1 text-sm font-semibold text-gray-700">Category</label>
                 <select value={formData.category}
                   onChange={e => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-600">
+                  className="w-full px-3 py-2 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-600">
                   {CATEGORIES.map(c => (
                     <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
                   ))}
@@ -197,7 +197,7 @@ export default function ExpensesPage() {
 
               {/* Payment source */}
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-2 block">Paid From</label>
+                <label className="block mb-2 text-sm font-semibold text-gray-700">Paid From</label>
                 <div className="grid grid-cols-2 gap-2">
                   {SOURCES.map(s => (
                     <button key={s.value} type="button"
@@ -229,7 +229,7 @@ export default function ExpensesPage() {
                   </div>
                 )}
                 {walletAvail !== null && payingAmt > 0 && !isInsufficient && (
-                  <p className="text-xs text-gray-400 mt-1 ml-1">
+                  <p className="mt-1 ml-1 text-xs text-gray-400">
                     After expense: {Rs(walletAvail - payingAmt)} remaining
                   </p>
                 )}
@@ -237,7 +237,7 @@ export default function ExpensesPage() {
 
               {/* Amount */}
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Amount (Rs)</label>
+                <label className="block mb-1 text-sm font-semibold text-gray-700">Amount (Rs)</label>
                 <Input type="number" placeholder="0" value={formData.amount}
                   onChange={e => { setFormData({ ...formData, amount: e.target.value }); setSubmitError(""); }}
                   className={`rounded-xl ${isInsufficient ? "border-red-400" : ""}`} required />
@@ -245,7 +245,7 @@ export default function ExpensesPage() {
 
               {/* Description */}
               <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">Description</label>
+                <label className="block mb-1 text-sm font-semibold text-gray-700">Description</label>
                 <Input placeholder="Optional notes..." value={formData.description}
                   onChange={e => setFormData({ ...formData, description: e.target.value })}
                   className="rounded-xl" />
@@ -253,9 +253,9 @@ export default function ExpensesPage() {
 
               {/* Inline error */}
               {submitError && (
-                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <div className="flex items-start gap-2 px-4 py-3 border border-red-200 bg-red-50 rounded-xl">
                   <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-                  <p className="text-sm text-red-700 font-medium">{submitError}</p>
+                  <p className="text-sm font-medium text-red-700">{submitError}</p>
                 </div>
               )}
 
@@ -274,9 +274,9 @@ export default function ExpensesPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Card className="p-4 border-0 shadow-md col-span-2 md:col-span-1 bg-gradient-to-br from-red-50 to-orange-50">
-          <p className="text-xs text-gray-500 font-medium mb-1">Total (This Month)</p>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <Card className="col-span-2 p-4 border-0 shadow-md md:col-span-1 bg-gradient-to-br from-red-50 to-orange-50">
+          <p className="mb-1 text-xs font-medium text-gray-500">Total (This Month)</p>
           <p className="text-2xl font-black text-red-600">{Rs(totalExpenses)}</p>
         </Card>
         {bySource.map(s => (
@@ -293,15 +293,15 @@ export default function ExpensesPage() {
 
       {/* Wallet snapshot strip */}
       {wallet && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {SOURCES.map(s => {
             const bal = (wallet as any)[s.walletKey] ?? 0;
             return (
-              <div key={s.value} className="bg-white border border-gray-100 rounded-xl px-4 py-3 shadow-sm flex items-center gap-3">
+              <div key={s.value} className="flex items-center gap-3 px-4 py-3 bg-white border border-gray-100 shadow-sm rounded-xl">
                 <div className={`p-2 rounded-lg ${SOURCE_COLORS[s.value]} bg-opacity-20`}>{s.icon}</div>
                 <div>
                   <p className="text-[10px] text-gray-400 font-bold uppercase">{s.label}</p>
-                  <p className="font-black text-gray-900 text-sm">{Rs(bal)}</p>
+                  <p className="text-sm font-black text-gray-900">{Rs(bal)}</p>
                 </div>
               </div>
             );
@@ -310,11 +310,11 @@ export default function ExpensesPage() {
       )}
 
       {/* Filter + expense list */}
-      <Card className="border-0 shadow-md overflow-hidden">
+      <Card className="overflow-hidden border-0 shadow-md">
         <div className="flex items-center justify-between p-5 border-b border-gray-100">
           <h3 className="font-bold text-gray-900">Expense History</h3>
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-gray-400" />
+            <Filter className="w-4 h-4 text-gray-400" />
             <select value={filterSource} onChange={e => setFilterSource(e.target.value)}
               className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white focus:outline-none">
               <option value="all">All Sources</option>
@@ -327,22 +327,22 @@ export default function ExpensesPage() {
 
         <div className="divide-y divide-gray-50">
           {isLoading ? (
-            <p className="text-gray-400 text-center py-10 text-sm">Loading…</p>
+            <p className="py-10 text-sm text-center text-gray-400">Loading…</p>
           ) : filtered.length === 0 ? (
-            <p className="text-gray-400 text-center py-12 text-sm">No expenses found</p>
+            <p className="py-12 text-sm text-center text-gray-400">No expenses found</p>
           ) : (
             filtered.map(expense => {
               // source field stores canonical wallet field name (easyPaisa / jazzCash)
               const displayLabel = WALLET_FIELD_LABEL[expense.source] || expense.source;
               const colorKey     = Object.keys(SOURCE_COLORS).find(k => k.toLowerCase() === expense.source.toLowerCase()) || expense.source;
               return (
-                <div key={expense._id} className="flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
+                <div key={expense._id} className="flex items-center justify-between px-5 py-4 transition-colors hover:bg-gray-50">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
-                      <DollarSign className="h-4 w-4 text-red-500" />
+                    <div className="flex items-center justify-center w-9 h-9 bg-red-50 rounded-xl shrink-0">
+                      <DollarSign className="w-4 h-4 text-red-500" />
                     </div>
                     <div>
-                      <p className="font-semibold text-gray-900 capitalize text-sm">{expense.category}</p>
+                      <p className="text-sm font-semibold text-gray-900 capitalize">{expense.category}</p>
                       {expense.description && (
                         <p className="text-xs text-gray-400">{expense.description}</p>
                       )}
@@ -360,7 +360,7 @@ export default function ExpensesPage() {
                     </p>
                     <button onClick={() => handleDelete(expense._id)}
                       className="p-1.5 hover:bg-red-50 rounded-lg transition-colors">
-                      <Trash2 className="h-4 w-4 text-red-400" />
+                      <Trash2 className="w-4 h-4 text-red-400" />
                     </button>
                   </div>
                 </div>

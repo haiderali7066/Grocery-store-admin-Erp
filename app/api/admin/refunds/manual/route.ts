@@ -1,6 +1,7 @@
-// FILE PATH: app/api/admin/refunds/manual/route.ts (UPDATED)
+// FILE PATH: app/api/admin/refunds/manual/route.ts
 // ═══════════════════════════════════════════════════════════════════════════════
-// FIX: Now captures costPrice when creating manual refunds
+// FIX: Now uses buildProductCostMap() as fallback for costPrice so POS returns
+//      always show the correct cost and profit lost.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from "next/server";
@@ -17,6 +18,35 @@ function extractId(raw: any): string | null {
   const str = raw.toString();
   if (!str || str === "[object Object]" || str.length < 12) return null;
   return str;
+}
+
+// ── Helper: Build productId → FIFO cost map (same as route.ts) ───────────────
+async function buildProductCostMap(): Promise<Map<string, number>> {
+  const allBatches = await InventoryBatch.find(
+    {},
+    { product: 1, buyingRate: 1, remainingQuantity: 1, status: 1, createdAt: 1 }
+  ).sort({ createdAt: 1 }).lean() as any[];
+
+  const productCostMap = new Map<string, number>();
+  const batchesByProduct = new Map<string, any[]>();
+
+  for (const b of allBatches) {
+    const id = b.product?.toString();
+    if (!id) continue;
+    if (!batchesByProduct.has(id)) batchesByProduct.set(id, []);
+    batchesByProduct.get(id)!.push(b);
+  }
+
+  for (const [id, batches] of batchesByProduct) {
+    const current =
+      batches.find(
+        b => (b.remainingQuantity ?? 0) > 0 &&
+             (b.status === "active" || b.status === "partial")
+      ) ?? batches[batches.length - 1];
+    productCostMap.set(id, current?.buyingRate ?? 0);
+  }
+
+  return productCostMap;
 }
 
 async function restoreToOriginalBatch(
@@ -128,36 +158,48 @@ export async function POST(req: NextRequest) {
     const pm          = (paymentMethod || sourceDoc.paymentMethod || "cash").toLowerCase();
     const walletField = PAYMENT_TO_WALLET[pm] || "cash";
 
-    // ── Match items with source doc to get costPrice ──────────────────────
+    // ── Build FIFO cost map as authoritative fallback ─────────────────────
+    // FIX: POS sale items rarely store per-item costPrice; the batch map is
+    //      the source of truth for buying rates.
+    const productCostMap = await buildProductCostMap();
+
+    // ── Enrich items with costPrice ───────────────────────────────────────
     const enrichedItems = validItems.map((item: any) => {
       const productId = extractId(item.productId);
-      let costPrice = item.costPrice || 0;  // Use provided costPrice if available
-      let unitPrice = item.unitPrice || item.price || 0;
+      let unitPrice   = item.unitPrice || item.price || 0;
+      let costPrice   = 0;
 
-      // Try to find the item in source doc to get actual cost
-      if (!costPrice) {
-        const sourceItem = docItems.find((si: any) => {
-          const sourceId = extractId(si.product || si.productId);
-          return (sourceId && sourceId === productId) ||
-                 (si.name?.toLowerCase() === item.name?.toLowerCase());
-        });
+      // 1. Try to match the item in the source document
+      const sourceItem = docItems.find((si: any) => {
+        const sourceId = extractId(si.product || si.productId);
+        return (sourceId && sourceId === productId) ||
+               (si.name?.toLowerCase() === item.name?.toLowerCase());
+      });
 
-        if (sourceItem) {
-          // For POS sales, costPrice is stored per item
-          costPrice = sourceItem.costPrice || sourceItem.cost || 0;
-          unitPrice = sourceItem.price || unitPrice;
-        }
+      if (sourceItem) {
+        // Use price from source doc if caller didn't supply one
+        unitPrice = sourceItem.price || unitPrice;
+        // Some POS models store costPrice per item — use it if present
+        costPrice = sourceItem.costPrice || sourceItem.cost || 0;
       }
+
+      // 2. FIX: Fall back to FIFO batch map when source item has no costPrice
+      //    (This is the common case for POS sales)
+      if (!costPrice && productId) {
+        costPrice = productCostMap.get(productId) ?? 0;
+      }
+
+      const returnQty = item.returnQty || item.quantity || 0;
 
       return {
         productId,
-        name: item.name,
-        returnQty: item.returnQty || item.quantity || 0,
+        name:         item.name,
+        returnQty,
         unitPrice,
-        costPrice,                              // ← CAPTURED
-        profitPerUnit: unitPrice - costPrice,  // ← CALCULATED
-        lineTotal: unitPrice * (item.returnQty || item.quantity || 0),
-        restock: item.restock !== false,
+        costPrice,                           // ← now correctly populated
+        profitPerUnit: unitPrice - costPrice, // ← now correctly calculated
+        lineTotal:     unitPrice * returnQty,
+        restock:       item.restock !== false,
       };
     });
 
@@ -241,7 +283,7 @@ export async function POST(req: NextRequest) {
         createdBy:      payload.userId,
       }], { session });
 
-      // ← NEW: Refund record with costPrice
+      // Refund record — enrichedItems now carry correct costPrice & profitPerUnit
       const refundDoc = await Refund.create([{
         order:           docType === "order" ? sourceDoc._id : undefined,
         orderNumber:     docType === "pos"   ? orderNumber   : undefined,
@@ -251,7 +293,7 @@ export async function POST(req: NextRequest) {
         deliveryCost:    0,
         reason,
         notes:           notes || reason,
-        returnItems:     enrichedItems,  // ← Now includes costPrice & profitPerUnit
+        returnItems:     enrichedItems,
         status:          "completed",
         approvedBy:      payload.userId,
         approvedAt:      returnedAt,
@@ -259,10 +301,16 @@ export async function POST(req: NextRequest) {
 
       await session.commitTransaction();
 
+      // Total profit lost for response message
+      const profitLost = enrichedItems.reduce(
+        (sum, item) => sum + (item.profitPerUnit * item.returnQty), 0
+      );
+
       return NextResponse.json({
         success:       true,
-        message:       `Return processed. Rs. ${refundAmount.toLocaleString()} refunded. ${restockedCount} item(s) restocked into original batches.`,
+        message:       `Return processed. Rs. ${refundAmount.toLocaleString()} refunded. Profit lost: Rs. ${profitLost.toLocaleString()}. ${restockedCount} item(s) restocked into original batches.`,
         refundAmount,
+        profitLost,
         restockedCount,
         refund:        refundDoc[0],
         walletBalance: (wallet as any)[walletField],

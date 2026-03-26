@@ -1,13 +1,13 @@
-// FILE PATH: app/api/admin/refunds/route.ts (UPDATED)
+// FILE PATH: app/api/admin/refunds/route.ts (ONLINE REFUND POST - FIXED)
 // ═══════════════════════════════════════════════════════════════════════════════
-// FIX: Now captures costPrice when creating online refund requests
+// FIX: Ensure returnItems are ALWAYS created with costPrice captured from FIFO batch map
+//      This ensures online refunds deduct profit from P&L on approval
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Refund, Order, InventoryBatch, Product } from "@/lib/models/index";
+import { Refund, Order, InventoryBatch } from "@/lib/models/index";
 import { verifyToken, getTokenFromCookie } from "@/lib/auth";
-import mongoose from "mongoose";
 
 function auth(req: NextRequest) {
   const token = getTokenFromCookie(req.headers.get("cookie") || "");
@@ -74,7 +74,8 @@ export async function POST(req: NextRequest) {
     if (!orderId || !reason)
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
-    const order = await Order.findById(orderId);
+    // ← Populate items.product so we can get product names
+    const order = await Order.findById(orderId).populate("items.product");
     if (!order)
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
 
     const orderItems: any[] = order.items || [];
     const unreturnedItems = orderItems.filter(item => {
-      const key = item.product?.toString() || item.productId?.toString() || item.name;
+      const key = item.product?._id?.toString() || item.productId?.toString() || item.name;
       return !alreadyReturnedItems.has(key);
     });
 
@@ -112,32 +113,38 @@ export async function POST(req: NextRequest) {
         error: `${orderItems.length - unreturnedItems.length} item(s) already returned. Only ${unreturnedItems.length} item(s) remain returnable.`
       }, { status: 400 });
 
-    // ── Build cost map to capture costPrice ──────────────────────────────────
+    // ── Build FIFO cost map for accurate cost retrieval ────────────────────
     const productCostMap = await buildProductCostMap();
 
     const refundableAmount = unreturnedItems.reduce(
       (sum: number, item: any) => sum + (item.subtotal || item.price * item.quantity || 0), 0
     );
 
-    // ← NEW: Include costPrice in returnItems
+    // ← FIX: ALWAYS build returnItems with costPrice from FIFO batch map
+    //        This ensures profit deduction happens on approval & in reports P&L
     const returnItems = unreturnedItems.map((item: any) => {
-      const productId = item.product?.toString() || item.productId?.toString();
+      const productId = item.product?._id?.toString() || item.productId?.toString();
       const costPrice = productId ? (productCostMap.get(productId) ?? 0) : 0;
       const unitPrice = item.price || 0;
       const qty = item.quantity || 0;
       const profitPerUnit = unitPrice - costPrice;
 
       return {
-        productId: item.product || item.productId || null,
-        name:      item.name,
+        productId: item.product?._id || item.productId || null,
+        name:      item.product?.name || item.name || "Unknown Item",
         returnQty: qty,
         unitPrice: unitPrice,
-        costPrice: costPrice,                    // ← NEW
-        profitPerUnit: profitPerUnit,            // ← NEW
+        costPrice: costPrice,                  // ← Captured from batch map
+        profitPerUnit: profitPerUnit,
         lineTotal: item.subtotal || unitPrice * qty || 0,
         restock:   true,
       };
     });
+
+    console.log(
+      "[Online Refund POST] Created with items:",
+      returnItems.map(i => `${i.name}×${i.returnQty} cost=${i.costPrice} profit=${i.profitPerUnit}`)
+    );
 
     const refund = new Refund({
       order:            orderId,
@@ -145,7 +152,7 @@ export async function POST(req: NextRequest) {
       requestedAmount:  refundableAmount,
       deliveryCost:     parseFloat(deliveryCost) || 0,
       reason,
-      returnItems,
+      returnItems,      // ← Includes costPrice & profitPerUnit
       status: "pending",
     });
 
