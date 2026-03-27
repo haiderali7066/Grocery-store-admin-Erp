@@ -27,6 +27,7 @@ import {
   Tag,
   UserSearch,
   Layers,
+  ArrowLeftRight,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -122,6 +123,7 @@ export default function POSPage() {
   const [customerSuggestions, setCustomerSuggestions] = useState<CustomerSuggestion[]>([]);
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+  const [amountReceived, setAmountReceived] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [lastBill, setLastBill] = useState<any>(null);
@@ -463,10 +465,9 @@ export default function POSPage() {
       : Math.min(billDiscountValue, subtotalWithTax);
   const total = Math.max(0, subtotalWithTax - billDiscountAmount);
 
-  // ── Auto-fill amount paid with total ───────────────────────────────────────
-  // This is a derived value, not state. Just display it.
-  const amountPaid = total;
-  const change = amountPaid - total; // Will always be 0
+  // ── Cash change calculation ────────────────────────────────────────────────
+  const changeAmount = paymentMethod === "cash" ? Math.max(0, amountReceived - total) : 0;
+  const isShortPayment = paymentMethod === "cash" && amountReceived > 0 && amountReceived < total;
 
   // ── Process sale ──────────────────────────────────────────────────────────
 
@@ -492,13 +493,18 @@ export default function POSPage() {
           billDiscountValue,
           billDiscountAmount,
           paymentMethod,
-          amountPaid: total, // Send total as amount paid
+          amountPaid: total, // Wallet always gets the exact total — not the cash received
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
-        setLastBill(data);
+        // Attach cash-related fields to the bill object for receipt display/print
+        setLastBill({
+          ...data,
+          amountReceived: paymentMethod === "cash" ? amountReceived : null,
+          changeAmount: paymentMethod === "cash" ? changeAmount : null,
+        });
         setShowReceipt(true);
         fetchProducts();
       } else {
@@ -518,6 +524,7 @@ export default function POSPage() {
     setCustomerId(null);
     setCustomerSearch("");
     setPaymentMethod("cash");
+    setAmountReceived(0);
     setBillDiscountType("percentage");
     setBillDiscountValue(0);
     setShowReceipt(false);
@@ -530,7 +537,11 @@ export default function POSPage() {
   const printBill = () => {
     if (!lastBill) return;
     const itemCount = (lastBill.items || []).length;
-    const estimatedHeight = 480 + itemCount * 55;
+    const hasCashDetails =
+      lastBill.paymentMethod === "cash" &&
+      lastBill.amountReceived != null &&
+      lastBill.amountReceived > 0;
+    const estimatedHeight = 480 + itemCount * 55 + (hasCashDetails ? 60 : 0);
     const win = window.open("", "", `width=420,height=${estimatedHeight}`);
     if (!win) return;
     win.document.write(`
@@ -551,6 +562,8 @@ export default function POSPage() {
         .summary-row { display: flex; justify-content: space-between; font-size: 12px; margin: 3px 0; }
         .summary-row.discount { color: #b45309; }
         .total-row { display: flex; justify-content: space-between; font-size: 16px; font-weight: 900; margin: 4px 0; }
+        .cash-row { display: flex; justify-content: space-between; font-size: 12px; margin: 3px 0; color: #1d4ed8; }
+        .change-row { display: flex; justify-content: space-between; font-size: 14px; font-weight: 900; margin: 4px 0; color: #15803d; background: #f0fdf4; padding: 4px 6px; border-radius: 4px; }
         .footer { text-align: center; margin-top: 16px; font-size: 11px; color: #555; }
         .badge { display: inline-block; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 4px; padding: 1px 6px; font-size: 10px; }
         @media print { body { padding: 8px; } @page { margin: 0; size: 80mm auto; } }
@@ -584,6 +597,11 @@ export default function POSPage() {
         ${Number(lastBill.discount) > 0 ? `<div class="summary-row discount"><span>Discount</span><span>− Rs ${Number(lastBill.discount).toFixed(2)}</span></div>` : ""}
         <hr class="divider-solid">
         <div class="total-row"><span>TOTAL</span><span>Rs ${Number(lastBill.total).toFixed(2)}</span></div>
+        ${hasCashDetails ? `
+        <hr class="divider">
+        <div class="cash-row"><span>Cash Received</span><span>Rs ${Number(lastBill.amountReceived).toFixed(2)}</span></div>
+        <div class="change-row"><span>Change Due</span><span>Rs ${Number(lastBill.changeAmount).toFixed(2)}</span></div>
+        ` : ""}
         <hr class="divider">
         <div class="footer"><div>Thank you for shopping at Khas Pure Food!</div><div style="margin-top:4px">Visit us again 🌿</div></div>
       </body></html>
@@ -595,6 +613,11 @@ export default function POSPage() {
   // ── Receipt screen ─────────────────────────────────────────────────────────
 
   if (showReceipt && lastBill) {
+    const hasCashDetails =
+      lastBill.paymentMethod === "cash" &&
+      lastBill.amountReceived != null &&
+      lastBill.amountReceived > 0;
+
     return (
       <div className="flex items-center justify-center min-h-screen p-4 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">
         <Card className="w-full max-w-lg p-8 bg-white border-0 shadow-2xl rounded-3xl">
@@ -632,6 +655,22 @@ export default function POSPage() {
                 Rs {Number(lastBill.total).toFixed(2)}
               </span>
             </div>
+
+            {/* Cash received / change section on receipt screen */}
+            {hasCashDetails && (
+              <>
+                <div className="flex justify-between pt-2 text-sm text-blue-700">
+                  <span className="font-semibold">Cash Received</span>
+                  <span className="font-semibold">Rs {Number(lastBill.amountReceived).toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3 mt-1 bg-emerald-100 rounded-xl">
+                  <span className="text-base font-black text-emerald-800">Change Due</span>
+                  <span className="text-2xl font-black text-emerald-700">
+                    Rs {Number(lastBill.changeAmount).toFixed(2)}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex gap-3">
@@ -1121,7 +1160,10 @@ export default function POSPage() {
                   {(["cash", "card"] as const).map((m) => (
                     <button
                       key={m}
-                      onClick={() => setPaymentMethod(m)}
+                      onClick={() => {
+                        setPaymentMethod(m);
+                        setAmountReceived(0);
+                      }}
                       className={`py-2.5 rounded-lg text-sm font-bold border-2 transition-all ${
                         paymentMethod === m
                           ? "bg-indigo-600 text-white border-indigo-600 shadow-md"
@@ -1133,22 +1175,95 @@ export default function POSPage() {
                   ))}
                 </div>
 
-                {/* Amount Due Display */}
-                <div className="p-4 border-2 bg-emerald-50 border-emerald-200 rounded-xl">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="mb-1 text-xs font-bold uppercase text-emerald-700">Amount Due</p>
-                      <p className="text-3xl font-black text-emerald-600">
-                        Rs {total.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="mb-1 text-xs text-emerald-600">Payment Method</p>
-                      <p className="text-sm font-bold capitalize text-emerald-700">
-                        {paymentMethod === "cash" ? "💵 Cash" : "🏦 Card/Bank"}
-                      </p>
+                {/* Amount Due + Cash Received (cash only) */}
+                <div className="space-y-2">
+                  <div className="p-3 border-2 bg-emerald-50 border-emerald-200 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="mb-0.5 text-xs font-bold uppercase text-emerald-700">Amount Due</p>
+                        <p className="text-2xl font-black text-emerald-600">
+                          Rs {total.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="mb-0.5 text-xs text-emerald-600">Payment</p>
+                        <p className="text-sm font-bold capitalize text-emerald-700">
+                          {paymentMethod === "cash" ? "💵 Cash" : "🏦 Card/Bank"}
+                        </p>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Cash received input — only shown for cash */}
+                  {paymentMethod === "cash" && (
+                    <div className="p-3 space-y-2 border-2 border-blue-200 bg-blue-50 rounded-xl">
+                      <label className="text-xs font-bold text-blue-700 flex items-center gap-1.5">
+                        <DollarSign className="h-3.5 w-3.5" /> Cash Received
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <span className="absolute text-sm font-bold text-blue-500 -translate-y-1/2 left-3 top-1/2">
+                            Rs
+                          </span>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={amountReceived || ""}
+                            onChange={(e) =>
+                              setAmountReceived(parseFloat(e.target.value) || 0)
+                            }
+                            placeholder={total.toFixed(0)}
+                            className="h-10 text-sm font-bold bg-white border-2 border-blue-200 rounded-lg pl-9 focus:border-blue-400"
+                          />
+                        </div>
+                        {/* Quick-fill exact amount button */}
+                        <button
+                          onClick={() => setAmountReceived(total)}
+                          className="h-10 px-3 text-xs font-bold text-blue-700 transition-colors bg-white border-2 border-blue-200 rounded-lg shrink-0 hover:bg-blue-100"
+                          title="Fill exact amount"
+                        >
+                          Exact
+                        </button>
+                      </div>
+
+                      {/* Change due display */}
+                      {amountReceived > 0 && (
+                        <div
+                          className={`flex items-center justify-between rounded-lg px-3 py-2.5 ${
+                            isShortPayment
+                              ? "bg-red-100 border border-red-300"
+                              : "bg-emerald-100 border border-emerald-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <ArrowLeftRight
+                              className={`h-4 w-4 ${
+                                isShortPayment ? "text-red-600" : "text-emerald-700"
+                              }`}
+                            />
+                            <span
+                              className={`text-sm font-bold ${
+                                isShortPayment ? "text-red-700" : "text-emerald-800"
+                              }`}
+                            >
+                              {isShortPayment ? "Short by" : "Change Due"}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-xl font-black ${
+                              isShortPayment ? "text-red-700" : "text-emerald-700"
+                            }`}
+                          >
+                            Rs{" "}
+                            {isShortPayment
+                              ? (total - amountReceived).toFixed(2)
+                              : changeAmount.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Action buttons */}
