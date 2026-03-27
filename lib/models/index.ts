@@ -378,7 +378,6 @@ export const PaymentSchema = new Schema(
   },
   { timestamps: true },
 );
-
 // =========================
 // Refund Schema
 // =========================
@@ -402,11 +401,13 @@ export const RefundSchema = new Schema(
     returnItems: [
       {
         productId: { type: Schema.Types.ObjectId, ref: "Product", default: null },
-        name: { type: String, required: true },
-        returnQty: { type: Number, required: true },
-        unitPrice: { type: Number, required: true },
-        lineTotal: { type: Number, required: true },
-        restock: { type: Boolean, default: true },
+        name:          { type: String,  required: true },
+        returnQty:     { type: Number,  required: true },
+        unitPrice:     { type: Number,  required: true },
+        costPrice:     { type: Number,  default: 0     }, // ← ADDED: buying rate from inventory batch
+        profitPerUnit: { type: Number,  default: 0     }, // ← ADDED: unitPrice − costPrice
+        lineTotal:     { type: Number,  required: true },
+        restock:       { type: Boolean, default: true  },
       },
     ],
   },

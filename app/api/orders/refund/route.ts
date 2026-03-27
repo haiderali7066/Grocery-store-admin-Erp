@@ -1,3 +1,11 @@
+// FILE PATH: app/api/refunds/route.ts  (or wherever this creation route lives)
+// ═══════════════════════════════════════════════════════════════════════════════
+// FIX: Populate returnItems from order.items when creating the refund request
+//      so the approve route has productId + unitPrice to work with.
+//      costPrice is intentionally left at 0 here — the approve route fills it
+//      in from the live inventory batch map at approval time.
+// ═══════════════════════════════════════════════════════════════════════════════
+
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import { Order, RefundRequest } from '@/lib/models';
@@ -24,8 +32,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate order belongs to user
-    const order = await Order.findById(orderId);
+    // Populate items.product so we can capture productId, name, price
+    const order = await Order.findById(orderId)
+      .populate('items.product', 'name')
+      .lean() as any;
+
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
@@ -34,7 +45,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Prevent refunds for POS sales
     if (order.isPOS) {
       return NextResponse.json(
         { error: 'Walk-in sales cannot be refunded' },
@@ -42,7 +52,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check order status - cannot refund cancelled orders
     if (order.orderStatus === 'cancelled') {
       return NextResponse.json(
         { error: 'This order is already cancelled' },
@@ -50,7 +59,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if already has pending refund
     const existingRefund = await RefundRequest.findOne({
       order: orderId,
       status: { $in: ['pending', 'approved'] },
@@ -63,12 +71,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create refund request
+    // ── FIX: Build returnItems from order items ────────────────────────────
+    // costPrice is left 0 here — the approve route resolves it from the
+    // inventory batch map at approval time using the productId below.
+    const returnItems = (order.items || []).map((item: any) => {
+      const product   = item.product as any;
+      // product is populated so product._id is the ObjectId, product.name is the string
+      const productId = product?._id || item.productId || null;
+      const name      = item.name || product?.name || 'Unknown Product';
+      const unitPrice = item.price || 0;
+      const returnQty = item.quantity || 1;
+
+      return {
+        productId,                        // ← ObjectId stored — approve route resolves cost from this
+        name,
+        returnQty,
+        unitPrice,
+        costPrice:     0,                 // ← filled in correctly at approval time
+        profitPerUnit: 0,                 // ← filled in correctly at approval time
+        lineTotal:     unitPrice * returnQty,
+        restock:       true,
+      };
+    });
+
+    // Create refund request with returnItems populated
     const refund = new RefundRequest({
-      order: orderId,
+      order:           orderId,
       requestedAmount: order.total,
       reason,
-      status: 'pending',
+      status:          'pending',
+      returnItems,                        // ← was missing entirely before
     });
 
     await refund.save();

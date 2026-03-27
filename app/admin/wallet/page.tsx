@@ -255,23 +255,48 @@ export default function WalletPage() {
 
   const filteredTx = useMemo(() => {
     let filtered = report?.transactions ?? [];
-
-    if (typeFilter !== "all") {
-      filtered = filtered.filter(t => t.type === typeFilter);
-    }
-
-    if (walletFilter !== "all") {
-      filtered = filtered.filter(t => t.source === walletFilter || t.destination === walletFilter);
-    }
-
+    if (typeFilter !== "all") filtered = filtered.filter(t => t.type === typeFilter);
+    if (walletFilter !== "all") filtered = filtered.filter(t => t.source === walletFilter || t.destination === walletFilter);
     return filtered;
   }, [report?.transactions, typeFilter, walletFilter]);
 
   const totalPages = Math.ceil(filteredTx.length / ITEMS_PER_PAGE);
+
   const paginatedTx = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredTx.slice(start, start + ITEMS_PER_PAGE);
   }, [filteredTx, currentPage]);
+
+  // ── Running Balance (bank-statement style) ────────────────────────────────
+
+  const runningBalances = useMemo(() => {
+    const currentBal =
+      walletFilter === "all"
+        ? (wallet?.totalBalance ?? 0)
+        : ((wallet?.[walletFilter] as number) ?? 0);
+
+    // Sort oldest→newest to accumulate forward
+    const sorted = [...filteredTx].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+
+    const totalCredit = sorted
+      .filter((t) => t.type === "income")
+      .reduce((s, t) => s + t.amount, 0);
+    const totalDebit = sorted
+      .filter((t) => t.type !== "income")
+      .reduce((s, t) => s + t.amount, 0);
+
+    let running = currentBal - totalCredit + totalDebit; // estimated opening balance
+
+    const map: Record<string, { before: number; after: number }> = {};
+    sorted.forEach((tx) => {
+      const before = running;
+      running = tx.type === "income" ? running + tx.amount : running - tx.amount;
+      map[tx._id] = { before, after: running };
+    });
+    return map;
+  }, [filteredTx, walletFilter, wallet]);
 
   const transferTx = report?.transactions?.filter(t => t.type === "transfer") ?? [];
 
@@ -334,7 +359,7 @@ export default function WalletPage() {
           </div>
         </div>
 
-        {/* ── Live Wallet Balances (always shown) ── */}
+        {/* ── Live Wallet Balances ── */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <Card className="p-6 text-white border-0 shadow-md bg-gradient-to-br from-gray-900 to-gray-700">
             <p className="mb-1 text-xs font-bold tracking-widest text-gray-400 uppercase">Total Liquidity</p>
@@ -391,7 +416,6 @@ export default function WalletPage() {
 
         {/* ── Period + Tab Controls ── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center no-print">
-          {/* Period */}
           <div className="flex p-1 bg-gray-100 border border-gray-200 rounded-xl">
             {PERIODS.map((p) => (
               <button
@@ -404,7 +428,6 @@ export default function WalletPage() {
             ))}
           </div>
 
-          {/* Tabs */}
           <div className="flex flex-wrap p-1 bg-gray-100 border border-gray-200 rounded-xl">
             {[
               { id: "overview", label: "Overview", icon: BarChart3 },
@@ -463,7 +486,6 @@ export default function WalletPage() {
             {/* ── OVERVIEW TAB ── */}
             {activeTab === "overview" && (
               <div className="space-y-5">
-                {/* Net flow summary */}
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                   {[
                     { label: "Net Flow", value: report?.summary.netFlow ?? 0, color: (report?.summary.netFlow ?? 0) >= 0 ? "text-green-700" : "text-red-600", bg: "bg-gray-50" },
@@ -480,7 +502,6 @@ export default function WalletPage() {
                   ))}
                 </div>
 
-                {/* Category breakdown */}
                 <Card className="p-6 border-0 shadow-md">
                   <h3 className="mb-4 font-bold text-gray-900">Category Breakdown</h3>
                   <div className="space-y-3">
@@ -526,7 +547,6 @@ export default function WalletPage() {
 
                   {/* Filters */}
                   <div className="flex flex-col flex-wrap gap-3 sm:flex-row">
-                    {/* Type Filter */}
                     <div className="flex items-center gap-1 p-1 rounded-lg bg-white/10">
                       {(["all", "income", "expense", "transfer"] as const).map((f) => (
                         <button key={f} onClick={() => { setTypeFilter(f); setCurrentPage(1); }}
@@ -535,8 +555,6 @@ export default function WalletPage() {
                         </button>
                       ))}
                     </div>
-
-                    {/* Wallet Filter */}
                     <div className="flex items-center gap-1 p-1 rounded-lg bg-white/10">
                       <button onClick={() => { setWalletFilter("all"); setCurrentPage(1); }}
                         className={`px-2.5 py-1 rounded-md text-xs font-bold capitalize transition-all ${walletFilter === "all" ? "bg-white text-gray-900" : "text-gray-300 hover:text-white"}`}>
@@ -552,78 +570,193 @@ export default function WalletPage() {
                   </div>
                 </div>
 
-                {/* Transactions Table */}
+                {/* ── Bank-Statement Table ── */}
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50">
-                        <th className="px-5 py-3 text-xs font-bold text-left text-gray-500 uppercase">ID</th>
-                        <th className="px-5 py-3 text-xs font-bold text-left text-gray-500 uppercase">Date</th>
-                        <th className="px-5 py-3 text-xs font-bold text-left text-gray-500 uppercase">Details</th>
-                        <th className="px-5 py-3 text-xs font-bold text-left text-gray-500 uppercase">Type</th>
-                        <th className="px-5 py-3 text-xs font-bold text-left text-gray-500 uppercase">Wallet</th>
-                        <th className="px-5 py-3 text-xs font-bold text-right text-gray-500 uppercase">Amount</th>
+                      <tr className="border-b-2 border-gray-200 bg-gray-50">
+                        <th className="w-24 px-4 py-3 text-xs font-bold text-left text-gray-500 uppercase">Ref #</th>
+                        <th className="px-4 py-3 text-xs font-bold text-left text-gray-500 uppercase">Date</th>
+                        <th className="px-4 py-3 text-xs font-bold text-left text-gray-500 uppercase">Details</th>
+                        <th className="px-4 py-3 text-xs font-bold text-left text-gray-500 uppercase">Wallet</th>
+                        <th className="px-4 py-3 text-xs font-bold text-right text-red-400 uppercase">Debit (−)</th>
+                        <th className="px-4 py-3 text-xs font-bold text-right uppercase text-emerald-500">Credit (+)</th>
+                        <th className="px-4 py-3 text-xs font-bold text-right text-gray-500 uppercase">Balance</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-50">
+                    <tbody className="divide-y divide-gray-100">
                       {paginatedTx.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="text-sm text-center text-gray-400 py-14">
+                          <td colSpan={7} className="text-sm text-center text-gray-400 py-14">
                             <WalletIcon className="w-8 h-8 mx-auto mb-2 opacity-20" />
                             {filteredTx.length === 0 ? "No transactions match filters." : "No transactions this period."}
                           </td>
                         </tr>
                       ) : (
-                        paginatedTx.map((tx) => {
+                        paginatedTx.map((tx, idx) => {
                           const s = TX_STYLES[tx.type] || TX_STYLES.income;
                           const TxIcon = s.icon;
-                          const isIdCopied = copiedId === tx._id;
+                          const bal = runningBalances[tx._id];
+                          const isDebit = tx.type !== "income";
+                          const globalIdx = (currentPage - 1) * ITEMS_PER_PAGE + idx + 1;
+
                           return (
-                            <tr key={tx._id} className="transition-colors hover:bg-gray-50/60">
-                              <td className="px-5 py-3">
-                                <button
-                                  onClick={() => copyToClipboard(tx._id)}
-                                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors group"
-                                  title="Click to copy ID"
-                                >
-                                  <span className="font-mono text-xs font-bold text-gray-600 group-hover:text-gray-700">
-                                    {tx._id.slice(0, 8)}...
+                            <tr
+                              key={tx._id}
+                              className={`transition-colors border-b border-gray-50 ${
+                                isDebit
+                                  ? "hover:bg-red-50/40"
+                                  : "hover:bg-emerald-50/40"
+                              }`}
+                            >
+                              {/* ── Ref # — large & prominent ── */}
+                              <td className="px-4 py-4">
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <span className="text-xl font-black leading-none tracking-tight text-gray-800">
+                                    #{String(globalIdx).padStart(3, "0")}
                                   </span>
-                                  <Copy className={`h-3 w-3 transition-colors ${isIdCopied ? "text-green-600" : "text-gray-400 group-hover:text-gray-600"}`} />
-                                </button>
-                                {isIdCopied && <p className="mt-1 text-xs font-semibold text-green-600">Copied!</p>}
+                                  <button
+                                    onClick={() => copyToClipboard(tx._id)}
+                                    className="flex items-center gap-1 mt-1.5 px-1.5 py-0.5 rounded bg-gray-100 hover:bg-gray-200 transition-colors group"
+                                    title="Copy full transaction ID"
+                                  >
+                                    <span className="font-mono text-[10px] text-gray-400 group-hover:text-gray-600">
+                                      {tx._id.slice(0, 7)}…
+                                    </span>
+                                    <Copy
+                                      className={`h-2.5 w-2.5 transition-colors ${
+                                        copiedId === tx._id
+                                          ? "text-green-600"
+                                          : "text-gray-300 group-hover:text-gray-500"
+                                      }`}
+                                    />
+                                  </button>
+                                  {copiedId === tx._id && (
+                                    <p className="text-[10px] font-semibold text-green-600 mt-0.5">Copied!</p>
+                                  )}
+                                </div>
                               </td>
-                              <td className="px-5 py-3 text-xs text-gray-400 whitespace-nowrap">
-                                {new Date(tx.createdAt).toLocaleDateString("en-PK", { day: "numeric", month: "short", year: "numeric" })}
+
+                              {/* ── Date ── */}
+                              <td className="px-4 py-4 whitespace-nowrap">
+                                <p className="text-xs font-semibold text-gray-700">
+                                  {new Date(tx.createdAt).toLocaleDateString("en-PK", {
+                                    day: "numeric",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </p>
+                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                  {new Date(tx.createdAt).toLocaleTimeString("en-PK", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </p>
                               </td>
-                              <td className="px-5 py-3">
-                                <p className="font-semibold text-gray-900 capitalize">{tx.category.replace(/_/g, " ")}</p>
-                                {tx.description && <p className="text-xs text-gray-400 truncate max-w-[220px]">{tx.description}</p>}
+
+                              {/* ── Details ── */}
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${s.badge}`}
+                                  >
+                                    <TxIcon className="w-3 h-3" />
+                                    {tx.type}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-semibold text-gray-900 capitalize">
+                                  {tx.category.replace(/_/g, " ")}
+                                </p>
+                                {tx.description && (
+                                  <p className="text-xs text-gray-400 truncate max-w-[200px] mt-0.5">
+                                    {tx.description}
+                                  </p>
+                                )}
                               </td>
-                              <td className="px-5 py-3">
-                                <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${s.badge}`}>
-                                  <TxIcon className="w-3 h-3" />{tx.type}
+
+                              {/* ── Wallet ── */}
+                              <td className="px-4 py-4">
+                                <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full font-medium whitespace-nowrap">
+                                  {tx.source}
+                                  {tx.destination ? ` → ${tx.destination}` : ""}
                                 </span>
                               </td>
-                              <td className="px-5 py-3">
-                                <span className="text-xs bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full font-medium">
-                                  {tx.source}{tx.destination ? ` → ${tx.destination}` : ""}
-                                </span>
+
+                              {/* ── Debit (−) ── */}
+                              <td className="px-4 py-4 text-right">
+                                {isDebit ? (
+                                  <div>
+                                    <p className="text-base font-black leading-none text-red-600">
+                                      Rs. {tx.amount.toLocaleString()}
+                                    </p>
+                                    <p className="text-[10px] text-red-400 mt-1 font-medium">withdrawn</p>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm font-medium text-gray-300 select-none">—</span>
+                                )}
                               </td>
-                              <td className={`px-5 py-3 text-right font-black ${s.amount}`}>
-                                {s.prefix}Rs. {tx.amount.toLocaleString()}
+
+                              {/* ── Credit (+) ── */}
+                              <td className="px-4 py-4 text-right">
+                                {!isDebit ? (
+                                  <div>
+                                    <p className="text-base font-black leading-none text-emerald-600">
+                                      Rs. {tx.amount.toLocaleString()}
+                                    </p>
+                                    <p className="text-[10px] text-emerald-400 mt-1 font-medium">deposited</p>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm font-medium text-gray-300 select-none">—</span>
+                                )}
+                              </td>
+
+                              {/* ── Running Balance ── */}
+                              <td className="px-4 py-4 text-right">
+                                {bal ? (
+                                  <div className="inline-flex flex-col items-end gap-1">
+                                    <p className="text-[10px] text-gray-400 font-medium line-through decoration-gray-300">
+                                      Rs. {bal.before.toLocaleString()}
+                                    </p>
+                                    <p
+                                      className={`font-black text-base leading-none ${
+                                        bal.after >= 0 ? "text-gray-900" : "text-red-600"
+                                      }`}
+                                    >
+                                      Rs. {bal.after.toLocaleString()}
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-gray-300 select-none">—</span>
+                                )}
                               </td>
                             </tr>
                           );
                         })
                       )}
                     </tbody>
+
                     {paginatedTx.length > 0 && (
                       <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                         <tr>
-                          <td colSpan={5} className="px-5 py-3 font-black text-gray-900">TOTAL ({paginatedTx.length} of {filteredTx.length} shown)</td>
-                          <td className="px-5 py-3 font-black text-right text-gray-900">
-                            Rs. {paginatedTx.reduce((a, t) => a + t.amount, 0).toLocaleString()}
+                          <td colSpan={4} className="px-4 py-3 text-sm font-black text-gray-700">
+                            {paginatedTx.length} of {filteredTx.length} transactions shown
+                          </td>
+                          <td className="px-4 py-3 font-black text-right text-red-600">
+                            − Rs.{" "}
+                            {paginatedTx
+                              .filter((t) => t.type !== "income")
+                              .reduce((a, t) => a + t.amount, 0)
+                              .toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 font-black text-right text-emerald-600">
+                            + Rs.{" "}
+                            {paginatedTx
+                              .filter((t) => t.type === "income")
+                              .reduce((a, t) => a + t.amount, 0)
+                              .toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 font-black text-right text-gray-900">
+                            Rs. {(wallet?.totalBalance ?? 0).toLocaleString()}
                           </td>
                         </tr>
                       </tfoot>
@@ -635,7 +768,8 @@ export default function WalletPage() {
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 bg-gray-50 no-print">
                     <div className="text-sm font-medium text-gray-600">
-                      Page <span className="font-bold text-gray-900">{currentPage}</span> of <span className="font-bold text-gray-900">{totalPages}</span>
+                      Page <span className="font-bold text-gray-900">{currentPage}</span> of{" "}
+                      <span className="font-bold text-gray-900">{totalPages}</span>
                     </div>
                     <div className="flex gap-2">
                       <Button
@@ -648,20 +782,13 @@ export default function WalletPage() {
                         <ChevronLeft className="w-4 h-4" /> Prev
                       </Button>
 
-                      {/* Page number buttons */}
                       <div className="flex gap-1">
                         {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                          const isVisible = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
-                          const isEllipsis = page > 1 && page < totalPages && Math.abs(page - currentPage) > 1;
-
-                          if (isEllipsis && page > currentPage - 1 && page < currentPage + 1) return null;
-
+                          const isVisible =
+                            page === 1 ||
+                            page === totalPages ||
+                            Math.abs(page - currentPage) <= 1;
                           if (!isVisible) return null;
-
-                          if (isEllipsis) {
-                            return <span key={page} className="px-2 py-1 text-gray-400">…</span>;
-                          }
-
                           return (
                             <Button
                               key={page}
@@ -732,7 +859,6 @@ export default function WalletPage() {
                   })}
                 </div>
 
-                {/* Summary table */}
                 <Card className="overflow-hidden border-0 shadow-md">
                   <div className="px-5 py-3 text-white bg-gray-900">
                     <h3 className="font-bold">Wallet Comparison</h3>

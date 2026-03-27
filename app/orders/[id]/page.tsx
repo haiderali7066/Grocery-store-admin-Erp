@@ -142,7 +142,7 @@ function ItemImage({ item }: { item: OrderItem }) {
     "/placeholder.svg";
 
   return (
-    <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-gray-100 shrink-0 border border-gray-200">
+    <div className="relative w-16 h-16 overflow-hidden bg-gray-100 border border-gray-200 rounded-lg shrink-0">
       <Image src={src} alt={item.name} fill className="object-cover" unoptimized />
     </div>
   );
@@ -174,9 +174,9 @@ function RegularItemRow({
           <Button
             onClick={() => onReview(item.product!._id, item.name)}
             size="sm"
-            className="mt-2 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs print:hidden"
+            className="gap-1 mt-2 text-xs bg-green-700 rounded-lg hover:bg-green-800 print:hidden"
           >
-            <Star className="h-3 w-3" /> Review
+            <Star className="w-3 h-3" /> Review
           </Button>
         )}
       </div>
@@ -194,34 +194,34 @@ function BundleGroupCard({
   onReview: (id: string, name: string) => void;
 }) {
   return (
-    <div className="border-2 border-green-100 rounded-xl overflow-hidden">
+    <div className="overflow-hidden border-2 border-green-100 rounded-xl">
       {/* Bundle header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-green-50 border-b border-green-100">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-green-100 bg-green-50">
         <div className="flex items-center gap-2">
-          <ShoppingBag className="h-4 w-4 text-green-700" />
-          <span className="font-bold text-green-800 text-sm">{group.bundleName}</span>
+          <ShoppingBag className="w-4 h-4 text-green-700" />
+          <span className="text-sm font-bold text-green-800">{group.bundleName}</span>
           <span className="text-[10px] font-black bg-green-200 text-green-800 px-2 py-0.5 rounded-full uppercase">
             Bundle
           </span>
         </div>
-        <span className="font-bold text-green-700 text-sm whitespace-nowrap">
+        <span className="text-sm font-bold text-green-700 whitespace-nowrap">
           Rs. {group.groupTotal.toLocaleString()}
         </span>
       </div>
 
       {/* Bundle line items */}
-      <div className="divide-y divide-gray-100 bg-white">
+      <div className="bg-white divide-y divide-gray-100">
         {group.items.map((item, i) => (
           <div key={i} className="flex items-center gap-4 px-4 py-3">
             <ItemImage item={item} />
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-gray-800 text-sm">{item.name}</p>
+              <p className="text-sm font-medium text-gray-800">{item.name}</p>
               <p className="text-xs text-gray-500">
                 Qty: {item.quantity} × Rs. {item.price.toLocaleString()}
               </p>
             </div>
             <div className="text-right shrink-0">
-              <p className="font-semibold text-gray-800 text-sm whitespace-nowrap">
+              <p className="text-sm font-semibold text-gray-800 whitespace-nowrap">
                 Rs. {(item.subtotal ?? item.price * item.quantity).toLocaleString()}
               </p>
               {canReview && item.product?._id && (
@@ -230,7 +230,7 @@ function BundleGroupCard({
                   size="sm"
                   className="mt-1.5 bg-green-700 hover:bg-green-800 rounded-lg gap-1 text-xs print:hidden"
                 >
-                  <Star className="h-3 w-3" /> Review
+                  <Star className="w-3 h-3" /> Review
                 </Button>
               )}
             </div>
@@ -291,7 +291,7 @@ export default function OrderDetailPage() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("✅ Refund request submitted!\n\nWe'll review it within 24 hours.\nNote: Rs 300 delivery charges will be deducted.");
+        alert("✅ Refund request submitted!\n\nWe'll review it within 24 hours.\nNote:  delivery charges will be deducted.");
         setShowRefundDialog(false);
         setRefundReason("defective");
         setRefundNotes("");
@@ -339,7 +339,7 @@ export default function OrderDetailPage() {
   };
 
   const renderStars = (rating: number, interactive = false, onClick?: (r: number) => void) => (
-    <div className="flex gap-1 justify-center">
+    <div className="flex justify-center gap-1">
       {Array.from({ length: 5 }).map((_, i) => (
         <Star
           key={i}
@@ -363,9 +363,9 @@ export default function OrderDetailPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "shipped":   return <Truck         className="h-5 w-5" />;
-      case "delivered": return <CheckCircle   className="h-5 w-5" />;
-      default:          return <Package       className="h-5 w-5" />;
+      case "shipped":   return <Truck         className="w-5 h-5" />;
+      case "delivered": return <CheckCircle   className="w-5 h-5" />;
+      default:          return <Package       className="w-5 h-5" />;
     }
   };
 
@@ -375,7 +375,7 @@ export default function OrderDetailPage() {
     <AuthProvider>
       <div className="min-h-screen"><Navbar />
         <main className="p-6 text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-green-700 mx-auto mb-4" />
+          <Loader2 className="w-12 h-12 mx-auto mb-4 text-green-700 animate-spin" />
           <p>Loading order details…</p>
         </main>
         <Footer />
@@ -401,22 +401,22 @@ export default function OrderDetailPage() {
     <AuthProvider>
       <div className="min-h-screen bg-gray-50">
         <Navbar />
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="px-4 py-8 mx-auto max-w-7xl sm:px-6 lg:px-8">
 
           <Button variant="outline" asChild className="mb-4 rounded-xl print:hidden">
             <Link href="/orders">
-              <ArrowLeft className="h-4 w-4 mr-2" /> Back to Orders
+              <ArrowLeft className="w-4 h-4 mr-2" /> Back to Orders
             </Link>
           </Button>
 
           {/* ── Order header ── */}
-          <Card className="p-6 border-0 shadow-md mb-6 bg-white">
-            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+          <Card className="p-6 mb-6 bg-white border-0 shadow-md">
+            <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Order #{order.orderNumber}</h1>
-                <p className="text-gray-600 mt-1">Placed on {new Date(order.createdAt).toLocaleDateString()}</p>
+                <p className="mt-1 text-gray-600">Placed on {new Date(order.createdAt).toLocaleDateString()}</p>
                 {order.shippingAddress?.fullName && (
-                  <p className="text-gray-500 text-sm mt-1">For: {order.shippingAddress.fullName}</p>
+                  <p className="mt-1 text-sm text-gray-500">For: {order.shippingAddress.fullName}</p>
                 )}
               </div>
               <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold self-start md:self-auto ${
@@ -434,8 +434,8 @@ export default function OrderDetailPage() {
 
           {/* ── Refund banner ── */}
           {canRequestRefund() && (
-            <Card className="p-4 mb-6 bg-orange-50 border-orange-200 border print:hidden">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <Card className="p-4 mb-6 border border-orange-200 bg-orange-50 print:hidden">
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
                 <div>
                   <p className="font-semibold text-orange-900">Not satisfied with your order?</p>
                   <p className="text-sm text-orange-700">Request a refund and we'll process it within 24 hours</p>
@@ -443,7 +443,7 @@ export default function OrderDetailPage() {
                 <Dialog open={showRefundDialog} onOpenChange={setShowRefundDialog}>
                   <DialogTrigger asChild>
                     <Button className="bg-orange-600 hover:bg-orange-700 rounded-xl whitespace-nowrap">
-                      <RotateCcw className="h-4 w-4 mr-2" /> Request Refund
+                      <RotateCcw className="w-4 h-4 mr-2" /> Request Refund
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-md rounded-2xl">
@@ -451,9 +451,9 @@ export default function OrderDetailPage() {
                       <DialogTitle>Request Refund</DialogTitle>
                       <DialogDescription>Provide details about why you want to return this order</DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 mt-4">
+                    <div className="mt-4 space-y-4">
                       <div>
-                        <label className="block text-sm font-medium mb-2">Reason for Return *</label>
+                        <label className="block mb-2 text-sm font-medium">Reason for Return *</label>
                         <Select value={refundReason} onValueChange={setRefundReason}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                           <SelectContent>
@@ -468,7 +468,7 @@ export default function OrderDetailPage() {
                         </Select>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium mb-2">Additional Details *</label>
+                        <label className="block mb-2 text-sm font-medium">Additional Details *</label>
                         <Textarea
                           value={refundNotes}
                           onChange={(e) => setRefundNotes(e.target.value)}
@@ -477,10 +477,10 @@ export default function OrderDetailPage() {
                           className="resize-none"
                         />
                       </div>
-                      <Card className="p-3 bg-blue-50 border-blue-200 border">
-                        <p className="text-xs text-blue-800 font-semibold">Refund Policy:</p>
-                        <ul className="text-xs text-blue-700 mt-2 space-y-1 list-disc list-inside">
-                          <li>Rs 300 delivery charges will be deducted</li>
+                      <Card className="p-3 border border-blue-200 bg-blue-50">
+                        <p className="text-xs font-semibold text-blue-800">Refund Policy:</p>
+                        <ul className="mt-2 space-y-1 text-xs text-blue-700 list-disc list-inside">
+                          <li>delivery charges will be deducted</li>
                           <li>Refund processed within 24–48 hours</li>
                           <li>Product must be returned in original condition</li>
                         </ul>
@@ -499,8 +499,8 @@ export default function OrderDetailPage() {
           )}
 
           {/* ── Order items ── */}
-          <Card className="p-6 border-0 shadow-md mb-6 bg-white">
-            <h2 className="text-lg font-bold mb-4">Order Items</h2>
+          <Card className="p-6 mb-6 bg-white border-0 shadow-md">
+            <h2 className="mb-4 text-lg font-bold">Order Items</h2>
 
             <div className="space-y-4">
               {/* Bundle groups */}
@@ -516,9 +516,9 @@ export default function OrderDetailPage() {
               {/* Divider when both bundles and regular items exist */}
               {hasBundles && hasRegular && (
                 <div className="flex items-center gap-3 py-1">
-                  <div className="h-px flex-1 bg-gray-200" />
-                  <span className="text-xs text-gray-400 font-semibold uppercase tracking-widest">Individual Items</span>
-                  <div className="h-px flex-1 bg-gray-200" />
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <span className="text-xs font-semibold tracking-widest text-gray-400 uppercase">Individual Items</span>
+                  <div className="flex-1 h-px bg-gray-200" />
                 </div>
               )}
 
@@ -534,25 +534,25 @@ export default function OrderDetailPage() {
 
               {/* Fallback: nothing to show (shouldn't happen) */}
               {!hasBundles && !hasRegular && (
-                <p className="text-center text-gray-400 py-8">No items found in this order.</p>
+                <p className="py-8 text-center text-gray-400">No items found in this order.</p>
               )}
             </div>
           </Card>
 
           {/* ── Tracking info ── */}
           {order.trackingNumber && (
-            <Card className="p-6 border-0 shadow-md mb-6 bg-blue-50 border-blue-200 border">
-              <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
-                <Truck className="h-5 w-5" /> Tracking Information
+            <Card className="p-6 mb-6 border border-0 border-blue-200 shadow-md bg-blue-50">
+              <h2 className="flex items-center gap-2 mb-4 text-lg font-bold">
+                <Truck className="w-5 h-5" /> Tracking Information
               </h2>
               <div className="space-y-2 text-sm">
-                <p><span className="text-gray-600 font-medium">Tracking Number: </span><span className="font-semibold">{order.trackingNumber}</span></p>
-                {order.trackingProvider && <p><span className="text-gray-600 font-medium">Provider: </span><span className="font-semibold">{order.trackingProvider}</span></p>}
-                {order.shippedDate   && <p><span className="text-gray-600 font-medium">Shipped On: </span><span className="font-semibold">{new Date(order.shippedDate).toLocaleDateString()}</span></p>}
-                {order.deliveredDate && <p><span className="text-gray-600 font-medium">Delivered On: </span><span className="font-semibold">{new Date(order.deliveredDate).toLocaleDateString()}</span></p>}
+                <p><span className="font-medium text-gray-600">Tracking Number: </span><span className="font-semibold">{order.trackingNumber}</span></p>
+                {order.trackingProvider && <p><span className="font-medium text-gray-600">Provider: </span><span className="font-semibold">{order.trackingProvider}</span></p>}
+                {order.shippedDate   && <p><span className="font-medium text-gray-600">Shipped On: </span><span className="font-semibold">{new Date(order.shippedDate).toLocaleDateString()}</span></p>}
+                {order.deliveredDate && <p><span className="font-medium text-gray-600">Delivered On: </span><span className="font-semibold">{new Date(order.deliveredDate).toLocaleDateString()}</span></p>}
                 {order.trackingURL && (
-                  <Button asChild className="mt-3 w-full bg-blue-600 hover:bg-blue-700 rounded-xl print:hidden">
-                    <Link href={order.trackingURL} target="_blank"><Truck className="h-4 w-4 mr-2" />Track Package</Link>
+                  <Button asChild className="w-full mt-3 bg-blue-600 hover:bg-blue-700 rounded-xl print:hidden">
+                    <Link href={order.trackingURL} target="_blank"><Truck className="w-4 h-4 mr-2" />Track Package</Link>
                   </Button>
                 )}
               </div>
@@ -560,9 +560,9 @@ export default function OrderDetailPage() {
           )}
 
           {/* ── Shipping address ── */}
-          <Card className="p-6 border-0 shadow-md mb-6 bg-white">
-            <h2 className="text-lg font-bold mb-4">Shipping Address</h2>
-            <div className="text-gray-700 text-sm space-y-1">
+          <Card className="p-6 mb-6 bg-white border-0 shadow-md">
+            <h2 className="mb-4 text-lg font-bold">Shipping Address</h2>
+            <div className="space-y-1 text-sm text-gray-700">
               {order.shippingAddress?.fullName && <p className="font-semibold">{order.shippingAddress.fullName}</p>}
               {order.shippingAddress?.phone    && <p>{order.shippingAddress.phone}</p>}
               {order.shippingAddress?.street   && <p>{order.shippingAddress.street}</p>}
@@ -573,27 +573,27 @@ export default function OrderDetailPage() {
           </Card>
 
           {/* ── Order summary ── */}
-          <Card className="p-6 border-0 shadow-md mb-6 bg-white">
-            <h2 className="text-lg font-bold mb-4">Order Summary</h2>
+          <Card className="p-6 mb-6 bg-white border-0 shadow-md">
+            <h2 className="mb-4 text-lg font-bold">Order Summary</h2>
             <div className="space-y-3">
-              <div className="flex justify-between text-gray-700 font-medium">
+              <div className="flex justify-between font-medium text-gray-700">
                 <span>Subtotal</span>
                 <span>Rs. {order.subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-700 font-medium">
+              <div className="flex justify-between font-medium text-gray-700">
                 <span>Tax</span>
                 <span>Rs. {order.gstAmount.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-700 font-medium">
-                <span className="flex items-center gap-1"><Truck className="h-4 w-4" /> Shipping</span>
+              <div className="flex justify-between font-medium text-gray-700">
+                <span className="flex items-center gap-1"><Truck className="w-4 h-4" /> Shipping</span>
                 {(order.shippingCost ?? 0) === 0
-                  ? <span className="text-green-600 font-bold">Free</span>
+                  ? <span className="font-bold text-green-600">Free</span>
                   : <span>Rs. {(order.shippingCost ?? 0).toFixed(2)}</span>}
               </div>
 
               {isCOD && (
-                <div className="flex justify-between text-orange-600 font-medium bg-orange-50 -mx-2 px-2 py-2 rounded-lg">
-                  <span className="flex items-center gap-2"><Banknote className="h-4 w-4" /> Payment Method</span>
+                <div className="flex justify-between px-2 py-2 -mx-2 font-medium text-orange-600 rounded-lg bg-orange-50">
+                  <span className="flex items-center gap-2"><Banknote className="w-4 h-4" /> Payment Method</span>
                   <span className="font-bold">Cash on Delivery</span>
                 </div>
               )}
@@ -611,28 +611,28 @@ export default function OrderDetailPage() {
 
             <Button
               onClick={() => window.print()}
-              className="mt-6 w-full bg-green-700 hover:bg-green-800 rounded-xl print:hidden"
+              className="w-full mt-6 bg-green-700 hover:bg-green-800 rounded-xl print:hidden"
             >
-              <Download className="h-4 w-4 mr-2" /> Download Invoice
+              <Download className="w-4 h-4 mr-2" /> Download Invoice
             </Button>
           </Card>
 
           {/* ── Review dialog ── */}
           <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-            <DialogContent className="rounded-2xl max-w-md">
+            <DialogContent className="max-w-md rounded-2xl">
               <DialogHeader>
                 <DialogTitle>Review: {reviewingProduct?.name || "Product"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleSubmitReview} className="space-y-4 mt-2">
+              <form onSubmit={handleSubmitReview} className="mt-2 space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Your Rating</label>
+                  <label className="block mb-2 text-sm font-semibold text-gray-700">Your Rating</label>
                   {renderStars(reviewForm.rating, true, (r) => setReviewForm({ ...reviewForm, rating: r }))}
-                  <p className="text-center text-xs text-gray-400 mt-2">
+                  <p className="mt-2 text-xs text-center text-gray-400">
                     {["", "Very Poor", "Poor", "Average", "Good", "Excellent"][reviewForm.rating]}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-1">Your Review</label>
+                  <label className="block mb-1 text-sm font-semibold text-gray-700">Your Review</label>
                   <Textarea
                     placeholder="Share your experience with this product…"
                     value={reviewForm.comment}
@@ -643,18 +643,18 @@ export default function OrderDetailPage() {
                   />
                 </div>
                 {reviewError && (
-                  <div className="flex items-center gap-2 bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm">
-                    <AlertCircle className="h-4 w-4 shrink-0" /> {reviewError}
+                  <div className="flex items-center gap-2 px-4 py-3 text-sm text-red-600 border border-red-100 bg-red-50 rounded-xl">
+                    <AlertCircle className="w-4 h-4 shrink-0" /> {reviewError}
                   </div>
                 )}
                 {reviewSuccess && (
-                  <div className="flex items-center gap-2 bg-green-50 border border-green-100 text-green-600 px-4 py-3 rounded-xl text-sm">
-                    <CheckCircle className="h-4 w-4 shrink-0" /> {reviewSuccess}
+                  <div className="flex items-center gap-2 px-4 py-3 text-sm text-green-600 border border-green-100 bg-green-50 rounded-xl">
+                    <CheckCircle className="w-4 h-4 shrink-0" /> {reviewSuccess}
                   </div>
                 )}
                 <div className="flex gap-2">
                   <Button type="submit" disabled={reviewLoading} className="flex-1 bg-green-700 hover:bg-green-800 rounded-xl">
-                    {reviewLoading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Submitting…</> : "Submit Review"}
+                    {reviewLoading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Submitting…</> : "Submit Review"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setShowReviewDialog(false)} className="flex-1 rounded-xl" disabled={reviewLoading}>
                     Cancel

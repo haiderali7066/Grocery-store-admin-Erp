@@ -1,7 +1,15 @@
-// FILE PATH: app/api/admin/refunds/[id]/approve/route.ts (FIXED FOR ONLINE REFUNDS)
+// FILE PATH: app/api/admin/refunds/[id]/approve/route.ts
 // ═══════════════════════════════════════════════════════════════════════════════
-// FIX: Ensure returnItems are preserved with costPrice when saving approved refund
-//      so reports endpoint can calculate returnedProfit correctly
+// FIX: Always overwrite returnItems on the refund with the enriched version
+//      (costPrice + profitPerUnit populated from batch map) so that the reports
+//      endpoint can calculate returnedProfit correctly for online returns.
+//
+// ROOT CAUSE: The previous guard —
+//   if (!storedReturnItems.length && itemsToRestock.length > 0)
+// — only rebuilt returnItems when the array was completely empty. Online refunds
+// always have stored returnItems (from the creation step), but those items were
+// saved WITHOUT costPrice. So the guard never fired, the refund was saved with
+// costPrice = 0, and returnedProfit was always zero in reports.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from "next/server";
@@ -129,49 +137,64 @@ export async function POST(
     }
     const walletField = PAYMENT_TO_WALLET[paymentMethod.toLowerCase()] || "cash";
 
-    // ── Build restock list with cost data ───────────────────────────────────
-    const storedReturnItems: any[] = (refund as any).returnItems || [];
-    type RI = { productId: string | null; name: string; returnQty: number; costPrice: number; unitPrice: number; profitPerUnit: number; restock: boolean };
-    let itemsToRestock: RI[] = [];
-
+    // ── Build FIFO cost map — authoritative source for buying rates ──────────
     const costMap = await buildProductCostMap();
 
+    // ── Build restock list with enriched cost data ───────────────────────────
+    const storedReturnItems: any[] = (refund as any).returnItems || [];
+    type RI = {
+      productId: string | null; name: string; returnQty: number;
+      costPrice: number; unitPrice: number; profitPerUnit: number;
+      restock: boolean; lineTotal: number;
+    };
+    let itemsToRestock: RI[] = [];
+
     if (storedReturnItems.length > 0) {
-      // ← FIX: Use stored returnItems with costPrice preserved
+      // Enrich every stored item with costPrice from the batch map.
+      // IMPORTANT: we always prefer the batch map over whatever was stored,
+      // because online refund creation routes typically save returnItems
+      // without costPrice (it was 0 or missing at request time).
       itemsToRestock = storedReturnItems.map((ri: any) => {
-        const pid = extractId(ri.productId);
-        // Use stored costPrice if present (from creation route), else fall back to batch map
-        const costPrice = ri.costPrice ?? (pid ? costMap.get(pid) ?? 0 : 0);
+        const pid       = extractId(ri.productId);
+        // Use batch map as the primary source; fall back to stored value only
+        // if the batch map has no entry for this product.
+        const batchCost = pid ? costMap.get(pid) : undefined;
+        const costPrice = batchCost ?? ri.costPrice ?? 0;
+        const unitPrice = ri.unitPrice || ri.price || 0;
         return {
-          productId: pid,
-          name:      ri.name || "Unknown",
-          returnQty: ri.returnQty || ri.quantity || 0,
-          costPrice: costPrice,
-          unitPrice: ri.unitPrice || ri.price || 0,
-          profitPerUnit: (ri.profitPerUnit ?? ((ri.unitPrice || ri.price || 0) - costPrice)),
-          restock:   ri.restock !== false,
+          productId:    pid,
+          name:         ri.name || "Unknown",
+          returnQty:    ri.returnQty || ri.quantity || 0,
+          costPrice,
+          unitPrice,
+          profitPerUnit: unitPrice - costPrice,
+          lineTotal:    unitPrice * (ri.returnQty || ri.quantity || 0),
+          restock:      ri.restock !== false,
         };
       });
     } else if ((refund as any).order) {
+      // Fallback: no returnItems stored — derive from order items
       console.warn("[Refund Approve] returnItems empty — falling back to order.items with batch cost lookup");
       const od = (refund as any).order as any;
       itemsToRestock = (od.items || []).map((oi: any) => {
-        const pid = extractId(oi.product?._id || oi.product || oi.productId);
+        const pid       = extractId(oi.product?._id || oi.product || oi.productId);
         const costPrice = pid ? costMap.get(pid) ?? 0 : 0;
+        const unitPrice = oi.price || 0;
         return {
-          productId: pid,
-          name:      oi.product?.name || oi.name || "Unknown",
-          returnQty: oi.quantity || 0,
-          costPrice: costPrice,
-          unitPrice: oi.price || 0,
-          profitPerUnit: (oi.price || 0) - costPrice,
-          restock:   true,
+          productId:    pid,
+          name:         oi.product?.name || oi.name || "Unknown",
+          returnQty:    oi.quantity || 0,
+          costPrice,
+          unitPrice,
+          profitPerUnit: unitPrice - costPrice,
+          lineTotal:    unitPrice * (oi.quantity || 0),
+          restock:      true,
         };
       });
     }
 
-    console.log("[Refund Approve] items to restock:", itemsToRestock.map(i => 
-      `${i.name}(${i.productId})×${i.returnQty} cost=${i.costPrice} profit=${i.profitPerUnit}`
+    console.log("[Refund Approve] items to restock:", itemsToRestock.map(i =>
+      `${i.name}(${i.productId})×${i.returnQty} cost=${i.costPrice} unitPrice=${i.unitPrice} profit=${i.profitPerUnit}`
     ));
 
     const session    = await mongoose.startSession();
@@ -196,7 +219,11 @@ export async function POST(
           if (actualIdx !== -1)
             await Order.updateOne(
               { _id: orderId },
-              { $set: { [`items.${actualIdx}.returned`]: true, [`items.${actualIdx}.returnedAt`]: approvedAt, [`items.${actualIdx}.returnedQty`]: returnQty }},
+              { $set: {
+                [`items.${actualIdx}.returned`]:    true,
+                [`items.${actualIdx}.returnedAt`]:  approvedAt,
+                [`items.${actualIdx}.returnedQty`]: returnQty,
+              }},
               { session }
             );
         } else if ((refund as any).orderNumber) {
@@ -208,7 +235,11 @@ export async function POST(
           if (actualIdx !== -1)
             await POSSale.updateOne(
               { saleNumber: (refund as any).orderNumber },
-              { $set: { [`items.${actualIdx}.returned`]: true, [`items.${actualIdx}.returnedAt`]: approvedAt, [`items.${actualIdx}.returnedQty`]: returnQty }},
+              { $set: {
+                [`items.${actualIdx}.returned`]:    true,
+                [`items.${actualIdx}.returnedAt`]:  approvedAt,
+                [`items.${actualIdx}.returnedQty`]: returnQty,
+              }},
               { session }
             );
         }
@@ -262,39 +293,40 @@ export async function POST(
         notes: notes || `Approved ${(refund as any).returnType} return`, createdBy: payload.userId,
       }], { session });
 
-      // ← FIX: Save refund with returnItems that include costPrice preserved
-      //        This ensures reports endpoint can calculate returnedProfit
+      // ── FIX: ALWAYS overwrite returnItems with the fully enriched version ──
+      // This ensures costPrice and profitPerUnit are correctly stored regardless
+      // of what was saved at refund-creation time (which is typically missing costPrice).
+      (refund as any).returnItems = itemsToRestock.map(i => ({
+        productId:    i.productId,
+        name:         i.name,
+        returnQty:    i.returnQty,
+        unitPrice:    i.unitPrice,
+        costPrice:    i.costPrice,       // ← correctly populated from batch map
+        profitPerUnit: i.profitPerUnit,  // ← correctly calculated
+        lineTotal:    i.lineTotal,
+        restock:      i.restock,
+      }));
+
       (refund as any).status         = "completed";
       (refund as any).approvedBy     = payload.userId;
       (refund as any).approvedAt     = approvedAt;
       (refund as any).refundedAmount = finalRefundAmount;
       (refund as any).deliveryCost   = parsedDeliveryLoss;
       (refund as any).notes          = notes || "Approved by admin";
-      
-      // ← Preserve or rebuild returnItems with costPrice if missing
-      if (!storedReturnItems.length && itemsToRestock.length > 0) {
-        (refund as any).returnItems = itemsToRestock.map(i => ({
-          productId: i.productId,
-          name: i.name,
-          returnQty: i.returnQty,
-          unitPrice: i.unitPrice,
-          costPrice: i.costPrice,
-          profitPerUnit: i.profitPerUnit,
-          lineTotal: i.unitPrice * i.returnQty,
-          restock: i.restock,
-        }));
-      }
 
       await refund.save({ session });
 
       await session.commitTransaction();
 
-      // Calculate total profit lost for response
-      const profitLost = itemsToRestock.reduce((sum, item) => 
-        sum + ((item.unitPrice - item.costPrice) * item.returnQty), 0
+      // Total profit lost for response
+      const profitLost = itemsToRestock.reduce(
+        (sum, item) => sum + (item.profitPerUnit * item.returnQty), 0
       );
 
-      console.log(`[Refund Approve] Saved refund ${id} with profit lost: Rs. ${profitLost}`);
+      console.log(
+        `[Refund Approve] Saved refund ${id} | profit lost: Rs. ${profitLost}` +
+        ` | items: ${itemsToRestock.map(i => `${i.name} cost=${i.costPrice} profit=${i.profitPerUnit}`).join(", ")}`
+      );
 
       return NextResponse.json({
         success:       true,
