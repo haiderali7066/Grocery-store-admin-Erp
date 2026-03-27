@@ -328,7 +328,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
           quantity:            1,
           image:               bundle.image,
           isBundle:            true,
-          gst:                 0, // bundles are pre-priced; no per-item tax
           bundleDiscount:      bundle.discount || 0,
           bundleOriginalPrice: bundle.originalPrice,
           bundleProducts:      bundle.products.map((p) => ({
