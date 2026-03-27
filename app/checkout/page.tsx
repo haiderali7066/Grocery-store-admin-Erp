@@ -249,12 +249,13 @@ export default function CheckoutPage() {
             quantity: item.quantity,
             image: item.image || null,
             isBundle: true,
-            // ✅ bundleProducts carries real MongoDB ObjectId strings
+            // ✅ FIX: send both retailPrice and price so the API can resolve either field name
             bundleProducts: (item.bundleProducts || []).map((bp) => ({
-              productId: bp.productId,   // real _id from CartProvider
+              productId: bp.productId,                  // real _id from CartProvider
               name: bp.name,
               quantity: bp.quantity,
-              price: bp.price,           // retailPrice per unit
+              retailPrice: bp.retailPrice ?? bp.price,  // preferred field name for the route
+              price: bp.retailPrice ?? bp.price,        // fallback so neither field is missing
               image: bp.image || null,
             })),
             discount: item.discount || 0,
