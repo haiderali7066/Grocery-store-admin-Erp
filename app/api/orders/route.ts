@@ -187,9 +187,10 @@ export async function POST(req: NextRequest) {
         const bundlePaidTotal = (Number(item.price) || 0) * bundleQty;
         const bundleDiscount = Number(item.bundleDiscount) || 0;
 
+        // ✅ FIX: accept both retailPrice and price field names
         const retailTotalPerBundle = item.bundleProducts.reduce(
           (s: number, bp: any) =>
-            s + (Number(bp.retailPrice) || 0) * (Number(bp.quantity) || 1),
+            s + (Number(bp.retailPrice ?? bp.price) || 0) * (Number(bp.quantity) || 1),
           0,
         );
 
@@ -273,7 +274,8 @@ export async function POST(req: NextRequest) {
             );
           }
 
-          const itemRetailTotal = (Number(bp.retailPrice) || 0) * (Number(bp.quantity) || 1);
+          // ✅ FIX: accept both retailPrice and price field names
+          const itemRetailTotal = (Number(bp.retailPrice ?? bp.price) || 0) * (Number(bp.quantity) || 1);
           const itemProportion = retailTotalPerBundle > 0
             ? itemRetailTotal / retailTotalPerBundle
             : 0;

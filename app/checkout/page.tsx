@@ -45,10 +45,10 @@ interface StoreSettings {
 type PaymentKey = "cod" | "bank" | "easypaisa" | "jazzcash";
 
 const PAYMENT_ICONS: Record<PaymentKey, React.ReactNode> = {
-  cod: <Banknote className="h-4 w-4" />,
-  bank: <Building2 className="h-4 w-4" />,
-  easypaisa: <Smartphone className="h-4 w-4" />,
-  jazzcash: <Smartphone className="h-4 w-4" />,
+  cod: <Banknote className="w-4 h-4" />,
+  bank: <Building2 className="w-4 h-4" />,
+  easypaisa: <Smartphone className="w-4 h-4" />,
+  jazzcash: <Smartphone className="w-4 h-4" />,
 };
 
 // ── Check if a cart item is a properly-formed bundle ──────────────────────────
@@ -327,22 +327,22 @@ export default function CheckoutPage() {
 
   if (!user || items.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gray-50">
-        <div className="bg-white p-10 rounded-3xl shadow-xl text-center max-w-md w-full border border-gray-100">
-          <div className="bg-green-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <PackageCheck className="h-10 w-10 text-green-700" />
+      <div className="flex flex-col items-center justify-center min-h-screen p-6 bg-gray-50">
+        <div className="w-full max-w-md p-10 text-center bg-white border border-gray-100 shadow-xl rounded-3xl">
+          <div className="flex items-center justify-center w-20 h-20 mx-auto mb-6 bg-green-100 rounded-full">
+            <PackageCheck className="w-10 h-10 text-green-700" />
           </div>
-          <h2 className="text-2xl font-black text-gray-900 mb-2">
+          <h2 className="mb-2 text-2xl font-black text-gray-900">
             {!user ? "Login Required" : "Cart is Empty"}
           </h2>
-          <p className="text-gray-500 mb-8">
+          <p className="mb-8 text-gray-500">
             {!user
               ? "Please sign in to complete your purchase."
               : "Looks like you haven't added anything yet."}
           </p>
           <Button
             asChild
-            className="w-full bg-green-700 hover:bg-green-800 h-12 rounded-xl text-lg font-bold"
+            className="w-full h-12 text-lg font-bold bg-green-700 hover:bg-green-800 rounded-xl"
           >
             <a href={!user ? "/login" : "/products"}>
               {!user ? "Login" : "Start Shopping"}
@@ -360,40 +360,40 @@ export default function CheckoutPage() {
   const activePayment = settings?.paymentMethods?.[paymentMethod];
 
   return (
-    <div className="min-h-screen bg-gray-50/50 flex flex-col">
+    <div className="flex flex-col min-h-screen bg-gray-50/50">
       <Navbar />
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+      <main className="flex-1 w-full px-4 py-10 mx-auto max-w-7xl sm:px-6 lg:px-8">
+        <div className="flex flex-col justify-between gap-4 mb-10 md:flex-row md:items-center">
           <div>
-            <h1 className="text-3xl font-black text-gray-900 tracking-tight">
+            <h1 className="text-3xl font-black tracking-tight text-gray-900">
               Checkout
             </h1>
-            <p className="text-gray-500 font-medium">
+            <p className="font-medium text-gray-500">
               Securely complete your purchase
             </p>
           </div>
-          <div className="hidden md:flex items-center gap-3 text-sm font-bold text-gray-400">
+          <div className="items-center hidden gap-3 text-sm font-bold text-gray-400 md:flex">
             <span className="text-green-700">Basket</span>
-            <ChevronRight className="h-4 w-4" />
-            <span className="text-green-700 bg-green-100 px-3 py-1 rounded-full">
+            <ChevronRight className="w-4 h-4" />
+            <span className="px-3 py-1 text-green-700 bg-green-100 rounded-full">
               Details
             </span>
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="w-4 h-4" />
             <span>Success</span>
           </div>
         </div>
 
         {/* ── Broken bundle warning banner ── */}
         {hasBrokenBundles && (
-          <div className="mb-6 bg-amber-50 border-2 border-amber-300 rounded-2xl p-5">
+          <div className="p-5 mb-6 border-2 bg-amber-50 border-amber-300 rounded-2xl">
             <div className="flex items-start gap-3 mb-3">
               <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold text-amber-900">
                   Bundle{brokenBundles.length > 1 ? "s" : ""} need to be refreshed
                 </p>
-                <p className="text-sm text-amber-700 mt-1">
+                <p className="mt-1 text-sm text-amber-700">
                   The following bundle
                   {brokenBundles.length > 1 ? "s are" : " is"} missing product
                   details (likely saved from a previous session). Remove and re-add
@@ -405,11 +405,11 @@ export default function CheckoutPage() {
               {brokenBundles.map((b) => (
                 <div
                   key={b.id}
-                  className="flex items-center justify-between bg-white border border-amber-200 rounded-xl px-4 py-3"
+                  className="flex items-center justify-between px-4 py-3 bg-white border border-amber-200 rounded-xl"
                 >
                   <div className="flex items-center gap-2">
-                    <Package className="h-4 w-4 text-amber-500" />
-                    <span className="font-semibold text-sm text-gray-800">
+                    <Package className="w-4 h-4 text-amber-500" />
+                    <span className="text-sm font-semibold text-gray-800">
                       {b.name}
                     </span>
                     <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
@@ -426,37 +426,37 @@ export default function CheckoutPage() {
               ))}
             </div>
             <p className="text-xs text-amber-600 mt-3 flex items-center gap-1.5">
-              <RefreshCw className="h-3 w-3" />
+              <RefreshCw className="w-3 h-3" />
               After removing, go back to the sale page and add the bundle again.
             </p>
           </div>
         )}
 
         {error && (
-          <div className="mb-6 flex items-center gap-3 bg-red-50 border border-red-200 text-red-700 rounded-2xl px-5 py-4">
-            <AlertCircle className="h-5 w-5 shrink-0" />
+          <div className="flex items-center gap-3 px-5 py-4 mb-6 text-red-700 border border-red-200 bg-red-50 rounded-2xl">
+            <AlertCircle className="w-5 h-5 shrink-0" />
             <p className="text-sm font-medium">{error}</p>
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
           {/* ── Form ── */}
-          <form onSubmit={handleSubmit} className="lg:col-span-8 space-y-8">
+          <form onSubmit={handleSubmit} className="space-y-8 lg:col-span-8">
 
             {/* 1. Shipping */}
             <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4 mb-8">
-                <div className="bg-amber-100 p-3 rounded-2xl">
-                  <Truck className="h-6 w-6 text-amber-600" />
+                <div className="p-3 bg-amber-100 rounded-2xl">
+                  <Truck className="w-6 h-6 text-amber-600" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">
                   Shipping Details
                 </h2>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">
+                  <label className="ml-1 text-sm font-bold text-gray-700">
                     Full Name
                   </label>
                   <Input
@@ -469,7 +469,7 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">
+                  <label className="ml-1 text-sm font-bold text-gray-700">
                     Email Address
                   </label>
                   <Input
@@ -483,7 +483,7 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">
+                  <label className="ml-1 text-sm font-bold text-gray-700">
                     Phone Number
                   </label>
                   <Input
@@ -496,7 +496,7 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-bold text-gray-700 ml-1">
+                  <label className="ml-1 text-sm font-bold text-gray-700">
                     Street Address
                   </label>
                   <Input
@@ -535,8 +535,8 @@ export default function CheckoutPage() {
             {/* 2. Payment */}
             <section className="bg-white rounded-[2rem] p-6 md:p-10 shadow-sm border border-gray-100">
               <div className="flex items-center gap-4 mb-8">
-                <div className="bg-blue-100 p-3 rounded-2xl">
-                  <CreditCard className="h-6 w-6 text-blue-600" />
+                <div className="p-3 bg-blue-100 rounded-2xl">
+                  <CreditCard className="w-6 h-6 text-blue-600" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900">
                   Payment Method
@@ -544,13 +544,13 @@ export default function CheckoutPage() {
               </div>
 
               {isLoadingSettings ? (
-                <div className="flex items-center justify-center py-10 text-gray-400 gap-3">
-                  <Loader2 className="h-5 w-5 animate-spin" />
+                <div className="flex items-center justify-center gap-3 py-10 text-gray-400">
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   <span className="text-sm">Loading payment options…</span>
                 </div>
               ) : enabledMethods.length === 0 ? (
-                <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl">
-                  <CreditCard className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <div className="py-8 text-center text-gray-400 border-2 border-gray-200 border-dashed rounded-2xl">
+                  <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">
                     No payment methods are currently available.
                   </p>
@@ -594,14 +594,14 @@ export default function CheckoutPage() {
 
                   {isCOD ? (
                     <div className="space-y-5">
-                      <div className="bg-green-50/50 border border-green-200 rounded-2xl p-6">
+                      <div className="p-6 border border-green-200 bg-green-50/50 rounded-2xl">
                         <div className="flex gap-4">
-                          <Banknote className="h-8 w-8 text-green-600 shrink-0 mt-1" />
+                          <Banknote className="w-8 h-8 mt-1 text-green-600 shrink-0" />
                           <div>
-                            <p className="font-bold text-green-900 mb-2 text-lg">
+                            <p className="mb-2 text-lg font-bold text-green-900">
                               {activePayment?.displayName || "Cash on Delivery"}
                             </p>
-                            <p className="text-sm text-green-700 leading-relaxed mb-3">
+                            <p className="mb-3 text-sm leading-relaxed text-green-700">
                               {activePayment?.description ||
                                 "Pay the product amount in cash when your order is delivered."}
                             </p>
@@ -609,9 +609,9 @@ export default function CheckoutPage() {
                         </div>
                       </div>
 
-                      <div className="rounded-2xl border border-gray-200 overflow-hidden">
-                        <div className="bg-gray-50 px-5 py-3 border-b border-gray-200">
-                          <p className="text-xs font-black text-gray-500 uppercase tracking-widest">
+                      <div className="overflow-hidden border border-gray-200 rounded-2xl">
+                        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+                          <p className="text-xs font-black tracking-widest text-gray-500 uppercase">
                             How Your Payment Works
                           </p>
                         </div>
@@ -691,13 +691,13 @@ export default function CheckoutPage() {
 
                       {codDeliveryCharge > 0 && (
                         <div>
-                          <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-3">
+                          <label className="block mb-3 text-sm font-black tracking-widest text-gray-700 uppercase">
                             EasyPaisa Screenshot (Delivery Charge){" "}
                             <span className="text-red-500">*</span>
                           </label>
                           {codConfig?.codEasypaisaAccount && (
-                            <div className="mb-3 flex items-center gap-3 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
-                              <Smartphone className="h-5 w-5 text-orange-500 shrink-0" />
+                            <div className="flex items-center gap-3 px-4 py-3 mb-3 border border-orange-200 bg-orange-50 rounded-xl">
+                              <Smartphone className="w-5 h-5 text-orange-500 shrink-0" />
                               <div className="text-sm">
                                 <span className="font-semibold text-orange-800">
                                   Send Rs. {codDeliveryCharge} to:{" "}
@@ -706,7 +706,7 @@ export default function CheckoutPage() {
                                   {codConfig.codEasypaisaAccount}
                                 </span>
                                 {codConfig.codEasypaisaName && (
-                                  <span className="text-orange-600 ml-1">
+                                  <span className="ml-1 text-orange-600">
                                     ({codConfig.codEasypaisaName})
                                   </span>
                                 )}
@@ -730,7 +730,7 @@ export default function CheckoutPage() {
                             />
                             {codPreviewUrl ? (
                               <div className="flex flex-col items-center">
-                                <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border-2 border-white shadow-md">
+                                <div className="relative w-32 h-32 mb-4 overflow-hidden border-2 border-white shadow-md rounded-xl">
                                   <Image
                                     src={codPreviewUrl}
                                     alt="COD delivery charge screenshot"
@@ -744,11 +744,11 @@ export default function CheckoutPage() {
                               </div>
                             ) : (
                               <>
-                                <UploadCloud className="h-10 w-10 text-gray-400 mb-2" />
-                                <p className="text-gray-500 font-medium">
+                                <UploadCloud className="w-10 h-10 mb-2 text-gray-400" />
+                                <p className="font-medium text-gray-500">
                                   Upload EasyPaisa payment screenshot
                                 </p>
-                                <p className="text-xs text-gray-400 mt-1">
+                                <p className="mt-1 text-xs text-gray-400">
                                   PNG, JPG (Max 5 MB)
                                 </p>
                               </>
@@ -758,7 +758,7 @@ export default function CheckoutPage() {
                       )}
 
                       {codDeliveryCharge === 0 && (
-                        <div className="flex items-start gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                        <div className="flex items-start gap-3 p-4 border border-blue-100 bg-blue-50 rounded-xl">
                           <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
                           <p className="text-xs text-blue-700">
                             No advance delivery charge is required for this order.
@@ -769,11 +769,11 @@ export default function CheckoutPage() {
                     </div>
                   ) : (
                     <div className="space-y-6">
-                      <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
+                      <div className="p-6 border border-blue-100 bg-blue-50/50 rounded-2xl">
                         <div className="flex gap-4">
                           <AlertCircle className="h-5 w-5 text-blue-600 shrink-0 mt-0.5" />
                           <div className="space-y-1.5 text-sm">
-                            <p className="font-bold text-blue-900 text-base">
+                            <p className="text-base font-bold text-blue-900">
                               {activePayment?.displayName ||
                                 paymentMethod.toUpperCase()}{" "}
                               — Payment Details
@@ -810,7 +810,7 @@ export default function CheckoutPage() {
                                 </span>
                               </p>
                             )}
-                            <p className="text-blue-600 pt-1">
+                            <p className="pt-1 text-blue-600">
                               Transfer the exact amount and upload your screenshot
                               below.
                             </p>
@@ -819,7 +819,7 @@ export default function CheckoutPage() {
                       </div>
 
                       <div className="relative">
-                        <label className="block text-sm font-black text-gray-700 uppercase tracking-widest mb-4">
+                        <label className="block mb-4 text-sm font-black tracking-widest text-gray-700 uppercase">
                           Payment Proof (Screenshot){" "}
                           <span className="text-red-500">*</span>
                         </label>
@@ -840,7 +840,7 @@ export default function CheckoutPage() {
                           />
                           {previewUrl ? (
                             <div className="flex flex-col items-center">
-                              <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border-2 border-white shadow-md">
+                              <div className="relative w-32 h-32 mb-4 overflow-hidden border-2 border-white shadow-md rounded-xl">
                                 <Image
                                   src={previewUrl}
                                   alt="Preview"
@@ -854,11 +854,11 @@ export default function CheckoutPage() {
                             </div>
                           ) : (
                             <>
-                              <UploadCloud className="h-10 w-10 text-gray-400 mb-2" />
-                              <p className="text-gray-500 font-medium">
+                              <UploadCloud className="w-10 h-10 mb-2 text-gray-400" />
+                              <p className="font-medium text-gray-500">
                                 Click or drag screenshot here
                               </p>
-                              <p className="text-xs text-gray-400 mt-1">
+                              <p className="mt-1 text-xs text-gray-400">
                                 PNG, JPG (Max 5 MB)
                               </p>
                             </>
@@ -883,7 +883,7 @@ export default function CheckoutPage() {
             >
               {isProcessing ? (
                 <span className="flex items-center gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <Loader2 className="w-5 h-5 animate-spin" />
                   {isCOD ? "Placing Order…" : "Validating Payment…"}
                 </span>
               ) : hasBrokenBundles ? (
@@ -900,16 +900,16 @@ export default function CheckoutPage() {
 
           {/* ── Sidebar ── */}
           <aside className="lg:col-span-4">
-            <div className="sticky top-24 space-y-6">
+            <div className="sticky space-y-6 top-24">
               <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-gray-100">
-                <h2 className="text-xl font-black text-gray-900 mb-6">
+                <h2 className="mb-6 text-xl font-black text-gray-900">
                   Order Summary
                 </h2>
 
                 <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 mb-6">
                   {items.map((item) => (
                     <div key={item.id} className="flex gap-4">
-                      <div className="relative h-16 w-16 bg-gray-50 rounded-xl overflow-hidden shrink-0 border border-gray-100">
+                      <div className="relative w-16 h-16 overflow-hidden border border-gray-100 bg-gray-50 rounded-xl shrink-0">
                         <Image
                           src={item.image || "/placeholder.svg"}
                           alt={item.name}
@@ -932,7 +932,7 @@ export default function CheckoutPage() {
                             </span>
                           )}
                         </p>
-                        <p className="text-xs text-gray-400 font-medium">
+                        <p className="text-xs font-medium text-gray-400">
                           {item.quantity} × Rs. {item.price.toFixed(0)}
                           {item.weight && ` • ${item.weight}`}
                         </p>
@@ -944,25 +944,25 @@ export default function CheckoutPage() {
                   ))}
                 </div>
 
-                <div className="space-y-3 pt-6 border-t border-gray-100">
-                  <div className="flex justify-between text-gray-500 font-medium">
+                <div className="pt-6 space-y-3 border-t border-gray-100">
+                  <div className="flex justify-between font-medium text-gray-500">
                     <span>Subtotal</span>
                     <span>Rs. {subtotal.toFixed(0)}</span>
                   </div>
                   {taxEnabled && (
-                    <div className="flex justify-between text-gray-500 font-medium">
+                    <div className="flex justify-between font-medium text-gray-500">
                       <span>
                         {taxName} ({taxRate}%)
                       </span>
                       <span>Rs. {taxAmount.toFixed(0)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between text-gray-500 font-medium">
+                  <div className="flex justify-between font-medium text-gray-500">
                     <span className="flex items-center gap-1">
-                      <Truck className="h-4 w-4" /> Shipping
+                      <Truck className="w-4 h-4" /> Shipping
                     </span>
                     {shippingCost === 0 ? (
-                      <span className="text-green-600 font-bold">Free</span>
+                      <span className="font-bold text-green-600">Free</span>
                     ) : (
                       <span>Rs. {shippingCost.toFixed(0)}</span>
                     )}
@@ -970,7 +970,7 @@ export default function CheckoutPage() {
                   <div className="flex justify-between pt-4 border-t border-gray-100">
                     <span className="text-lg font-black text-gray-900">Total</span>
                     <div className="text-right">
-                      <p className="text-2xl font-black text-green-700 leading-none">
+                      <p className="text-2xl font-black leading-none text-green-700">
                         Rs. {total.toFixed(0)}
                       </p>
                       <p className="text-[10px] text-gray-400 uppercase font-black mt-1">
@@ -979,12 +979,12 @@ export default function CheckoutPage() {
                     </div>
                   </div>
                   {isCOD && hasCodAdvanceCharge && (
-                    <div className="pt-3 border-t border-gray-100 space-y-2">
-                      <p className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                    <div className="pt-3 space-y-2 border-t border-gray-100">
+                      <p className="text-xs font-black tracking-widest text-gray-400 uppercase">
                         Payment Breakdown
                       </p>
                       <div className="flex justify-between text-sm">
-                        <span className="text-orange-600 font-semibold flex items-center gap-1">
+                        <span className="flex items-center gap-1 font-semibold text-orange-600">
                           <Smartphone className="h-3.5 w-3.5" />
                           Advance (EasyPaisa)
                         </span>
@@ -993,7 +993,7 @@ export default function CheckoutPage() {
                         </span>
                       </div>
                       <div className="flex justify-between text-sm">
-                        <span className="text-green-700 font-semibold flex items-center gap-1">
+                        <span className="flex items-center gap-1 font-semibold text-green-700">
                           <Banknote className="h-3.5 w-3.5" />
                           Cash on Delivery
                         </span>
@@ -1007,8 +1007,8 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              <div className="bg-green-50 rounded-2xl p-6 border border-green-100 flex items-center gap-4">
-                <ShieldCheck className="h-8 w-8 text-green-600 shrink-0" />
+              <div className="flex items-center gap-4 p-6 border border-green-100 bg-green-50 rounded-2xl">
+                <ShieldCheck className="w-8 h-8 text-green-600 shrink-0" />
                 <div>
                   <p className="text-sm font-bold text-green-900">
                     {isCOD ? "100% Secure Delivery" : "Secure Checkout"}
