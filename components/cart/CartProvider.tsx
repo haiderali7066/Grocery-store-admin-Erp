@@ -380,12 +380,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Bundles use gst=0; regular items fall back to store taxRate
   const taxAmount = tax.taxEnabled
-    ? items.reduce((sum, i) => {
-        const rate = i.gst != null ? i.gst : tax.taxRate;
-        return sum + (i.price * i.quantity * rate) / 100;
-      }, 0)
-    : 0;
-
+  ? items.reduce((sum, i) => {
+    const rate = (i.gst != null && i.gst > 0) ? i.gst : tax.taxRate;
+      return sum + (i.price * i.quantity * rate) / 100;
+    }, 0)
+  : 0;
   const shippingCost =
     tax.freeShippingThreshold > 0 && subtotal >= tax.freeShippingThreshold
       ? 0
